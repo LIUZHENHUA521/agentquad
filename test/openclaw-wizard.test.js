@@ -895,6 +895,50 @@ describe('openclaw-wizard state machine', () => {
     expect(writes[0].data).toBe('请中断这个分析任务')
   })
 
+  it('Topic safety: NEW_TASK_TRIGGERS in supergroup task topic does NOT start wizard (forwards to PTY)', async () => {
+    const writes = []
+    const fakePty = { has: () => true, write: (sid, data) => writes.push({ sid, data }) }
+    const fakeBridge = {
+      ...bridge,
+      findSessionByRoute: ({ chatId, threadId }) => threadId === 42 ? 'sess-in-topic' : null,
+    }
+    const fakeAi = {
+      sessions: new Map([['sess-in-topic', { status: 'running', startedAt: Date.now(), lastOutputAt: Date.now() }]]),
+      spawnSession: ai.spawnSession,
+    }
+    const w2 = createOpenClawWizard({
+      db, aiTerminal: fakeAi, openclaw: fakeBridge, pending,
+      pty: fakePty,
+      getConfig: () => ({ defaultCwd: '/tmp', port: 5677, defaultTool: 'claude' }),
+    })
+    const r = await w2.handleInbound({
+      chatId: '-1003985889503',
+      threadId: 42,
+      text: '做一套 ai 座席辅助系统吧',
+    })
+    expect(r.action).toBe('stdin_proxy')
+    expect(r.sessionId).toBe('sess-in-topic')
+    expect(writes[0].data).toBe('做一套 ai 座席辅助系统吧')
+  })
+
+  it('Topic safety: NEW_TASK_TRIGGERS in General STILL starts wizard', async () => {
+    const r = await wizard.handleInbound({
+      chatId: '-1003985889503',
+      threadId: null,
+      text: '做一套 ai 座席辅助系统吧',
+    })
+    expect(r.action).toBe('wizard_started')
+  })
+
+  it('Topic safety: NEW_TASK_TRIGGERS in 1:1 DM STILL starts wizard', async () => {
+    const r = await wizard.handleInbound({
+      chatId: '12345',
+      threadId: null,
+      text: '做一套 ai 座席辅助系统吧',
+    })
+    expect(r.action).toBe('wizard_started')
+  })
+
   it('PTY stdin proxy: non-interactive slash commands still pass through (e.g. /clear)', async () => {
     const writes = []
     const fakePty = { has: () => true, write: (sid, data) => writes.push({ sid, data }) }

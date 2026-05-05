@@ -87,6 +87,7 @@ export default function ForkDialog({ open, sourceTodo, sourceSessionId, todos, o
             <Select value={tool} onChange={setTool} options={[
               { value: 'claude', label: 'Claude' },
               { value: 'codex', label: 'Codex' },
+              { value: 'cursor', label: 'Cursor' },
             ]} />
           </Form.Item>
           <Form.Item label="目标待办">

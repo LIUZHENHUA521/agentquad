@@ -71,8 +71,9 @@ export default function HistoryStatsTab() {
 
           <Card size="small" title="工具分布">
             <Row>
-              <Col span={12}><Statistic title="Claude" value={stats.byTool.claude} /></Col>
-              <Col span={12}><Statistic title="Codex" value={stats.byTool.codex} /></Col>
+              <Col span={8}><Statistic title="Claude" value={stats.byTool.claude} /></Col>
+              <Col span={8}><Statistic title="Codex" value={stats.byTool.codex} /></Col>
+              <Col span={8}><Statistic title="Cursor" value={stats.byTool.cursor ?? 0} /></Col>
             </Row>
           </Card>
 

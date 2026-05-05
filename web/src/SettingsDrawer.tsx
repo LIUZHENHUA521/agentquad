@@ -64,7 +64,7 @@ function joinCommandLine(command: string, args: string[] = []): string {
 export default function SettingsDrawer({ open, onClose }: Props) {
   const [status, setStatus] = useState<{ version: string; activeSessions: number } | null>(null)
   const [config, setConfig] = useState<AppConfig | null>(null)
-  const [toolDiagnostics, setToolDiagnostics] = useState<Record<'claude' | 'codex', ToolDiagnostic> | null>(null)
+  const [toolDiagnostics, setToolDiagnostics] = useState<Record<'claude' | 'codex' | 'cursor', ToolDiagnostic> | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [pickingDefaultCwd, setPickingDefaultCwd] = useState(false)
@@ -81,7 +81,7 @@ export default function SettingsDrawer({ open, onClose }: Props) {
   const [testResult, setTestResult] = useState<string | null>(null)
   const [form] = Form.useForm()
 
-  const buildToolPatch = (tool: 'claude' | 'codex', nextCommandValue: string, nextBinValue: string) => {
+  const buildToolPatch = (tool: 'claude' | 'codex' | 'cursor', nextCommandValue: string, nextBinValue: string) => {
     const meta = toolDiagnostics?.[tool]
     const parsedCommand = splitCommandLine(nextCommandValue.trim())
     const baseCommand = parsedCommand[0] || ''
@@ -122,6 +122,8 @@ export default function SettingsDrawer({ open, onClose }: Props) {
           claudeBin: result.config.tools.claude.bin,
           codexCommand: joinCommandLine(result.config.tools.codex.command, result.config.tools.codex.args),
           codexBin: result.config.tools.codex.bin,
+          cursorCommand: joinCommandLine(result.config.tools.cursor.command, result.config.tools.cursor.args),
+          cursorBin: result.config.tools.cursor.bin,
           webhookEnabled: result.config.webhook.enabled,
           webhookProvider: result.config.webhook.provider,
           webhookUrl: result.config.webhook.url,
@@ -171,6 +173,7 @@ export default function SettingsDrawer({ open, onClose }: Props) {
         tools: {
           claude: buildToolPatch('claude', values.claudeCommand || '', values.claudeBin || ''),
           codex: buildToolPatch('codex', values.codexCommand || '', values.codexBin || ''),
+          cursor: buildToolPatch('cursor', values.cursorCommand || '', values.cursorBin || ''),
         },
         webhook: {
           enabled: Boolean(values.webhookEnabled),
@@ -232,6 +235,8 @@ export default function SettingsDrawer({ open, onClose }: Props) {
         claudeBin: result.config.tools.claude.bin,
         codexCommand: joinCommandLine(result.config.tools.codex.command, result.config.tools.codex.args),
         codexBin: result.config.tools.codex.bin,
+        cursorCommand: joinCommandLine(result.config.tools.cursor.command, result.config.tools.cursor.args),
+        cursorBin: result.config.tools.cursor.bin,
         // normalizeConfig 会把默认 models 合回来（即使 UI 里被删也会复活），
         // 用保存后的 config 重置 pricingModels 保证和服务端一致
         pricingCnyRate: result.config.pricing.cnyRate,
@@ -266,46 +271,42 @@ export default function SettingsDrawer({ open, onClose }: Props) {
     }
   }
 
-  const handleRedetectTool = async (tool: 'claude' | 'codex') => {
+  const TOOLS: Array<'claude' | 'codex' | 'cursor'> = ['claude', 'codex', 'cursor']
+
+  const handleRedetectTool = async (tool: 'claude' | 'codex' | 'cursor') => {
     if (!config) return
     try {
-      const result = await updateConfig({
-        tools: {
-          claude: tool === 'claude'
-            ? { command: config.tools.claude.command || 'claude', bin: '', args: config.tools.claude.args || [] }
-            : buildToolPatch(
-              'claude',
-              form.getFieldValue('claudeCommand') || config.tools.claude.command || 'claude',
-              form.getFieldValue('claudeBin') || config.tools.claude.bin || '',
-            ),
-          [tool]: {
-            command: config.tools[tool].command || tool,
+      const toolsPatch: any = {}
+      for (const t of TOOLS) {
+        if (t === tool) {
+          // 让后端按 command 重新探测 bin（清空 bin 字段）
+          toolsPatch[t] = {
+            command: config.tools[t].command || t,
             bin: '',
-            args: config.tools[tool].args || [],
-          },
-          codex: tool === 'codex'
-            ? { command: config.tools.codex.command || 'codex', bin: '', args: config.tools.codex.args || [] }
-            : buildToolPatch(
-              'codex',
-              form.getFieldValue('codexCommand') || config.tools.codex.command || 'codex',
-              form.getFieldValue('codexBin') || config.tools.codex.bin || '',
-            ),
-        },
-      })
+            args: config.tools[t].args || [],
+          }
+        } else {
+          const cmdField = `${t}Command`
+          const binField = `${t}Bin`
+          toolsPatch[t] = buildToolPatch(
+            t,
+            form.getFieldValue(cmdField) || config.tools[t].command || t,
+            form.getFieldValue(binField) || config.tools[t].bin || '',
+          )
+        }
+      }
+      const result = await updateConfig({ tools: toolsPatch })
       setConfig(result.config)
       setToolDiagnostics(result.toolDiagnostics)
-      form.setFieldValue(
-        tool === 'claude' ? 'claudeCommand' : 'codexCommand',
-        joinCommandLine(result.config.tools[tool].command, result.config.tools[tool].args),
-      )
-      form.setFieldValue(tool === 'claude' ? 'claudeBin' : 'codexBin', result.config.tools[tool].bin)
+      form.setFieldValue(`${tool}Command`, joinCommandLine(result.config.tools[tool].command, result.config.tools[tool].args))
+      form.setFieldValue(`${tool}Bin`, result.config.tools[tool].bin)
       message.success(`${tool} 已重新检测`)
     } catch (e: any) {
       message.error(e?.message || '重新检测失败')
     }
   }
 
-  const renderToolMeta = (tool: 'claude' | 'codex') => {
+  const renderToolMeta = (tool: 'claude' | 'codex' | 'cursor') => {
     const meta = toolDiagnostics?.[tool]
     if (!meta) return null
     const sourceText = meta.source === 'env'
@@ -395,6 +396,7 @@ export default function SettingsDrawer({ open, onClose }: Props) {
           <Radio.Group>
             <Radio.Button value="claude">Claude</Radio.Button>
             <Radio.Button value="codex">Codex</Radio.Button>
+            <Radio.Button value="cursor">Cursor</Radio.Button>
           </Radio.Group>
         </Form.Item>
 
@@ -429,6 +431,22 @@ export default function SettingsDrawer({ open, onClose }: Props) {
           <Input placeholder="/Users/liuzhenhua/.nvm/versions/node/v20.19.5/bin/codex" />
         </Form.Item>
         {renderToolMeta('codex')}
+
+        <Form.Item
+          name="cursorCommand"
+          label="Cursor 启动命令"
+          extra="默认是 cursor-agent；新会话会先跑 `cursor-agent create-chat` 拿 chatId 再用 --resume 进入交互。"
+        >
+          <Input placeholder="cursor-agent" />
+        </Form.Item>
+
+        <Form.Item
+          name="cursorBin"
+          label="Cursor 二进制路径"
+        >
+          <Input placeholder="/Users/liuzhenhua/.local/bin/cursor-agent" />
+        </Form.Item>
+        {renderToolMeta('cursor')}
 
         <Form.Item
           label="终端链接打开编辑器"

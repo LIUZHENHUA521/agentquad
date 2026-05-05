@@ -13,6 +13,11 @@
       "command": "codex-w",
       "args": [],
       "bin": "/Users/bytedance/.nvm/versions/node/v18.20.3/bin/codex"
+    },
+    "cursor": {
+      "command": "cursor-agent",
+      "args": [],
+      "bin": "/Users/liuzhenhua/.local/bin/cursor-agent"
     }
   },
   "webhook": {

@@ -87,7 +87,16 @@ function formatSessionTime(ts?: number | null) {
 }
 
 function toolDisplayName(tool: AiTool) {
-  return tool === 'claude' ? 'Claude Code' : 'Codex'
+  if (tool === 'claude') return 'Claude Code'
+  if (tool === 'codex') return 'Codex'
+  if (tool === 'cursor') return 'Cursor'
+  return tool
+}
+
+function toolShortName(tool: AiTool | undefined | null) {
+  if (tool === 'codex') return 'Codex'
+  if (tool === 'cursor') return 'Cursor'
+  return 'Claude'
 }
 
 function buildTodoPrompt(todo: Todo, templates: PromptTemplate[] = []) {
@@ -185,6 +194,7 @@ function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo = false,
   const aiMenuItems = [
     { key: 'start:claude', label: '▶ 启动 Claude' },
     { key: 'start:codex', label: '▶ 启动 Codex' },
+    { key: 'start:cursor', label: '▶ 启动 Cursor' },
     { key: 'start:both', label: '▶ 同时启动 Claude + Codex（并排）' },
   ]
 
@@ -321,9 +331,11 @@ function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo = false,
               {historySessions.map((session) => {
                 const isCurrent = session.sessionId === sessionId
                 const nativeSessionId = session.nativeSessionId || ''
-                const terminalCommand = session.tool === 'claude'
-                  ? `claude --resume ${nativeSessionId}`
-                  : `codex resume ${nativeSessionId}`
+                const terminalCommand = session.tool === 'codex'
+                  ? `codex resume ${nativeSessionId}`
+                  : session.tool === 'cursor'
+                    ? `cursor-agent --resume ${nativeSessionId}`
+                    : `claude --resume ${nativeSessionId}`
                 return (
                   <button
                     key={session.sessionId}
@@ -538,7 +550,7 @@ function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo = false,
           <div className="todo-terminal-collapse-bar">
             <span className="collapse-title">
               {terminalCollapsed ? <DownOutlined style={{ fontSize: 10 }} /> : <UpOutlined style={{ fontSize: 10 }} />}
-              <span>AI 终端 · {selectedSession?.tool === 'codex' ? 'Codex' : 'Claude'}{selectedSession?.label ? ` · ${selectedSession.label}` : ''}</span>
+              <span>AI 终端 · {toolShortName(selectedSession?.tool)}{selectedSession?.label ? ` · ${selectedSession.label}` : ''}</span>
             </span>
             <Space size={4}>
               {sideBySideSessionId && !isNarrow && (
@@ -2406,7 +2418,7 @@ export default function TodoManage() {
             open
             onCancel={() => setOverlayTerminal(null)}
             footer={null}
-            title={`AI 终端 · ${t.title}${sess?.tool === 'codex' ? ' · Codex' : ' · Claude'}${sess?.label ? ` · ${sess.label}` : ''}`}
+            title={`AI 终端 · ${t.title} · ${toolShortName(sess?.tool)}${sess?.label ? ` · ${sess.label}` : ''}`}
             width="90vw"
             style={{ top: 20 }}
             styles={{ body: { padding: 0, height: '80vh', display: 'flex', flexDirection: 'column' } }}

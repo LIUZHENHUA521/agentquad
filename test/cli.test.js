@@ -171,6 +171,7 @@ describe('cli helpers', () => {
       'node-pty loadable',
       'claude binary',
       'codex binary',
+      'cursor binary',
     ])
   })
 })

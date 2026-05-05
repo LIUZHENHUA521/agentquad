@@ -4,7 +4,7 @@ const BASE = ''
 export type Quadrant = 1 | 2 | 3 | 4
 export type TodoStatus = 'todo' | 'ai_running' | 'ai_pending' | 'ai_done' | 'done' | 'missed'
 export type RecurringFrequency = 'daily' | 'weekly' | 'monthly'
-export type AiTool = 'claude' | 'codex'
+export type AiTool = 'claude' | 'codex' | 'cursor'
 export type AiStatus = 'running' | 'done' | 'failed' | 'stopped' | 'pending_confirm'
 
 export interface AiSession {
@@ -103,6 +103,7 @@ export interface AppConfig {
   tools: {
     claude: { command: string; bin: string; args: string[] }
     codex: { command: string; bin: string; args: string[] }
+    cursor: { command: string; bin: string; args: string[] }
   }
   webhook: {
     enabled: boolean
@@ -551,7 +552,7 @@ export interface LiveSession {
 export interface SessionStats {
   total: number
   byStatus: { done: number; failed: number; stopped: number }
-  byTool: { claude: number; codex: number }
+  byTool: { claude: number; codex: number; cursor: number }
   byQuadrant: Record<1 | 2 | 3 | 4, number>
   totalDurationMs: number
   avgDurationMs: number

@@ -37,7 +37,10 @@ export const DEFAULT_ROOT_DIR = resolveDefaultRootDir();
 const TOOL_INSTALL_HINTS = {
 	claude: "npm install -g @anthropic-ai/claude-code",
 	codex: "npm install -g @openai/codex",
+	cursor: "curl https://cursor.com/install -fsSL | bash",
 };
+
+export const SUPPORTED_TOOLS = ["claude", "codex", "cursor"];
 
 const DEFAULT_WEBHOOK_CONFIG = {
 	enabled: false,
@@ -139,6 +142,7 @@ function splitCommandLine(input = "") {
 
 function defaultToolCommand(name) {
 	if (name === "claude") return "claude-w";
+	if (name === "cursor") return "cursor-agent";
 	return name;
 }
 
@@ -214,46 +218,31 @@ function getToolMetadata(name, tools = {}) {
 }
 
 export function resolveToolsConfig(tools = {}) {
-	const normalizedClaude = normalizeToolConfig("claude", tools.claude);
-	const normalizedCodex = normalizeToolConfig("codex", tools.codex);
-	const claudeMeta = getToolMetadata("claude", {
-		...tools,
-		claude: normalizedClaude,
-	});
-	const codexMeta = getToolMetadata("codex", {
-		...tools,
-		codex: normalizedCodex,
-	});
-	return {
-		claude: {
-			...normalizedClaude,
-			command: claudeMeta.effectiveCommand,
-			bin: claudeMeta.effectiveBin,
-			args: claudeMeta.args,
-		},
-		codex: {
-			...normalizedCodex,
-			command: codexMeta.effectiveCommand,
-			bin: codexMeta.effectiveBin,
-			args: codexMeta.args,
-		},
-	};
+	const out = {};
+	for (const name of SUPPORTED_TOOLS) {
+		const normalized = normalizeToolConfig(name, tools[name]);
+		const meta = getToolMetadata(name, { ...tools, [name]: normalized });
+		out[name] = {
+			...normalized,
+			command: meta.effectiveCommand,
+			bin: meta.effectiveBin,
+			args: meta.args,
+		};
+	}
+	return out;
 }
 
 export function inspectToolsConfig(tools = {}) {
 	const resolved = resolveToolsConfig(tools);
-	return {
-		claude: {
-			...getToolMetadata("claude", tools),
-			command: resolved.claude.command,
-			bin: resolved.claude.bin,
-		},
-		codex: {
-			...getToolMetadata("codex", tools),
-			command: resolved.codex.command,
-			bin: resolved.codex.bin,
-		},
-	};
+	const out = {};
+	for (const name of SUPPORTED_TOOLS) {
+		out[name] = {
+			...getToolMetadata(name, tools),
+			command: resolved[name].command,
+			bin: resolved[name].bin,
+		};
+	}
+	return out;
 }
 
 function cloneDefaultPricing() {
@@ -308,22 +297,21 @@ function normalizeConfig(cfg = {}) {
 	const mergedTools = {
 		...defaults.tools,
 		...(cfg.tools || {}),
-		claude: {
-			...defaults.tools.claude,
-			...(cfg.tools?.claude || {}),
-		},
-		codex: {
-			...defaults.tools.codex,
-			...(cfg.tools?.codex || {}),
-		},
 	};
+	const finalTools = {};
+	for (const name of SUPPORTED_TOOLS) {
+		mergedTools[name] = {
+			...defaults.tools[name],
+			...(cfg.tools?.[name] || {}),
+		};
+		finalTools[name] = normalizeToolConfig(name, mergedTools[name]);
+	}
 	return {
 		...defaults,
 		...cfg,
 		tools: {
 			...mergedTools,
-			claude: normalizeToolConfig("claude", mergedTools.claude),
-			codex: normalizeToolConfig("codex", mergedTools.codex),
+			...finalTools,
 		},
 		webhook: {
 			...DEFAULT_WEBHOOK_CONFIG,

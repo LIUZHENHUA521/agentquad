@@ -1002,6 +1002,13 @@ export function createOpenClawWizard({
       }
     }
 
+    // 在 supergroup 内 task topic 里发"做X / 帮我做X"等任务触发词时，不该建新任务
+    // —— 用户已在跟某个 PTY 对话，那段文字是要喂给 Claude Code 的，不是要再建任务。
+    // 只在 General（threadId 空）才允许 NEW_TASK_TRIGGERS 启动 wizard。
+    const isInTopicOfSupergroup =
+      chatId && /^-100\d+/.test(String(chatId)) && threadId != null
+    const newTaskGateOpen = !isInTopicOfSupergroup
+
     // 2. 进行中 wizard → 推进
     const active = getActiveWizard(routeKey)
     if (active) {
@@ -1011,8 +1018,8 @@ export function createOpenClawWizard({
       if (imagePaths.length > 0) {
         active.imagePaths = [...(active.imagePaths || []), ...imagePaths]
       }
-      // 如果用户在 wizard 中又发新任务触发词 → 重启
-      if (NEW_TASK_TRIGGERS.some((re) => re.test(trimmed))) {
+      // 如果用户在 wizard 中又发新任务触发词 → 重启（仅在 General/DM/普通群有效）
+      if (newTaskGateOpen && NEW_TASK_TRIGGERS.some((re) => re.test(trimmed))) {
         wizards.delete(routeKey)
         const w = startWizard({ chatId, threadId, text: trimmed, messageId, imagePaths })
         if (w.step === STEP_DONE) return await finalizeWizard(w)
@@ -1034,7 +1041,9 @@ export function createOpenClawWizard({
     }
 
     // 3. 看起来像新任务 → 启动向导（必须在 ask_user 路由之前，避免被当 free text 吃掉）
-    if (NEW_TASK_TRIGGERS.some((re) => re.test(trimmed))) {
+    // 仅在 General/DM/普通群触发；在 supergroup task topic 里"做 X"是给已有 PTY 的输入，
+    // 不该建新任务（避免污染 task 上下文 + 防止用户被意外拉进 wizard）
+    if (newTaskGateOpen && NEW_TASK_TRIGGERS.some((re) => re.test(trimmed))) {
       const w = startWizard({ chatId, threadId, text: trimmed, messageId, imagePaths })
       if (w.step === STEP_DONE) return await finalizeWizard(w)
       if (w.step === STEP_QUADRANT) {

@@ -116,6 +116,7 @@ export function buildDoctorChecks() {
     'node-pty loadable',
     'claude binary',
     'codex binary',
+    'cursor binary',
   ]
 }
 
@@ -157,7 +158,7 @@ export async function doctorReport({ rootDir = DEFAULT_ROOT_DIR } = {}) {
     checks.push({ name: 'node-pty loadable', ok: false, detail: e.message })
   }
 
-  for (const tool of ['claude', 'codex']) {
+  for (const tool of ['claude', 'codex', 'cursor']) {
     const bin = cfg?.tools?.[tool]?.bin || cfg?.tools?.[tool]?.command || tool
     const which = spawnSync('command', ['-v', bin], {
       encoding: 'utf8',

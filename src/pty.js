@@ -1,6 +1,7 @@
 import { EventEmitter } from 'node:events'
 import { createRequire } from 'node:module'
 import { randomUUID } from 'node:crypto'
+import { spawnSync } from 'node:child_process'
 import { readdirSync, statSync, existsSync, watch as fsWatch, mkdirSync, openSync, readSync, closeSync } from 'node:fs'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
@@ -24,6 +25,14 @@ function buildPermissionArgs(tool, mode) {
   if (tool === 'codex') {
     if (mode === 'acceptEdits') return ['--ask-for-approval', 'on-request', '--sandbox', 'workspace-write']
     if (mode === 'bypass') return ['--dangerously-bypass-approvals-and-sandbox']
+    return []
+  }
+  if (tool === 'cursor') {
+    // cursor-agent 没有 claude 那种半托管模式；
+    //   acceptEdits → --force（除非 deny 否则放行命令）
+    //   bypass     → --yolo --trust（同义于 force + 信任 workspace）
+    if (mode === 'acceptEdits') return ['--force']
+    if (mode === 'bypass') return ['--yolo', '--trust']
     return []
   }
   return []
@@ -97,6 +106,49 @@ function defaultPtyFactory() {
 }
 
 const CLAUDE_PROJECTS_DIR = join(homedir(), '.claude', 'projects')
+const CURSOR_PROJECTS_DIR = join(homedir(), '.cursor', 'projects')
+
+/**
+ * cursor-agent 的 cwd 编码：把绝对路径里的 `/` 全部换成 `-`，前导 `-` 保留。
+ *   /Users/foo/bar      → Users-foo-bar
+ *   /private/tmp/x      → private-tmp-x
+ *   /                   → empty-window（特例，交给 cursor 自己决定，不在这里处理）
+ */
+function encodeCursorCwd(cwd) {
+  if (!cwd) return null
+  const trimmed = cwd.replace(/^\/+/, '').replace(/\/+$/, '')
+  if (!trimmed) return null
+  return trimmed.replace(/\//g, '-')
+}
+
+/**
+ * 公开：返回某个 cwd 下某 chatId 对应的 jsonl 绝对路径（不保证存在）。
+ * 失败返回 null。
+ */
+export function cursorTranscriptPath(cwd, chatId) {
+  const encoded = encodeCursorCwd(cwd)
+  if (!encoded || !chatId) return null
+  return join(CURSOR_PROJECTS_DIR, encoded, 'agent-transcripts', chatId, `${chatId}.jsonl`)
+}
+
+/**
+ * 同步预生成 cursor chatId：跑 `cursor-agent create-chat`，stdout 第一行就是 UUID。
+ * 阻塞调用，默认 6s 超时。失败/超时返回 null（让上层走"无 nativeId"降级路径）。
+ */
+function createCursorChatSync(bin, timeoutMs = 6000) {
+  try {
+    const r = spawnSync(bin, ['create-chat'], {
+      encoding: 'utf8',
+      timeout: timeoutMs,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+    if (r.error || r.status !== 0) return null
+    const m = String(r.stdout || '').match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/)
+    return m ? m[0] : null
+  } catch {
+    return null
+  }
+}
 
 /**
  * Claude Code 把每段对话按 cwd 编码存到 ~/.claude/projects/<encoded>/<uuid>.jsonl，
@@ -206,13 +258,33 @@ export class PtyManager extends EventEmitter {
     // Claude 支持 --session-id <uuid>：新会话时由我们预生成，避免事后靠 FS/输出扫描。
     const presetClaudeId = tool === 'claude' && !resumeNativeId ? randomUUID() : null
     const claudeSessionArgs = presetClaudeId ? ['--session-id', presetClaudeId] : []
-    const args = resumeNativeId
-      ? tool === 'codex'
-        ? [...baseArgs, ...permissionArgs, 'resume', resumeNativeId]
-        : [...baseArgs, ...permissionArgs, '--resume', resumeNativeId]
-      : useCliPrompt
+
+    // cursor-agent 没有 --session-id 预置，但有 `cursor-agent create-chat` 同步建会话拿 chatId。
+    // 新会话先跑一下 create-chat（~3-4s），拿到 chatId 后用 --resume 进交互模式 ——
+    // 比 codex 那套 fs.watch 干净得多。create-chat 失败就降级（无 nativeId）。
+    let presetCursorId = null
+    if (tool === 'cursor' && !resumeNativeId) {
+      presetCursorId = createCursorChatSync(toolCfg.bin)
+      if (!presetCursorId) {
+        console.warn(`[pty] cursor-agent create-chat failed; session will run without nativeId tracking`)
+      }
+    }
+    const cursorResumeId = tool === 'cursor' ? (resumeNativeId || presetCursorId) : null
+
+    let args
+    if (resumeNativeId) {
+      if (tool === 'codex') args = [...baseArgs, ...permissionArgs, 'resume', resumeNativeId]
+      else if (tool === 'cursor') args = [...baseArgs, ...permissionArgs, '--resume', resumeNativeId]
+      else args = [...baseArgs, ...permissionArgs, '--resume', resumeNativeId]
+    } else if (tool === 'cursor' && cursorResumeId) {
+      args = useCliPrompt
+        ? [...baseArgs, ...permissionArgs, '--resume', cursorResumeId, prompt]
+        : [...baseArgs, ...permissionArgs, '--resume', cursorResumeId]
+    } else {
+      args = useCliPrompt
         ? [...baseArgs, ...permissionArgs, ...claudeSessionArgs, prompt]
         : [...baseArgs, ...permissionArgs, ...claudeSessionArgs]
+    }
     let effectiveCwd = cwd || process.env.HOME || process.cwd()
 
     // claude --resume 的 cwd 必须跟原会话的 cwd 一致，否则 claude 在错误的 projects/<encoded>
@@ -263,7 +335,7 @@ export class PtyManager extends EventEmitter {
       pendingPrompt: useCliPrompt ? null : (prompt && !resumeNativeId ? prompt : null),
       resized: false,
       promptTimer: null,
-      nativeId: resumeNativeId || presetClaudeId || null,
+      nativeId: resumeNativeId || presetClaudeId || presetCursorId || null,
       stopped: false,
       detectTimer: null,
       fsWatcher: null,

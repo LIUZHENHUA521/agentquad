@@ -1,13 +1,18 @@
 import fs from 'node:fs'
-import { listTranscriptFiles, parseTranscriptFile, DEFAULT_CLAUDE_DIR, DEFAULT_CODEX_DIR } from './scanner.js'
+import { listTranscriptFiles, parseTranscriptFile, DEFAULT_CLAUDE_DIR, DEFAULT_CODEX_DIR, DEFAULT_CURSOR_DIR } from './scanner.js'
 import { indexFile } from './indexer.js'
 import { collectOrphans, autoMatch } from './matcher.js'
 
-export { DEFAULT_CLAUDE_DIR, DEFAULT_CODEX_DIR }
+export { DEFAULT_CLAUDE_DIR, DEFAULT_CODEX_DIR, DEFAULT_CURSOR_DIR }
 
 export function createTranscriptsService({ db, listTodos, updateTodo, dirs = {} } = {}) {
   const claudeDir = dirs.claude || DEFAULT_CLAUDE_DIR
   const codexDir = dirs.codex || DEFAULT_CODEX_DIR
+  // 默认只在生产路径下（caller 没有 override claude/codex）才扫 ~/.cursor/projects；
+  // 测试里都传了 fixture 目录，cursor 自动跟随 disabled，避免把用户真实数据吃进来。
+  const cursorDir = dirs.cursor !== undefined
+    ? dirs.cursor
+    : (dirs.claude || dirs.codex ? null : DEFAULT_CURSOR_DIR)
 
   function applyBindingToTodo(todoId, { nativeId, tool, startedAt, endedAt }, sessionIdHint) {
     const todo = listTodos().find(t => t.id === todoId)
@@ -70,7 +75,7 @@ export function createTranscriptsService({ db, listTodos, updateTodo, dirs = {} 
 
   async function scan({ mode }) {
     if (db.raw && db.raw.open === false) return { newFiles: 0, indexed: 0, autoBound: 0, unbound: 0 }
-    const disk = listTranscriptFiles({ claudeDir, codexDir })
+    const disk = listTranscriptFiles({ claudeDir, codexDir, cursorDir: cursorDir || undefined })
     const diskByPath = new Map(disk.map(f => [f.jsonlPath, f]))
     const dbFiles = db.listTranscriptFilesMeta()
     const dbByPath = new Map(dbFiles.map(r => [r.jsonl_path, r]))

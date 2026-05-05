@@ -787,7 +787,7 @@ export function openDb(file = ':memory:') {
     const stats = {
       total: rows.length,
       byStatus: { done: 0, failed: 0, stopped: 0 },
-      byTool: { claude: 0, codex: 0 },
+      byTool: { claude: 0, codex: 0, cursor: 0 },
       byQuadrant: { 1: 0, 2: 0, 3: 0, 4: 0 },
       totalDurationMs: 0,
       avgDurationMs: 0,

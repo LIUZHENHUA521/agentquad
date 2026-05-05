@@ -82,5 +82,7 @@ export function extractUsage(tool, lines, opts = {}) {
   const o = { idleThresholdMs: 120_000, ...opts }
   if (tool === 'claude') return extractClaude(lines, o)
   if (tool === 'codex')  return extractCodex(lines, o)
+  // cursor-agent jsonl 目前不带 token usage 字段（v0.x），返回空 usage 让上游不抛错
+  if (tool === 'cursor') return { records: [], totals: {}, parseErrorCount: 0 }
   throw new Error(`unknown tool: ${tool}`)
 }

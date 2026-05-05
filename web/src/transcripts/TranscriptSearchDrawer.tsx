@@ -164,7 +164,7 @@ export default function TranscriptSearchDrawer({ open, onClose, preselectTodoId,
             <Select
               size="small" style={{ width: 120 }} value={tool} allowClear placeholder="工具"
               onChange={(v) => setTool(v || '')}
-              options={[{ value: 'claude', label: 'Claude' }, { value: 'codex', label: 'Codex' }]}
+              options={[{ value: 'claude', label: 'Claude' }, { value: 'codex', label: 'Codex' }, { value: 'cursor', label: 'Cursor' }]}
             />
             <Input size="small" style={{ width: 240 }} placeholder="cwd 精确匹配" value={cwd} onChange={(e) => setCwd(e.target.value)} allowClear />
             <Button size="small" type={unboundOnly ? 'primary' : 'default'} onClick={() => setUnboundOnly(v => !v)}>仅未挂回</Button>
