@@ -3,7 +3,7 @@ import { createRequire } from 'node:module'
 import { randomUUID } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
 import { readdirSync, statSync, existsSync, watch as fsWatch, mkdirSync, openSync, readSync, closeSync } from 'node:fs'
-import { join } from 'node:path'
+import { delimiter, dirname, isAbsolute, join } from 'node:path'
 import { homedir } from 'node:os'
 
 const require = createRequire(import.meta.url)
@@ -36,6 +36,13 @@ function buildPermissionArgs(tool, mode) {
     return []
   }
   return []
+}
+
+function buildChildPath(toolBin, basePath = process.env.PATH || '') {
+  if (!toolBin || !isAbsolute(toolBin)) return basePath
+  const binDir = dirname(toolBin)
+  const parts = basePath ? basePath.split(delimiter) : []
+  return [binDir, ...parts.filter((part) => part !== binDir)].join(delimiter)
 }
 
 const CLAUDE_SESSION_RE = /claude\s+--resume\s+([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/
@@ -308,18 +315,21 @@ export class PtyManager extends EventEmitter {
 
     let proc
     try {
+      const env = {
+        ...process.env,
+        TERM: 'xterm-256color',
+        TZ: process.env.TZ || 'America/Los_Angeles',
+        FORCE_COLOR: '1',
+        ...(extraEnv && typeof extraEnv === 'object' ? extraEnv : {}),
+      }
+      env.PATH = buildChildPath(toolCfg.bin, env.PATH || '')
+
       proc = this.ptyFactory(toolCfg.bin, args, {
         name: 'xterm-256color',
         cols: 80,
         rows: 24,
         cwd: effectiveCwd,
-        env: {
-          ...process.env,
-          TERM: 'xterm-256color',
-          TZ: process.env.TZ || 'America/Los_Angeles',
-          FORCE_COLOR: '1',
-          ...(extraEnv && typeof extraEnv === 'object' ? extraEnv : {}),
-        },
+        env,
       })
     } catch (error) {
       error.message = `PTY spawn failed for ${tool} (bin=${toolCfg.bin}, cwd=${effectiveCwd}, args=${JSON.stringify(args)}): ${error.message}`

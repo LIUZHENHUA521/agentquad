@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { EventEmitter } from 'node:events'
+import { delimiter } from 'node:path'
 import { PtyManager } from '../src/pty.js'
 
 function makeFakePty() {
@@ -42,6 +43,75 @@ describe('PtyManager', () => {
     expect(factory.created[0]._opts.cwd).toBe('/tmp')
     expect(factory.created[0]._opts.env.TZ).toBeTruthy()
     expect(pm.has('s1')).toBe(true)
+  })
+
+  it('prepends absolute tool binary directory to child PATH', () => {
+    const factory = makeFakePty()
+    const pm = new PtyManager({
+      tools: {
+        claude: { bin: '/opt/company/bin/claude-w', args: [] },
+        codex: { bin: 'codex', args: [] },
+      },
+      ptyFactory: factory,
+    })
+    pm.start({ sessionId: 's1', tool: 'claude', prompt: null, cwd: '/tmp' })
+    const pathParts = factory.created[0]._opts.env.PATH.split(delimiter)
+    expect(pathParts[0]).toBe('/opt/company/bin')
+    expect(pathParts.slice(1).join(delimiter)).toBe(process.env.PATH || '')
+  })
+
+  it('keeps absolute tool binary directory before caller-provided PATH', () => {
+    const factory = makeFakePty()
+    const pm = new PtyManager({
+      tools: {
+        claude: { bin: '/opt/company/bin/claude-w', args: [] },
+        codex: { bin: 'codex', args: [] },
+      },
+      ptyFactory: factory,
+    })
+    pm.start({
+      sessionId: 's1',
+      tool: 'claude',
+      prompt: null,
+      cwd: '/tmp',
+      extraEnv: { PATH: '/custom/bin' },
+    })
+    expect(factory.created[0]._opts.env.PATH.split(delimiter)).toEqual([
+      '/opt/company/bin',
+      '/custom/bin',
+    ])
+  })
+
+  it('preserves empty PATH components when prepending absolute tool binary directory', () => {
+    const originalPath = process.env.PATH
+    try {
+      process.env.PATH = '/usr/bin::/bin'
+      const factory = makeFakePty()
+      const pm = new PtyManager({
+        tools: {
+          claude: { bin: '/opt/company/bin/claude-w', args: [] },
+          codex: { bin: 'codex', args: [] },
+        },
+        ptyFactory: factory,
+      })
+      pm.start({ sessionId: 's1', tool: 'claude', prompt: null, cwd: '/tmp' })
+      expect(factory.created[0]._opts.env.PATH.split(delimiter)).toEqual([
+        '/opt/company/bin',
+        '/usr/bin',
+        '',
+        '/bin',
+      ])
+    } finally {
+      if (originalPath === undefined) delete process.env.PATH
+      else process.env.PATH = originalPath
+    }
+  })
+
+  it('does not change child PATH for command-name tool binaries', () => {
+    const factory = makeFakePty()
+    const pm = new PtyManager({ tools: tools(), ptyFactory: factory })
+    pm.start({ sessionId: 's1', tool: 'claude', prompt: null, cwd: '/tmp' })
+    expect(factory.created[0]._opts.env.PATH).toBe(process.env.PATH)
   })
 
   it('start with resumeNativeId passes --resume flag', () => {
