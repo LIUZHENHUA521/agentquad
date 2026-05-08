@@ -65,8 +65,10 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
     try { return localStorage.getItem('quadtodo.dpadHidden') === '1' } catch { return false }
   })
   const [sessionStatus, setSessionStatus] = useState<TodoStatus>(status)
+  const sessionStatusRef = useRef<TodoStatus>(status)
   const [wsConnected, setWsConnected] = useState(false)
   const [sessionExpired, setSessionExpired] = useState(false)
+  const sessionExpiredRef = useRef(false)
   const [height, setHeight] = useState(420)
   const [autoMode, setAutoMode] = useState<string | null>(() => {
     try { return localStorage.getItem('quadtodo.autoMode') || null } catch { return null }
@@ -75,6 +77,8 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
     try { return localStorage.getItem('quadtodo.followTail') !== '0' } catch { return true }
   })
   const followTailRef = useRef<boolean>(followTail)
+  useEffect(() => { sessionStatusRef.current = sessionStatus }, [sessionStatus])
+  useEffect(() => { sessionExpiredRef.current = sessionExpired }, [sessionExpired])
   useEffect(() => { followTailRef.current = followTail }, [followTail])
   const dragRef = useRef<{ startY: number; startH: number } | null>(null)
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -145,7 +149,9 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
       // 时的那次 fit 把 lastSentSizeRef 占住，onopen 后的 doFit 看到"尺寸没变"直接
       // return，后端 PTY 停留在默认 80 cols，Claude 按 80 画边框污染 scrollback —— 用户
       // 手动拖一下宽度、cols 变化才会重新触发 send。
-      if (ws && ws.readyState === WebSocket.OPEN) {
+      const latestStatus = sessionStatusRef.current
+      const canResize = (latestStatus === 'ai_running' || latestStatus === 'ai_pending') && !sessionExpiredRef.current
+      if (canResize && ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: 'resize', cols, rows }))
         lastSentSizeRef.current = { cols, rows }
       }
