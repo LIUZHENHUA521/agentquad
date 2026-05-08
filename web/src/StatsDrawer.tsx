@@ -70,10 +70,11 @@ export default function StatsDrawer({ open, onClose }: { open: boolean; onClose:
     <Drawer
       open={open}
       onClose={onClose}
-      width={720}
+      width="min(720px, 100vw)"
+      styles={{ body: { overflowX: 'hidden' } }}
       title={<span><LineChartOutlined style={{ marginRight: 6 }} />AI 使用统计</span>}
     >
-      <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12, marginBottom: 16 }}>
         <Segmented
           value={range}
           onChange={v => setRange(v as Range)}
@@ -87,7 +88,7 @@ export default function StatsDrawer({ open, onClose }: { open: boolean; onClose:
         {range === 'custom' && (
           <DatePicker.RangePicker onChange={v => v && setCustom(v as [Dayjs, Dayjs])} />
         )}
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+        <div style={{ marginLeft: 'auto', display: 'flex', flexWrap: 'wrap', gap: 8 }}>
           <Button onClick={copyMd}>📋 复制 Markdown</Button>
           <Button onClick={downloadMd}>💾 下载 .md</Button>
         </div>
@@ -113,14 +114,14 @@ function ReportBody({ report }: { report: Report }) {
 
   return (
     <>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 12 }}>
         <Card size="small" title="AI 活跃时长"><h2>{fmtHours(summary.activeMs)}</h2><small>墙钟 {fmtHours(summary.wallClockMs)}</small></Card>
         <Card size="small" title="Token 消耗"><h2>{fmtTok(summary.tokens.total || 0)}</h2><small>cache 命中 {fmtTok(summary.tokens.cacheRead)}</small></Card>
         <Card size="small" title="估算成本"><h2>{fmtCost(summary.cost)}</h2><small>按当前价目表</small></Card>
         <Card size="small" title="会话 / 任务"><h2>{summary.sessionCount} / {summary.todoCount}</h2><small>未关联 {summary.unboundSessionCount}</small></Card>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, margin: '16px 0' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 12, margin: '16px 0' }}>
         <Card size="small" title="时长趋势"><Line data={lineData} xField="date" yField="value" seriesField="type" height={220} /></Card>
         <Card size="small" title="象限占比（活跃时长）"><Pie data={pieData} angleField="value" colorField="type" height={220} /></Card>
       </div>
@@ -130,14 +131,15 @@ function ReportBody({ report }: { report: Report }) {
           dataSource={topTodos}
           rowKey="todoId"
           pagination={false}
+          scroll={{ x: 'max-content' }}
           columns={[
             { title: '#', render: (_, __, i) => i + 1, width: 40 },
-            { title: '任务', dataIndex: 'title' },
+            { title: '任务', dataIndex: 'title', width: 240, ellipsis: true },
             { title: '象限', dataIndex: 'quadrant', width: 60 },
             { title: '活跃', render: r => fmtHours(r.activeMs), width: 70 },
             { title: '墙钟', render: r => fmtHours(r.wallClockMs), width: 70 },
             { title: 'Token', render: r => fmtTok(r.tokens.input + r.tokens.output), width: 80 },
-            { title: '成本', render: r => fmtCost(r.cost) },
+            { title: '成本', render: r => fmtCost(r.cost), width: 120 },
             { title: '会话', dataIndex: 'sessionCount', width: 50 },
           ]}
         />
@@ -150,11 +152,12 @@ function ReportBody({ report }: { report: Report }) {
             dataSource={byModel}
             rowKey="key"
             pagination={false}
+            scroll={{ x: 'max-content' }}
             columns={[
-              { title: '模型', dataIndex: 'key' },
+              { title: '模型', dataIndex: 'key', width: 260, ellipsis: true },
               { title: '会话', dataIndex: 'sessions', width: 60 },
-              { title: 'Token', render: (r: any) => fmtTok(r.tokens.input + r.tokens.output) },
-              { title: '成本', render: (r: any) => fmtCost(r.cost) },
+              { title: 'Token', render: (r: any) => fmtTok(r.tokens.input + r.tokens.output), width: 90 },
+              { title: '成本', render: (r: any) => fmtCost(r.cost), width: 120 },
             ]}
           />
         )
