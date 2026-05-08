@@ -232,6 +232,32 @@ describe('openclaw-bridge.postText', () => {
     expect(calls).toHaveLength(0)  // 没走 CLI
   })
 
+  it('telegram fast-path: uses quadtodo telegram.botToken before CLI fallback', async () => {
+    const sentViaApi = []
+    const bridge = createOpenClawBridge({
+      getConfig: () => ({
+        telegram: { botToken: 'QUADTODO_TOKEN' },
+        openclaw: { enabled: true, channel: 'telegram' },
+      }),
+      spawnFn: spy({ stdout: '{}' }),
+      logger: { warn() {}, info() {} },
+      loadTelegramToken: () => null,
+      telegramSender: async (args) => {
+        sentViaApi.push(args)
+        return { ok: true, payload: { messageId: 'tg-99' } }
+      },
+    })
+    bridge.registerSessionRoute('sid-config-token', { targetUserId: '-1001999', threadId: 162, channel: 'telegram' })
+    const r = await bridge.postText({ sessionId: 'sid-config-token', message: 'hi' })
+    expect(r.ok).toBe(true)
+    expect(r.fast).toBe(true)
+    expect(sentViaApi).toHaveLength(1)
+    expect(sentViaApi[0].token).toBe('QUADTODO_TOKEN')
+    expect(sentViaApi[0].chatId).toBe('-1001999')
+    expect(sentViaApi[0].threadId).toBe(162)
+    expect(calls).toHaveLength(0)
+  })
+
   it('telegram fast-path: falls back to CLI when token unavailable', async () => {
     const bridge = createOpenClawBridge({
       getConfig: () => ({ openclaw: { enabled: true, targetUserId: '1234567', channel: 'telegram' } }),

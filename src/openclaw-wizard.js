@@ -729,6 +729,7 @@ export function createOpenClawWizard({
       channel: 'telegram',
     }
     openclaw?.registerSessionRoute?.(sessionId, route)
+    loadingTracker?.start?.({ sessionId })?.catch?.((e) => logger.warn?.(`[wizard] loading-status start failed: ${e.message}`))
 
     // 持久化到 DB
     try {

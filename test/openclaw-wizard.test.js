@@ -361,8 +361,8 @@ describe('openclaw-wizard state machine', () => {
     }
   })
 
-  it('Telegram: handleInbound accepts {chatId, threadId, text} new shape', async () => {
-    const r = await wizard.handleInbound({ chatId: '-1001234567890', threadId: 42, text: '帮我做 写个 demo' })
+  it('Telegram: handleInbound accepts {chatId, threadId, text} new shape in General', async () => {
+    const r = await wizard.handleInbound({ chatId: '-1001234567890', threadId: null, text: '帮我做 写个 demo' })
     expect(r.action).toBe('wizard_started')
     expect(r.reply).toContain('📁')
   })
@@ -498,10 +498,12 @@ describe('openclaw-wizard state machine', () => {
       createForumTopic: vi.fn(async ({ name }) => ({ message_thread_id: 555, name })),
       sendMessage: vi.fn(async () => ({ message_id: 1 })),
     }
+    const loadingTracker = { start: vi.fn(async () => {}) }
     bridge.resolveRoute = (sid) => bridge.routes.get(sid) || null
     const w2 = createOpenClawWizard({
       db, aiTerminal: ai, openclaw: bridge, pending,
       telegramBot: fakeTelegramBot,
+      loadingTracker,
       getConfig: () => ({
         defaultCwd: '/tmp', port: 5677, defaultTool: 'claude',
         telegram: { defaultSupergroupId: '-1009', allowedChatIds: ['-1009'] },
@@ -512,6 +514,7 @@ describe('openclaw-wizard state machine', () => {
     expect(r.action).toBe('created')
     expect(r.threadId).toBe(555)
     expect(bridge.routes.get('sid-auto')).toMatchObject({ threadId: 555 })
+    expect(loadingTracker.start).toHaveBeenCalledWith({ sessionId: 'sid-auto' })
     const persisted = db.getTodo(todo.id).aiSessions.find((s) => s.sessionId === 'sid-auto')
     expect(persisted.telegramRoute.threadId).toBe(555)
   })

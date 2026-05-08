@@ -56,6 +56,11 @@ function loadTelegramTokenFromOpenClaw() {
   }
 }
 
+function getTelegramTokenFromConfig(config) {
+  const token = config?.telegram?.botToken
+  return typeof token === 'string' && token ? token : null
+}
+
 // 走系统 HTTPS_PROXY env 的 fetch（undici ProxyAgent）—— 国内连 Telegram 必备
 let _undiciFetch = null
 let _proxyDispatcher = null
@@ -235,7 +240,7 @@ export function createOpenClawBridge({
 
     // ─── Telegram 快路径：直接 HTTPS POST Bot API（~1-3s vs CLI 30+s 冷启动） ───
     if (effectiveChannel === 'telegram') {
-      const token = loadTelegramToken()
+      const token = getTelegramTokenFromConfig(getConfig()) || loadTelegramToken()
       if (token) {
         const threadIdForSend = route?.threadId || null
         // 防御兜底：sessionId-routed 但没拿到 thread → fallback 路径，不能静默落 General。
