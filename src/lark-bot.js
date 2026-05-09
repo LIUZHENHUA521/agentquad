@@ -19,17 +19,50 @@ function stripMentionKeys(text, mentions) {
   return out
 }
 
+// 飞书 post 富文本：content.content 是 [[node, node, ...], [node, ...], ...]，
+// node.tag 可能是 'text' / 'at' / 'a'(超链接) / 'img' / 'emotion' 等。
+// 提取所有可见文字节点（text / a 的 text / md 的 text），跳过 at(就是要剥的 @ 占位)。
+function extractPostText(post) {
+  if (!post || typeof post !== 'object') return ''
+  const lines = Array.isArray(post.content) ? post.content : []
+  const out = []
+  for (const line of lines) {
+    if (!Array.isArray(line)) continue
+    let buf = ''
+    for (const node of line) {
+      if (!node || typeof node !== 'object') continue
+      const tag = node.tag
+      if (tag === 'text' || tag === 'a' || tag === 'md') {
+        if (typeof node.text === 'string') buf += node.text
+      }
+    }
+    if (buf) out.push(buf)
+  }
+  const body = out.join('\n').trim()
+  if (body) return body
+  if (typeof post.title === 'string' && post.title.trim()) return post.title.trim()
+  return ''
+}
+
 export function extractText(message = {}) {
   let content = message.content
   if (typeof content === 'string') {
     try { content = JSON.parse(content) } catch { content = {} }
   }
   if (!content || typeof content !== 'object') return ''
-  let raw = ''
-  if (typeof content.text === 'string') raw = content.text
-  else if (typeof content.title === 'string') raw = content.title
-  else return ''
-  return stripMentionKeys(raw, message.mentions).replace(/^\s+/, '')
+  // 1. 普通 text 消息
+  if (typeof content.text === 'string' && content.text) {
+    return stripMentionKeys(content.text, message.mentions).replace(/^\s+/, '').trim()
+  }
+  // 2. post 富文本（@bot 的消息也是这种格式）
+  if (Array.isArray(content.content)) {
+    return extractPostText(content).trim()
+  }
+  // 3. 老的 title-only 兜底
+  if (typeof content.title === 'string') {
+    return stripMentionKeys(content.title, message.mentions).replace(/^\s+/, '').trim()
+  }
+  return ''
 }
 
 export function rememberSeen(seen, key, max = 500) {

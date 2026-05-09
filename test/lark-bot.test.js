@@ -79,6 +79,120 @@ describe('lark-bot outbound SDK facade', () => {
   })
 })
 
+describe('lark-bot extractText post (富文本) parsing', () => {
+  it('parses Lark post msg_type that wraps @bot mention + body text', async () => {
+    const wizard = { handleInbound: vi.fn().mockResolvedValue({ reply: 'wizard up', action: 'wizard_started' }) }
+    const { bot, apiClient } = makeBot({ wizard })
+
+    await bot.handleEvent({
+      event_id: 'evt_post',
+      event: {
+        message: {
+          chat_id: 'oc_default',
+          message_id: 'om_post',
+          msg_type: 'post',
+          content: JSON.stringify({
+            title: '',
+            content: [[
+              { tag: 'at', user_id: '@_user_1', user_name: '刘振华的bot' },
+              { tag: 'text', text: ' 帮我做：登录页' },
+            ]],
+          }),
+          mentions: [{ key: '@_user_1', id: { open_id: 'ou_bot' }, mentioned_type: 'bot', name: '刘振华的bot' }],
+        },
+        sender: { sender_id: { open_id: 'ou_user' }, sender_type: 'user' },
+      },
+    })
+
+    expect(wizard.handleInbound).toHaveBeenCalledWith(expect.objectContaining({
+      channel: 'lark',
+      text: '帮我做：登录页',
+    }))
+    expect(apiClient.sendMessage).toHaveBeenCalledWith({ chatId: 'oc_default', text: 'wizard up' })
+  })
+
+  it('joins multi-line post bodies with newlines', async () => {
+    const wizard = { handleInbound: vi.fn().mockResolvedValue({ reply: 'ok' }) }
+    const { bot } = makeBot({ wizard })
+
+    await bot.handleEvent({
+      event_id: 'evt_multi',
+      event: {
+        message: {
+          chat_id: 'oc_default',
+          message_id: 'om_multi',
+          msg_type: 'post',
+          content: JSON.stringify({
+            title: 'ignored',
+            content: [
+              [{ tag: 'text', text: '第一行' }],
+              [{ tag: 'text', text: '第二行' }],
+            ],
+          }),
+        },
+        sender: { sender_id: { open_id: 'ou_user' }, sender_type: 'user' },
+      },
+    })
+
+    expect(wizard.handleInbound).toHaveBeenCalledWith(expect.objectContaining({
+      text: '第一行\n第二行',
+    }))
+  })
+
+  it('extracts text from anchor (a) and md nodes inside post', async () => {
+    const wizard = { handleInbound: vi.fn().mockResolvedValue({ reply: 'ok' }) }
+    const { bot } = makeBot({ wizard })
+
+    await bot.handleEvent({
+      event_id: 'evt_link',
+      event: {
+        message: {
+          chat_id: 'oc_default',
+          message_id: 'om_link',
+          msg_type: 'post',
+          content: JSON.stringify({
+            content: [[
+              { tag: 'text', text: '看这个 ' },
+              { tag: 'a', href: 'https://example.test', text: '链接' },
+              { tag: 'md', text: ' **粗体**' },
+            ]],
+          }),
+        },
+        sender: { sender_id: { open_id: 'ou_user' }, sender_type: 'user' },
+      },
+    })
+
+    expect(wizard.handleInbound).toHaveBeenCalledWith(expect.objectContaining({
+      text: '看这个 链接 **粗体**',
+    }))
+  })
+
+  it('falls back to post title when content array has no visible text', async () => {
+    const wizard = { handleInbound: vi.fn().mockResolvedValue({ reply: 'ok' }) }
+    const { bot } = makeBot({ wizard })
+
+    await bot.handleEvent({
+      event_id: 'evt_title_only',
+      event: {
+        message: {
+          chat_id: 'oc_default',
+          message_id: 'om_title',
+          msg_type: 'post',
+          content: JSON.stringify({
+            title: '只有标题',
+            content: [[{ tag: 'img', image_key: 'k' }]],
+          }),
+        },
+        sender: { sender_id: { open_id: 'ou_user' }, sender_type: 'user' },
+      },
+    })
+
+    expect(wizard.handleInbound).toHaveBeenCalledWith(expect.objectContaining({
+      text: '只有标题',
+    }))
+  })
+})
+
 describe('lark-bot extractText mention stripping', () => {
   it('strips bot mention placeholder so NEW_TASK_TRIGGERS can match "帮我做 X"', async () => {
     const wizard = { handleInbound: vi.fn().mockResolvedValue({ reply: 'wizard started', action: 'wizard_started' }) }
