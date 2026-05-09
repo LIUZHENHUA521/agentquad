@@ -550,6 +550,98 @@ describe('openclaw-wizard state machine', () => {
     expect(todo.aiSessions[0].larkRoute).toEqual(route)
   })
 
+  it('Lark: finalizeWizard reuses user thread anchor (no new root) when wizard started inside an existing topic', async () => {
+    // 用户在自己新建的话题里 @bot 起 wizard，wizard 完成时应该把 intro 当成 thread reply
+    // 发进同一话题，并把 lark route 锚到用户那条消息上 —— 不再创建第二个根消息开新话题。
+    const fakeLarkBot = {
+      replyInThread: vi.fn(async () => ({ ok: true, payload: { message_id: 'om_intro_in_thread', thread_id: 'omt_user_topic', message_app_link: 'https://example.test/thread' } })),
+      sendMessage: vi.fn(),  // 不应被调用
+    }
+    const aiWithDb = {
+      sessions: [],
+      spawnSession({ sessionId, todoId, tool }) {
+        this.sessions.push({ sessionId, todoId, tool })
+        const t = db.getTodo(todoId)
+        if (t) {
+          db.updateTodo(todoId, {
+            aiSessions: [{ sessionId, tool, status: 'running', startedAt: Date.now() }, ...(t.aiSessions || [])],
+          })
+        }
+        return { sessionId, reused: false }
+      },
+    }
+    const w2 = createOpenClawWizard({
+      db, aiTerminal: aiWithDb, openclaw: bridge, pending,
+      larkBot: fakeLarkBot,
+      getConfig: () => ({ defaultCwd: '/tmp', port: 5677, defaultTool: 'claude' }),
+    })
+    const r = await w2.handleInbound({
+      channel: 'lark',
+      chatId: 'oc_1',
+      threadId: 'omt_user_topic',
+      messageId: 'om_user_first',
+      text: '帮我做 复用话题，目录 /tmp/foo, 象限 2, Bug 修复 模板',
+    })
+
+    expect(r.action).toBe('wizard_done')
+    expect(fakeLarkBot.replyInThread).toHaveBeenCalledTimes(1)
+    expect(fakeLarkBot.replyInThread).toHaveBeenCalledWith({
+      rootMessageId: 'om_user_first',
+      text: expect.stringContaining('AI 已启动，后续输出会回复在这个话题里。'),
+    })
+    expect(fakeLarkBot.sendMessage).not.toHaveBeenCalled()
+
+    const ses = aiWithDb.sessions[0]
+    const route = bridge.routes.get(ses.sessionId)
+    expect(route).toEqual(expect.objectContaining({
+      channel: 'lark',
+      targetUserId: 'oc_1',
+      threadId: 'omt_user_topic',
+      rootMessageId: 'om_user_first',  // ← 复用用户消息当 anchor，PTY 后续 reply 仍走同 thread
+    }))
+  })
+
+  it('Lark: finalizeWizard falls back to creating new root if replyInThread fails', async () => {
+    // 用户在 thread 里起了 wizard，但 replyInThread 失败（thread root 被撤回等）→ 退回旧路径，
+    // 在群里发新 root，避免完全丢消息
+    const fakeLarkBot = {
+      replyInThread: vi.fn(async () => ({ ok: false, reason: 'lark_reply_failed', detail: 'withdrawn' })),
+      sendMessage: vi.fn(async () => ({ ok: true, payload: { message_id: 'om_new_root', thread_id: 'omt_new', message_app_link: 'https://example.test/new' } })),
+    }
+    const aiWithDb = {
+      sessions: [],
+      spawnSession({ sessionId, todoId, tool }) {
+        this.sessions.push({ sessionId, todoId, tool })
+        const t = db.getTodo(todoId)
+        if (t) {
+          db.updateTodo(todoId, {
+            aiSessions: [{ sessionId, tool, status: 'running', startedAt: Date.now() }, ...(t.aiSessions || [])],
+          })
+        }
+        return { sessionId, reused: false }
+      },
+    }
+    const w2 = createOpenClawWizard({
+      db, aiTerminal: aiWithDb, openclaw: bridge, pending,
+      larkBot: fakeLarkBot,
+      getConfig: () => ({ defaultCwd: '/tmp', port: 5677, defaultTool: 'claude' }),
+    })
+    const r = await w2.handleInbound({
+      channel: 'lark',
+      chatId: 'oc_1',
+      threadId: 'omt_user_topic',
+      messageId: 'om_user_first',
+      text: '帮我做 reply失败兜底，目录 /tmp/foo, 象限 2, Bug 修复 模板',
+    })
+
+    expect(r.action).toBe('wizard_done')
+    expect(fakeLarkBot.replyInThread).toHaveBeenCalledTimes(1)
+    expect(fakeLarkBot.sendMessage).toHaveBeenCalledTimes(1)
+    const ses = aiWithDb.sessions[0]
+    const route = bridge.routes.get(ses.sessionId)
+    expect(route?.rootMessageId).toBe('om_new_root')
+  })
+
   it('Lark: finalizeWizard does not fall back to generic route when root topic message fails', async () => {
     const fakeLarkBot = {
       sendMessage: vi.fn(async () => ({ ok: false, reason: 'cli_failed' })),

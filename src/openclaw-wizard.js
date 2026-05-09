@@ -364,7 +364,7 @@ export function createOpenClawWizard({
     return out
   }
 
-  function startWizard({ channel = 'openclaw', chatId, threadId, text, messageId = null, imagePaths = [] }) {
+  function startWizard({ channel = 'openclaw', chatId, threadId, text, messageId = null, rootMessageId = null, imagePaths = [] }) {
     const routeKey = makeRouteKey(channel, chatId, threadId)
     const title = extractTitle(text) || '(未命名任务)'
     const workdirHint = tryExtractWorkdir(text)
@@ -376,6 +376,7 @@ export function createOpenClawWizard({
       channel,
       chatId,
       threadId,
+      rootMessageId,                 // lark thread root 锚点（用户在 thread 里起的 wizard 用）
       triggerMessageId: messageId,   // 用户触发本任务的消息 id（D 方案：tracker 加 reaction）
       imagePaths: Array.isArray(imagePaths) ? imagePaths.slice() : [],   // 创建时一起发的图片附件
       routeKey,
@@ -563,23 +564,46 @@ export function createOpenClawWizard({
         logger.info?.(`[wizard] channel=${channel} chatId="${w.chatId}" is not telegram-shaped (numeric); skipping topic creation`)
       }
 
-      if (channel === 'lark' && larkBot?.sendMessage && w.chatId) {
+      if (channel === 'lark' && larkBot && w.chatId) {
         const intro = [
           `${topicName}`,
           `AI 已启动，后续输出会回复在这个话题里。`,
           ``,
           `象限 Q${w.chosenQuadrant || 2} · 目录 ${w.chosenWorkdir || '默认'} · 模板 ${w.chosenTemplate?.name || '自由模式'}`,
         ].join('\n')
-        try {
-          const sent = await larkBot.sendMessage({ chatId: w.chatId, text: intro })
-          if (sent?.ok !== false) {
-            const payload = sent?.payload || sent || {}
-            larkRootMessageId = payload.message_id != null ? String(payload.message_id) : null
-            larkThreadId = payload.thread_id != null ? String(payload.thread_id) : null
-            larkMessageAppLink = payload.message_app_link != null ? String(payload.message_app_link) : null
+        // 复用用户当前所在话题 thread：把 intro 作为 thread reply 发进去，PTY 后续输出
+        // 也用同一个 anchor 进同一话题，不再开新 thread。
+        const reuseThreadAnchor = w.rootMessageId || w.triggerMessageId || null
+        if (reuseThreadAnchor && larkBot.replyInThread) {
+          try {
+            const sent = await larkBot.replyInThread({ rootMessageId: reuseThreadAnchor, text: intro })
+            if (sent?.ok !== false) {
+              const payload = sent?.payload || sent || {}
+              // 用户那条消息（reuseThreadAnchor）就是 lark 这条 thread 的入口；后续 PTY
+              // replyInThread 用同一个 anchor 仍会落到同一话题。
+              larkRootMessageId = reuseThreadAnchor
+              larkThreadId = w.threadId || (payload.thread_id != null ? String(payload.thread_id) : null)
+              larkMessageAppLink = payload.message_app_link != null ? String(payload.message_app_link) : null
+            } else {
+              logger.warn?.(`[wizard] lark thread reply failed (${sent.reason || 'unknown'}); falling back to new root`)
+            }
+          } catch (e) {
+            logger.warn?.(`[wizard] lark thread reply threw: ${e.message}; falling back to new root`)
           }
-        } catch (e) {
-          logger.warn?.(`[wizard] lark root message failed: ${e.message}`)
+        }
+        // 没复用成功（用户从主消息流起的 / reply 失败）→ 创建新 root（保留旧逻辑）
+        if (!larkRootMessageId && larkBot.sendMessage) {
+          try {
+            const sent = await larkBot.sendMessage({ chatId: w.chatId, text: intro })
+            if (sent?.ok !== false) {
+              const payload = sent?.payload || sent || {}
+              larkRootMessageId = payload.message_id != null ? String(payload.message_id) : null
+              larkThreadId = payload.thread_id != null ? String(payload.thread_id) : null
+              larkMessageAppLink = payload.message_app_link != null ? String(payload.message_app_link) : null
+            }
+          } catch (e) {
+            logger.warn?.(`[wizard] lark root message failed: ${e.message}`)
+          }
         }
       }
 
@@ -1206,7 +1230,7 @@ export function createOpenClawWizard({
       // 如果用户在 wizard 中又发新任务触发词 → 重启（仅在 General/DM/普通群有效）
       if (newTaskGateOpen && NEW_TASK_TRIGGERS.some((re) => re.test(trimmed))) {
         wizards.delete(routeKey)
-        const w = startWizard({ channel, chatId, threadId, text: trimmed, messageId, imagePaths })
+        const w = startWizard({ channel, chatId, threadId, text: trimmed, messageId, rootMessageId, imagePaths })
         if (w.step === STEP_DONE) return await finalizeWizard(w)
         if (w.step === STEP_QUADRANT) {
           const p = buildQuadrantPrompt()
@@ -1229,7 +1253,7 @@ export function createOpenClawWizard({
     // 仅在 General/DM/普通群触发；在 supergroup task topic 里"做 X"是给已有 PTY 的输入，
     // 不该建新任务（避免污染 task 上下文 + 防止用户被意外拉进 wizard）
     if (newTaskGateOpen && NEW_TASK_TRIGGERS.some((re) => re.test(trimmed))) {
-      const w = startWizard({ channel, chatId, threadId, text: trimmed, messageId, imagePaths })
+      const w = startWizard({ channel, chatId, threadId, text: trimmed, messageId, rootMessageId, imagePaths })
       if (w.step === STEP_DONE) return await finalizeWizard(w)
       if (w.step === STEP_QUADRANT) {
         const p = buildQuadrantPrompt()
