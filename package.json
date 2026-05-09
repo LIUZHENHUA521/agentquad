@@ -52,6 +52,7 @@
     "access": "public"
   },
   "dependencies": {
+    "@larksuiteoapi/node-sdk": "^1.63.1",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@xterm/headless": "^6.0.0",
     "better-sqlite3": "^11.3.0",

@@ -94,6 +94,8 @@ const DEFAULT_TELEGRAM_CONFIG = {
 
 const DEFAULT_LARK_CONFIG = {
 	enabled: false,
+	appId: "",
+	appSecret: "",
 	chatId: "",
 	requireThreadGroup: true,
 	eventSubscribeEnabled: true,
@@ -360,6 +362,12 @@ function normalizeConfig(cfg = {}) {
 		lark: {
 			...DEFAULT_LARK_CONFIG,
 			...(cfg.lark || {}),
+			appId: typeof cfg.lark?.appId === "string"
+				? cfg.lark.appId.trim()
+				: DEFAULT_LARK_CONFIG.appId,
+			appSecret: typeof cfg.lark?.appSecret === "string"
+				? cfg.lark.appSecret.trim()
+				: DEFAULT_LARK_CONFIG.appSecret,
 			chatId: typeof cfg.lark?.chatId === "string"
 				? cfg.lark.chatId.trim()
 				: DEFAULT_LARK_CONFIG.chatId,

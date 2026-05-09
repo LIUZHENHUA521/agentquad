@@ -253,6 +253,8 @@ describe('lark defaults', () => {
 			const cfg = loadConfig({ rootDir: tmp });
 			expect(cfg.lark).toEqual({
 				enabled: false,
+				appId: '',
+				appSecret: '',
 				chatId: '',
 				requireThreadGroup: true,
 				eventSubscribeEnabled: true,
@@ -263,13 +265,15 @@ describe('lark defaults', () => {
 		}
 	});
 
-	it('normalizes lark chatId and preserves explicit booleans', async () => {
+	it('normalizes lark credentials, chatId, and preserves explicit booleans', async () => {
 		const { loadConfig } = await import('../src/config.js');
 		const tmp = mkdtempSync(join(tmpdir(), 'quadtodo-lark-config-'));
 		try {
 			writeFileSync(join(tmp, 'config.json'), JSON.stringify({
 				lark: {
 					enabled: true,
+					appId: '  cli_a123  ',
+					appSecret: '  secret_abc  ',
 					chatId: '  oc_abc  ',
 					requireThreadGroup: false,
 					eventSubscribeEnabled: false,
@@ -279,6 +283,8 @@ describe('lark defaults', () => {
 			const cfg = loadConfig({ rootDir: tmp });
 			expect(cfg.lark).toEqual({
 				enabled: true,
+				appId: 'cli_a123',
+				appSecret: 'secret_abc',
 				chatId: 'oc_abc',
 				requireThreadGroup: false,
 				eventSubscribeEnabled: false,
