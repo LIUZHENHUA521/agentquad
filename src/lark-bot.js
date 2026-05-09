@@ -157,6 +157,12 @@ export function createLarkBot({
     return getApiClient().replyInThread({ rootMessageId, text })
   }
 
+  async function addReaction({ messageId, emojiType = 'EYES' } = {}) {
+    if (isBlank(messageId)) return { ok: false, reason: 'messageId_required' }
+    if (!hasCredentials()) return { ok: false, reason: 'lark_credentials_missing' }
+    return getApiClient().addReaction({ messageId, emojiType })
+  }
+
   // thread root 被撤回 / 飞书 5xx 时，回退到 chat-level sendMessage，避免 bot 完全沉默。
   // 兜底仅当 chatId 可用时启用；纯 reply 没有 chatId 的话就保留原失败语义。
   async function deliverReply({ chatId, rootMessageId, text } = {}) {
@@ -233,6 +239,12 @@ export function createLarkBot({
       return { ok: true, action: 'ignored_empty' }
     }
     logger.info?.(`[lark-bot] dispatching to wizard: chatId=${ev.chatId} thread=${ev.threadId || '-'} root=${ev.rootMessageId || '-'} text="${(ev.text || '').slice(0, 80)}"`)
+
+    // 立即加 👀 reaction 让用户知道 bot 看到了 / 在干活；不 await，避免拖慢 wizard
+    if (ev.messageId && hasCredentials()) {
+      getApiClient().addReaction({ messageId: ev.messageId, emojiType: 'EYES' })
+        .catch((e) => logger.warn?.(`[lark-bot] reaction failed: ${e.message}`))
+    }
 
     let result
     try {

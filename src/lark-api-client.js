@@ -75,6 +75,23 @@ export function createLarkApiClient({ appId, appSecret, clientFactory = defaultC
     }
   }
 
+  async function addReaction({ messageId, emojiType } = {}) {
+    if (!hasCredentials()) return { ok: false, reason: 'lark_credentials_missing' }
+    if (isBlank(messageId)) return { ok: false, reason: 'messageId_required' }
+    if (isBlank(emojiType)) return { ok: false, reason: 'emojiType_required' }
+    try {
+      const response = await getClient().im.messageReaction.create({
+        path: { message_id: String(messageId) },
+        data: { reaction_type: { emoji_type: String(emojiType) } },
+      })
+      return { ok: true, payload: normalizePayload(response) }
+    } catch (e) {
+      const detail = normalizeError(e)
+      logger.warn?.(`[lark-api] reaction failed: ${detail}`)
+      return { ok: false, reason: 'lark_reaction_failed', detail }
+    }
+  }
+
   async function testConnection() {
     if (!hasCredentials()) return { ok: false, reason: 'lark_credentials_missing' }
     try {
@@ -92,5 +109,5 @@ export function createLarkApiClient({ appId, appSecret, clientFactory = defaultC
     }
   }
 
-  return { sendMessage, replyInThread, testConnection }
+  return { sendMessage, replyInThread, addReaction, testConnection }
 }

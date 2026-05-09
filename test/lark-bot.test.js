@@ -5,6 +5,7 @@ function makeApiClient(overrides = {}) {
   return {
     sendMessage: vi.fn().mockResolvedValue({ ok: true, payload: { message_id: 'om_sent' } }),
     replyInThread: vi.fn().mockResolvedValue({ ok: true, payload: { message_id: 'om_reply' } }),
+    addReaction: vi.fn().mockResolvedValue({ ok: true, payload: { reaction_id: 'rid' } }),
     ...overrides,
   }
 }
@@ -76,6 +77,81 @@ describe('lark-bot outbound SDK facade', () => {
     await expect(bot.replyInThread({ rootMessageId: 'om_root' })).resolves.toEqual({ ok: false, reason: 'text_required' })
     expect(apiClient.sendMessage).not.toHaveBeenCalled()
     expect(apiClient.replyInThread).not.toHaveBeenCalled()
+  })
+})
+
+describe('lark-bot busy reaction', () => {
+  it('adds 👀 (EYES) reaction to user message before dispatching to wizard', async () => {
+    const wizard = { handleInbound: vi.fn().mockResolvedValue({ reply: 'wizard up', action: 'wizard_started' }) }
+    const { bot, apiClient } = makeBot({ wizard })
+
+    await bot.handleEvent({
+      event_id: 'evt_react',
+      event: {
+        message: {
+          chat_id: 'oc_default',
+          message_id: 'om_user_input',
+          content: '{"text":"帮我做一个登录页"}',
+        },
+        sender: { sender_id: { open_id: 'ou_user' }, sender_type: 'user' },
+      },
+    })
+
+    expect(apiClient.addReaction).toHaveBeenCalledWith({ messageId: 'om_user_input', emojiType: 'EYES' })
+    expect(wizard.handleInbound).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not add reaction when message is filtered (ignored_chat / ignored_self / ignored_empty)', async () => {
+    const wizard = { handleInbound: vi.fn() }
+    const { bot, apiClient } = makeBot({ wizard })
+
+    // 不同 chatId
+    await bot.handleEvent({
+      event_id: 'evt_other',
+      event: {
+        message: { chat_id: 'oc_other', message_id: 'om_other', content: '{"text":"hi"}' },
+        sender: { sender_id: { open_id: 'ou_user' }, sender_type: 'user' },
+      },
+    })
+    // bot 自己发的
+    await bot.handleEvent({
+      event_id: 'evt_self',
+      event: {
+        message: { chat_id: 'oc_default', message_id: 'om_self', content: '{"text":"hi"}' },
+        sender: { sender_id: { open_id: 'ou_bot' }, sender_type: 'bot' },
+      },
+    })
+    // 空文本
+    await bot.handleEvent({
+      event_id: 'evt_empty',
+      event: {
+        message: { chat_id: 'oc_default', message_id: 'om_empty', content: '{"text":""}' },
+        sender: { sender_id: { open_id: 'ou_user' }, sender_type: 'user' },
+      },
+    })
+
+    expect(apiClient.addReaction).not.toHaveBeenCalled()
+    expect(wizard.handleInbound).not.toHaveBeenCalled()
+  })
+
+  it('reaction failure does not block wizard / reply pipeline', async () => {
+    const apiClient = makeApiClient({
+      addReaction: vi.fn().mockRejectedValue(new Error('reaction boom')),
+    })
+    const wizard = { handleInbound: vi.fn().mockResolvedValue({ reply: 'wizard up', action: 'wizard_started' }) }
+    const { bot } = makeBot({ apiClient, wizard })
+
+    const r = await bot.handleEvent({
+      event_id: 'evt_react_fail',
+      event: {
+        message: { chat_id: 'oc_default', message_id: 'om_x', content: '{"text":"帮我做"}' },
+        sender: { sender_id: { open_id: 'ou_user' }, sender_type: 'user' },
+      },
+    })
+
+    expect(r).toMatchObject({ ok: true, action: 'wizard_started' })
+    expect(wizard.handleInbound).toHaveBeenCalledTimes(1)
+    expect(apiClient.replyInThread).toHaveBeenCalledWith({ rootMessageId: 'om_x', text: 'wizard up' })
   })
 })
 
