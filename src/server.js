@@ -708,12 +708,30 @@ export function createServer(opts = {}) {
 				runtimeConfig.tools,
 			);
 			const result = await openNativeTerminal({ cwd, command, title });
+			let todo = null;
+			const todoId = req.body?.todoId;
+			const sessionId = req.body?.sessionId;
+			if (typeof todoId === "string" && typeof sessionId === "string") {
+				const existingTodo = db.getTodo(todoId);
+				const sessions = Array.isArray(existingTodo?.aiSessions) ? existingTodo.aiSessions : [];
+				if (sessions.some((item) => item?.sessionId === sessionId)) {
+					const openedAt = Date.now();
+					todo = db.updateTodo(todoId, {
+						aiSessions: sessions.map((item) =>
+							item?.sessionId === sessionId
+								? { ...item, localResume: { openedAt } }
+								: item,
+						),
+					});
+				}
+			}
 			res.json({
 				ok: true,
 				cwd: result?.cwd || cwd,
 				title: result?.title || title,
 				command: result?.command || command,
 				action: result?.action || "created",
+				...(todo ? { todo } : {}),
 			});
 		} catch (e) {
 			const status = [

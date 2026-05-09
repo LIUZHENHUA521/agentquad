@@ -17,6 +17,7 @@ export interface AiSession {
   completedAt: number | null
   prompt: string
   label?: string
+  localResume?: { openedAt: number }
 }
 
 export interface Todo {
@@ -517,12 +518,12 @@ export async function openTerminal(cwd: string): Promise<{ sessionId: string }> 
   return { sessionId: body.sessionId }
 }
 
-export async function openNativeAiResume(input: { cwd: string; tool: AiTool; nativeSessionId: string }): Promise<{ cwd: string; command: string }> {
-  const body = await jsonFetch<{ ok: true; cwd: string; command: string }>('/api/system/open-native-ai-resume', {
+export async function openNativeAiResume(input: { cwd: string; tool: AiTool; nativeSessionId: string; todoId?: string; sessionId?: string }): Promise<{ cwd: string; command: string; todo?: Todo }> {
+  const body = await jsonFetch<{ ok: true; cwd: string; command: string; todo?: Todo }>('/api/system/open-native-ai-resume', {
     method: 'POST',
     body: JSON.stringify(input),
   })
-  return { cwd: body.cwd, command: body.command }
+  return { cwd: body.cwd, command: body.command, todo: body.todo }
 }
 
 /** 浏览器 WS 地址：开发时走 vite proxy，生产同源 */

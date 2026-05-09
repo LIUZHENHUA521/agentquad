@@ -87,13 +87,15 @@ describe('routes/ai-terminal', () => {
   })
 
   it('POST /exec falls back to defaultCwd when request cwd is missing', async () => {
-    ctx = makeApp({ defaultCwd: '/Users/liuzhenhua/Desktop/code/crazyCombo' })
+    const defaultCwd = mkdtempSync(join(tmpdir(), 'quadtodo-default-cwd-'))
+    ctx = makeApp({ defaultCwd })
     const todo = ctx.db.createTodo({ title: 'T', quadrant: 1 })
     const r = await request(ctx.app)
       .post('/api/ai-terminal/exec')
       .send({ todoId: todo.id, prompt: 'hello', tool: 'claude' })
     expect(r.status).toBe(200)
-    expect(ctx.pty.started[0].cwd).toBe('/Users/liuzhenhua/Desktop/code/crazyCombo')
+    expect(ctx.pty.started[0].cwd).toBe(defaultCwd)
+    rmSync(defaultCwd, { recursive: true, force: true })
   })
 
   it('POST /exec allows a new session on the same todo (concurrent)', async () => {
@@ -192,16 +194,19 @@ describe('routes/ai-terminal', () => {
 
   it('auto-recovers restartable sessions on startup', () => {
     const db = openDb(':memory:')
+    const workDir = mkdtempSync(join(tmpdir(), 'quadtodo-workdir-'))
+    const sessionCwd = mkdtempSync(join(workDir, 'session-'))
+    const defaultCwd = mkdtempSync(join(tmpdir(), 'quadtodo-default-cwd-'))
     const todo = db.createTodo({
       title: 'T',
       quadrant: 1,
       status: 'ai_running',
-      workDir: '/Users/liuzhenhua/Desktop/code',
+      workDir,
       aiSessions: [{
         sessionId: 'old-session',
         tool: 'claude',
         nativeSessionId: 'abcdef12-3456-7890-abcd-ef1234567890',
-        cwd: '/Users/liuzhenhua/Desktop/code/crazyCombo/quadtodo',
+        cwd: sessionCwd,
         status: 'running',
         startedAt: 1,
         completedAt: null,
@@ -210,18 +215,20 @@ describe('routes/ai-terminal', () => {
     })
     const pty = new FakePty()
     const logDir = mkdtempSync(join(tmpdir(), 'quadtodo-log-'))
-    const ait = createAiTerminal({ db, pty, logDir, defaultCwd: '/Users/liuzhenhua/Desktop/code/crazyCombo' })
+    const ait = createAiTerminal({ db, pty, logDir, defaultCwd })
     expect(pty.started).toHaveLength(1)
     expect(pty.started[0].resumeNativeId).toBe('abcdef12-3456-7890-abcd-ef1234567890')
     expect(pty.started[0].prompt).toBeNull()
-    expect(pty.started[0].cwd).toBe('/Users/liuzhenhua/Desktop/code/crazyCombo/quadtodo')
+    expect(pty.started[0].cwd).toBe(sessionCwd)
     const updated = db.getTodo(todo.id)
     expect(updated.status).toBe('ai_running')
     expect(updated.aiSession.nativeSessionId).toBe('abcdef12-3456-7890-abcd-ef1234567890')
     expect(updated.aiSession.sessionId).not.toBe('old-session')
-    expect(updated.aiSession.cwd).toBe('/Users/liuzhenhua/Desktop/code/crazyCombo/quadtodo')
+    expect(updated.aiSession.cwd).toBe(sessionCwd)
     ait.close()
     rmSync(logDir, { recursive: true, force: true })
+    rmSync(workDir, { recursive: true, force: true })
+    rmSync(defaultCwd, { recursive: true, force: true })
     db.close()
   })
 

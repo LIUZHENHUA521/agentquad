@@ -407,6 +407,13 @@ function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo = false,
                           {terminalCommand}
                         </div>
                       )}
+                      {session.localResume?.openedAt && (
+                        <div style={{ marginTop: 4 }}>
+                          <Tag color="blue" style={{ marginInlineEnd: 0 }}>
+                            已本地继续 · {dayjs(session.localResume.openedAt).format('HH:mm')}
+                          </Tag>
+                        </div>
+                      )}
                     </div>
                     <div className="todo-history-actions" onClick={(e) => e.stopPropagation()}>
                       {nativeSessionId && (
@@ -1598,12 +1605,15 @@ export default function TodoManage() {
         cwd: cwd || '',
         tool: session.tool,
         nativeSessionId,
+        todoId: todo.id,
+        sessionId: session.sessionId,
       })
+      await fetchTodos()
       message.success('已在本地 Terminal 中继续当前会话')
     } catch (e: any) {
       message.error(e?.message || '本地继续失败')
     }
-  }, [])
+  }, [fetchTodos])
 
   const handleCopyPrompt = useCallback((todo: Todo) => {
     const text = buildTodoPrompt(todo, templates)
