@@ -1,5 +1,5 @@
 // web/src/dock/TerminalDock.tsx
-import React, { useCallback, useRef } from 'react'
+import React, { useCallback, useEffect, useRef } from 'react'
 import { Button, Tooltip } from 'antd'
 import { CloseOutlined, MenuFoldOutlined } from '@ant-design/icons'
 import { useTerminalDockStore, DOCK_LIMITS } from '../store/terminalDockStore'
@@ -8,25 +8,42 @@ import './dock.css'
 export default function TerminalDock() {
   const { widthPx, isCollapsed, openTabs, toggleCollapsed, setWidth } = useTerminalDockStore()
   const dragStartRef = useRef<{ x: number; w: number } | null>(null)
+  const moveHandlerRef = useRef<((ev: MouseEvent) => void) | null>(null)
+  const upHandlerRef = useRef<(() => void) | null>(null)
 
   const onMouseDownDivider = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
     dragStartRef.current = { x: e.clientX, w: widthPx }
+
     const onMove = (ev: MouseEvent) => {
       const start = dragStartRef.current
       if (!start) return
       // dragging the divider left -> width grows
-      const next = start.w + (start.x - ev.clientX)
-      setWidth(next)
+      setWidth(start.w + (start.x - ev.clientX))
     }
     const onUp = () => {
       dragStartRef.current = null
-      document.removeEventListener('mousemove', onMove)
-      document.removeEventListener('mouseup', onUp)
+      if (moveHandlerRef.current) document.removeEventListener('mousemove', moveHandlerRef.current)
+      if (upHandlerRef.current) document.removeEventListener('mouseup', upHandlerRef.current)
+      moveHandlerRef.current = null
+      upHandlerRef.current = null
     }
+    moveHandlerRef.current = onMove
+    upHandlerRef.current = onUp
     document.addEventListener('mousemove', onMove)
     document.addEventListener('mouseup', onUp)
   }, [widthPx, setWidth])
+
+  useEffect(() => {
+    // Clean up any leftover drag listeners on unmount
+    return () => {
+      if (moveHandlerRef.current) document.removeEventListener('mousemove', moveHandlerRef.current)
+      if (upHandlerRef.current) document.removeEventListener('mouseup', upHandlerRef.current)
+      dragStartRef.current = null
+      moveHandlerRef.current = null
+      upHandlerRef.current = null
+    }
+  }, [])
 
   if (isCollapsed) {
     return (

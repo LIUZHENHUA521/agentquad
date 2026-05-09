@@ -10,7 +10,6 @@
   user-select: none;
 }
 .terminal-dock--collapsed {
-  width: 24px;
   flex: 0 0 24px;
   align-items: center;
   justify-content: flex-start;
