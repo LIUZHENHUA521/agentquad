@@ -188,7 +188,9 @@ tail -50 ~/.quadtodo/claude-hooks/hook.log
     "topicNameTemplate": "#t{shortCode} {title}",
     "topicNameDoneTemplate": "✅ {originalName}",
     "allowedChatIds": ["-1001234567890"],
-    "allowedFromUserIds": []
+    "allowedFromUserIds": [],
+    "reactionEnabled": true,
+    "reactionRunningEmoji": "✍"
   }
 }
 ```
@@ -206,7 +208,9 @@ tail -50 ~/.quadtodo/claude-hooks/hook.log
 | `allowedChatIds` | 白名单：只接受这些 chat 的消息（空 = 拒所有） |
 | `allowedFromUserIds` | （可选）只允许特定用户触发；空 = 不限 |
 | `pollRetryDelayMs` | 长轮询失败后退避起点（默认 5000） |
-| `minRenameIntervalMs` | Topic 重命名最小间隔，防风控（默认 30000） |
+| `minRenameIntervalMs` | Topic 重命名最小间隔，防风控（默认 30000；当前仅终态前缀走 rename，节流压力已大幅减小） |
+| `reactionEnabled` | 在用户触发消息上加 ✍ reaction 表示 AI 在干活；Stop hook 触发时清掉。默认 true |
+| `reactionRunningEmoji` | running 状态用哪个 Telegram 标准 emoji。默认 `✍`；群里限制了 Available Reactions 时改成允许列表里的（譬如 👀 / 🤔 / 👨‍💻） |
 | `botToken` | （可选）quadtodo 自己持有的 token；缺省时从 `~/.openclaw/openclaw.json` 兜底读 |
 
 ---

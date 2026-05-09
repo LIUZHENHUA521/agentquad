@@ -90,6 +90,8 @@ const DEFAULT_TELEGRAM_CONFIG = {
 	autoCreateTopic: true,              // 非 wizard 起的 PTY session 自动镜像到 Telegram topic
 	pollRetryDelayMs: 5000,
 	minRenameIntervalMs: 30_000,
+	reactionEnabled: true,              // 在用户触发消息上加 ✍ reaction 表示 AI 在干活；Stop hook 时清掉
+	reactionRunningEmoji: '✍',          // 用哪个 Telegram 标准 emoji；群里若限制了 Available Reactions，改成允许列表里的（譬如 👀 / 🤔）
 };
 
 const DEFAULT_LARK_CONFIG = {
