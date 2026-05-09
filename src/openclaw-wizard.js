@@ -1676,8 +1676,9 @@ export function createOpenClawWizard({
     const route = openclaw?.resolveRoute?.(sid) || null
     const sameChat = route && String(route.targetUserId) === String(chatId)
     const sameThread = (route?.threadId || null) === (threadId || null)
-    const telegramRouted = route?.channel === 'telegram' || route?.threadId != null
-    if (!sameChat || !sameThread || !telegramRouted) return stale()
+    // 允许 telegram / lark 渠道的权限回调；老的"threadId 非空就算"留作 legacy 兜底。
+    const isRoutedChannel = route?.channel === 'telegram' || route?.channel === 'lark' || route?.threadId != null
+    if (!sameChat || !sameThread || !isRoutedChannel) return stale()
 
     if (action === PERMISSION_ACTION_ALLOW) {
       try {

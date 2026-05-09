@@ -12,6 +12,8 @@ function makeSdkClient(overrides = {}) {
         create: vi.fn().mockResolvedValue({ data: { reaction_id: 'rid_1', operator: { operator_id: 'ou_bot', operator_type: 'app' }, action_time: '1' } }),
       },
     },
+    // 卡片复用同一个 message.create / reply 接口，靠 msg_type=interactive 区分；
+    // 上面的 mock 已经覆盖了。子类用例会单独看 .toHaveBeenCalledWith() 的 msg_type。
     auth: {
       tenantAccessToken: {
         internal: vi.fn().mockResolvedValue({ tenant_access_token: 't-1', expire: 7200 }),
@@ -148,6 +150,47 @@ describe('lark-api-client', () => {
         reply_in_thread: true,
       },
     })
+  })
+
+  it('sendCard posts msg_type=interactive with serialized card content', async () => {
+    const sdkClient = makeSdkClient()
+    const client = createLarkApiClient({ appId: 'cli_a123', appSecret: 'secret', clientFactory: () => sdkClient })
+    const card = { config: { wide_screen_mode: true }, elements: [{ tag: 'div', text: { tag: 'plain_text', content: '需要授权' } }] }
+
+    const r = await client.sendCard({ chatId: 'oc_1', card })
+    expect(r.ok).toBe(true)
+    expect(sdkClient.im.message.create).toHaveBeenCalledWith({
+      params: { receive_id_type: 'chat_id' },
+      data: {
+        receive_id: 'oc_1',
+        msg_type: 'interactive',
+        content: JSON.stringify(card),
+      },
+    })
+  })
+
+  it('replyWithCard replies in thread with msg_type=interactive', async () => {
+    const sdkClient = makeSdkClient()
+    const client = createLarkApiClient({ appId: 'cli_a123', appSecret: 'secret', clientFactory: () => sdkClient })
+    const card = { elements: [{ tag: 'div', text: { tag: 'plain_text', content: 'hi' } }] }
+
+    await client.replyWithCard({ rootMessageId: 'om_root', card })
+    expect(sdkClient.im.message.reply).toHaveBeenCalledWith({
+      path: { message_id: 'om_root' },
+      data: {
+        msg_type: 'interactive',
+        content: JSON.stringify(card),
+        reply_in_thread: true,
+      },
+    })
+  })
+
+  it('sendCard / replyWithCard validate input', async () => {
+    const client = createLarkApiClient({ appId: 'cli_a123', appSecret: 'secret', clientFactory: () => makeSdkClient() })
+    await expect(client.sendCard({ card: {} })).resolves.toEqual({ ok: false, reason: 'chatId_required' })
+    await expect(client.sendCard({ chatId: 'oc_1' })).resolves.toEqual({ ok: false, reason: 'card_required' })
+    await expect(client.replyWithCard({ card: {} })).resolves.toEqual({ ok: false, reason: 'rootMessageId_required' })
+    await expect(client.replyWithCard({ rootMessageId: 'om_x' })).resolves.toEqual({ ok: false, reason: 'card_required' })
   })
 
   it('tests credentials without sending a chat message', async () => {

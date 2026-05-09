@@ -1829,6 +1829,35 @@ describe('openclaw-wizard inline keyboard (callback_query)', () => {
     expect(r.editOriginal).toBe(true)
   })
 
+  it('permission allow callback also works for lark-routed sessions (channel=lark)', async () => {
+    const writes = []
+    bridge.findSessionByShortId = vi.fn(() => 'sess-lark-allow')
+    bridge.resolveRoute = vi.fn(() => ({
+      targetUserId: 'oc_default',
+      threadId: 'omt_xyz',
+      channel: 'lark',
+      rootMessageId: 'om_root_anchor',
+    }))
+    wizard = createOpenClawWizard({
+      db, aiTerminal: ai, openclaw: bridge, pending,
+      pty: {
+        has: vi.fn((sid) => sid === 'sess-lark-allow'),
+        write: vi.fn((sid, data) => writes.push({ sid, data })),
+      },
+      getConfig: () => ({ defaultCwd: '/tmp', port: 5677, defaultTool: 'claude' }),
+    })
+
+    const r = await wizard.handleCallback({
+      channel: 'lark',
+      chatId: 'oc_default',
+      threadId: 'omt_xyz',
+      callbackData: 'qt:perm:lark:allow',
+    })
+
+    expect(writes).toEqual([{ sid: 'sess-lark-allow', data: '\r' }])
+    expect(r.action).toBe('permission_allow_sent')
+  })
+
   it('permission deny callback sends Esc to same routed Telegram PTY session', async () => {
     const writes = []
     bridge.findSessionByShortId = vi.fn(() => 'sess-perm-deny')

@@ -5,6 +5,8 @@ function makeApiClient(overrides = {}) {
   return {
     sendMessage: vi.fn().mockResolvedValue({ ok: true, payload: { message_id: 'om_sent' } }),
     replyInThread: vi.fn().mockResolvedValue({ ok: true, payload: { message_id: 'om_reply' } }),
+    sendCard: vi.fn().mockResolvedValue({ ok: true, payload: { message_id: 'om_card' } }),
+    replyWithCard: vi.fn().mockResolvedValue({ ok: true, payload: { message_id: 'om_card_reply' } }),
     addReaction: vi.fn().mockResolvedValue({ ok: true, payload: { reaction_id: 'rid' } }),
     ...overrides,
   }
@@ -598,6 +600,72 @@ describe('lark-bot reply when thread root is gone', () => {
     expect(r.reason).toBe('lark_reply_failed')
     expect(apiClient.replyInThread).toHaveBeenCalledWith({ rootMessageId: 'om_withdrawn_root', text: 'wizard reply' })
     expect(apiClient.sendMessage).not.toHaveBeenCalled()
+  })
+})
+
+describe('lark-bot card actions (interactive cards)', () => {
+  it('routes card.action.trigger payload to wizard.handleCallback with channel=lark', async () => {
+    const wizard = {
+      handleInbound: vi.fn(),
+      handleCallback: vi.fn().mockResolvedValue({ ok: true, action: 'permission_allow_sent', toast: '已发送 Enter' }),
+    }
+    const { bot } = makeBot({ wizard })
+
+    const r = await bot.handleCardAction({
+      schema: '2.0',
+      header: { event_type: 'card.action.trigger' },
+      event: {
+        operator: { open_id: 'ou_user_1', tenant_key: 'tk' },
+        action: { tag: 'button', value: { callback_data: 'qt:perm:abcd:allow' }, name: '允许' },
+        context: { open_chat_id: 'oc_default', open_message_id: 'om_card_1', open_thread_id: 'omt_xyz' },
+      },
+    })
+
+    expect(r).toMatchObject({ ok: true, action: 'permission_allow_sent' })
+    expect(wizard.handleCallback).toHaveBeenCalledWith({
+      channel: 'lark',
+      chatId: 'oc_default',
+      threadId: 'omt_xyz',
+      rootMessageId: 'om_card_1',
+      callbackData: 'qt:perm:abcd:allow',
+      fromUserId: 'ou_user_1',
+    })
+  })
+
+  it('drops card.action.trigger from a different chat (ignored_chat)', async () => {
+    const wizard = { handleInbound: vi.fn(), handleCallback: vi.fn() }
+    const { bot } = makeBot({ wizard })
+
+    const r = await bot.handleCardAction({
+      event: {
+        operator: { open_id: 'ou_user' },
+        action: { value: { callback_data: 'qt:perm:abcd:allow' } },
+        context: { open_chat_id: 'oc_other_chat', open_message_id: 'om_x' },
+      },
+    })
+
+    expect(r).toEqual({ ok: true, action: 'ignored_chat' })
+    expect(wizard.handleCallback).not.toHaveBeenCalled()
+  })
+
+  it('returns invalid_card_action when chatId or callback_data missing', async () => {
+    const wizard = { handleInbound: vi.fn(), handleCallback: vi.fn() }
+    const { bot } = makeBot({ wizard })
+
+    await expect(bot.handleCardAction({ event: { context: {}, action: { value: {} } } })).resolves.toEqual({ ok: false, reason: 'invalid_card_action' })
+    await expect(bot.handleCardAction({ event: { context: { open_chat_id: 'oc_default' }, action: { value: {} } } })).resolves.toEqual({ ok: false, reason: 'invalid_card_action' })
+    expect(wizard.handleCallback).not.toHaveBeenCalled()
+  })
+
+  it('sendCard / replyWithCard delegate to apiClient', async () => {
+    const { bot, apiClient } = makeBot()
+    const card = { config: {}, elements: [] }
+
+    await bot.sendCard({ chatId: 'oc_x', card })
+    expect(apiClient.sendCard).toHaveBeenCalledWith({ chatId: 'oc_x', card })
+
+    await bot.replyWithCard({ rootMessageId: 'om_y', card })
+    expect(apiClient.replyWithCard).toHaveBeenCalledWith({ rootMessageId: 'om_y', card })
   })
 })
 

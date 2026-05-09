@@ -25,6 +25,7 @@ export function createLarkEventClient({
   appId,
   appSecret,
   onEvent,
+  onCardAction = null,
   dispatcherFactory = defaultDispatcherFactory,
   wsClientFactory = defaultWsClientFactory,
   logger = console,
@@ -49,7 +50,7 @@ export function createLarkEventClient({
     if (running) return { ok: true, action: 'already_running' }
 
     try {
-      const eventDispatcher = dispatcherFactory().register({
+      const handlers = {
         'im.message.receive_v1': async (data) => {
           try {
             await onEvent(data)
@@ -58,7 +59,18 @@ export function createLarkEventClient({
             logger.warn?.(`[lark-event] lark_event_handler_failed: ${detail}`)
           }
         },
-      })
+      }
+      if (typeof onCardAction === 'function') {
+        handlers['card.action.trigger'] = async (data) => {
+          try {
+            return await onCardAction(data)
+          } catch (e) {
+            const detail = normalizeError(e)
+            logger.warn?.(`[lark-event] lark_card_action_handler_failed: ${detail}`)
+          }
+        }
+      }
+      const eventDispatcher = dispatcherFactory().register(handlers)
       wsClient = wsClientFactory({ appId, appSecret })
       wsClient.start({ eventDispatcher })
       running = true

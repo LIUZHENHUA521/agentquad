@@ -76,6 +76,48 @@ export function createLarkApiClient({ appId, appSecret, clientFactory = defaultC
     }
   }
 
+  async function sendCard({ chatId, card } = {}) {
+    if (!hasCredentials()) return { ok: false, reason: 'lark_credentials_missing' }
+    if (isBlank(chatId)) return { ok: false, reason: 'chatId_required' }
+    if (!card || typeof card !== 'object') return { ok: false, reason: 'card_required' }
+    try {
+      const response = await getClient().im.message.create({
+        params: { receive_id_type: 'chat_id' },
+        data: {
+          receive_id: String(chatId),
+          msg_type: 'interactive',
+          content: JSON.stringify(card),
+        },
+      })
+      return { ok: true, payload: normalizePayload(response) }
+    } catch (e) {
+      const detail = normalizeError(e)
+      logger.warn?.(`[lark-api] sendCard failed: ${detail}`)
+      return { ok: false, reason: 'lark_send_card_failed', detail }
+    }
+  }
+
+  async function replyWithCard({ rootMessageId, card } = {}) {
+    if (!hasCredentials()) return { ok: false, reason: 'lark_credentials_missing' }
+    if (isBlank(rootMessageId)) return { ok: false, reason: 'rootMessageId_required' }
+    if (!card || typeof card !== 'object') return { ok: false, reason: 'card_required' }
+    try {
+      const response = await getClient().im.message.reply({
+        path: { message_id: String(rootMessageId) },
+        data: {
+          msg_type: 'interactive',
+          content: JSON.stringify(card),
+          reply_in_thread: true,
+        },
+      })
+      return { ok: true, payload: normalizePayload(response) }
+    } catch (e) {
+      const detail = normalizeError(e)
+      logger.warn?.(`[lark-api] replyCard failed: ${detail}`)
+      return { ok: false, reason: 'lark_reply_card_failed', detail }
+    }
+  }
+
   async function addReaction({ messageId, emojiType } = {}) {
     if (!hasCredentials()) return { ok: false, reason: 'lark_credentials_missing' }
     if (isBlank(messageId)) return { ok: false, reason: 'messageId_required' }
@@ -110,5 +152,5 @@ export function createLarkApiClient({ appId, appSecret, clientFactory = defaultC
     }
   }
 
-  return { sendMessage, replyInThread, addReaction, testConnection }
+  return { sendMessage, replyInThread, sendCard, replyWithCard, addReaction, testConnection }
 }

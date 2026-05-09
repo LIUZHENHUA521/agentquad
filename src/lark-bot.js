@@ -125,6 +125,27 @@ export function normalizeEvent(raw = {}) {
   }
 }
 
+/**
+ * 把飞书 card.action.trigger event payload 拍平到 wizard.handleCallback 的参数：
+ *   { channel: 'lark', chatId, threadId, callbackData, fromUserId }
+ * action.value 是按钮的 value（构卡片时塞的 JSON），约定字段：
+ *   { callback_data: 'qt:perm:abcd:allow' }   // 跟 telegram 的 callback_data 同字符串格式
+ */
+export function normalizeCardAction(raw = {}) {
+  const event = raw.event || raw
+  const action = event.action || {}
+  const context = event.context || {}
+  const operator = event.operator || {}
+  const valueObj = action.value && typeof action.value === 'object' ? action.value : {}
+  return {
+    chatId: context.open_chat_id != null ? String(context.open_chat_id) : null,
+    threadId: context.open_thread_id != null ? String(context.open_thread_id) : null,
+    rootMessageId: context.open_message_id != null ? String(context.open_message_id) : null,
+    callbackData: typeof valueObj.callback_data === 'string' ? valueObj.callback_data : '',
+    fromUserId: operator.open_id != null ? String(operator.open_id) : (operator.user_id != null ? String(operator.user_id) : null),
+  }
+}
+
 export function createLarkBot({
   getConfig,
   wizard,
@@ -176,6 +197,20 @@ export function createLarkBot({
     if (isBlank(text)) return { ok: false, reason: 'text_required' }
     if (!hasCredentials()) return { ok: false, reason: 'lark_credentials_missing' }
     return getApiClient().replyInThread({ rootMessageId, text })
+  }
+
+  async function sendCard({ chatId, card } = {}) {
+    if (isBlank(chatId)) return { ok: false, reason: 'chatId_required' }
+    if (!card || typeof card !== 'object') return { ok: false, reason: 'card_required' }
+    if (!hasCredentials()) return { ok: false, reason: 'lark_credentials_missing' }
+    return getApiClient().sendCard({ chatId, card })
+  }
+
+  async function replyWithCard({ rootMessageId, card } = {}) {
+    if (isBlank(rootMessageId)) return { ok: false, reason: 'rootMessageId_required' }
+    if (!card || typeof card !== 'object') return { ok: false, reason: 'card_required' }
+    if (!hasCredentials()) return { ok: false, reason: 'lark_credentials_missing' }
+    return getApiClient().replyWithCard({ rootMessageId, card })
   }
 
   async function addReaction({ messageId, emojiType = 'THUMBSUP' } = {}) {
@@ -301,6 +336,35 @@ export function createLarkBot({
     return { ok: true, action }
   }
 
+  async function handleCardAction(raw) {
+    const ev = normalizeCardAction(raw)
+    if (!ev.chatId || !ev.callbackData) {
+      return { ok: false, reason: 'invalid_card_action' }
+    }
+    const configuredChatId = getConfig()?.lark?.chatId
+    if (configuredChatId && ev.chatId !== String(configuredChatId)) {
+      logger.warn?.(`[lark-bot] ignored card_action from other chat: ${ev.chatId}`)
+      return { ok: true, action: 'ignored_chat' }
+    }
+    if (typeof wizard.handleCallback !== 'function') {
+      logger.warn?.(`[lark-bot] wizard.handleCallback unavailable; dropping lark card action`)
+      return { ok: false, reason: 'no_handler' }
+    }
+    try {
+      return await wizard.handleCallback({
+        channel: 'lark',
+        chatId: ev.chatId,
+        threadId: ev.threadId,
+        rootMessageId: ev.rootMessageId,
+        callbackData: ev.callbackData,
+        fromUserId: ev.fromUserId,
+      })
+    } catch (e) {
+      logger.warn?.(`[lark-bot] card action handler failed: ${e.message}`)
+      return { ok: false, reason: 'handler_failed', detail: e.message }
+    }
+  }
+
   async function start() {
     const cfg = getConfig()?.lark || {}
     if (!cfg.enabled || cfg.eventSubscribeEnabled === false) return { ok: false, reason: 'disabled' }
@@ -311,6 +375,7 @@ export function createLarkBot({
     eventClient = eventClientFactory({
       ...credentialsFromConfig(),
       onEvent: handleEvent,
+      onCardAction: handleCardAction,
       logger,
     })
     const result = await eventClient.start()
@@ -339,7 +404,7 @@ export function createLarkBot({
     }
   }
 
-  return { start, stop, sendMessage, replyInThread, handleEvent, describe, __test__: { normalizeEvent } }
+  return { start, stop, sendMessage, replyInThread, sendCard, replyWithCard, handleEvent, handleCardAction, describe, __test__: { normalizeEvent, normalizeCardAction } }
 }
 
 export { BUSY_REACTION_EMOJIS, pickBusyReactionEmoji }

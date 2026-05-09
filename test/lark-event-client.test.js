@@ -84,6 +84,40 @@ describe('lark-event-client', () => {
     expect(throwing.describe()).toMatchObject({ running: false, reason: 'lark_ws_start_failed' })
   })
 
+  it('registers card.action.trigger handler when onCardAction is provided', async () => {
+    const calls = {}
+    const onEvent = vi.fn()
+    const onCardAction = vi.fn().mockResolvedValue({ ok: true })
+    const client = createLarkEventClient({
+      appId: 'cli_a123',
+      appSecret: 'secret',
+      onEvent,
+      onCardAction,
+      dispatcherFactory: makeDispatcherFactory(calls),
+      wsClientFactory: makeWsClientFactory(calls),
+      logger: { warn() {}, info() {} },
+    })
+
+    await client.start()
+    expect(calls.handlers).toHaveProperty('card.action.trigger')
+    await calls.handlers['card.action.trigger']({ event: { action: { value: { callback_data: 'qt:perm:abcd:allow' } }, context: { open_chat_id: 'oc_1' }, operator: { open_id: 'ou_user' } } })
+    expect(onCardAction).toHaveBeenCalledTimes(1)
+  })
+
+  it('does NOT register card.action.trigger when onCardAction is omitted', async () => {
+    const calls = {}
+    const client = createLarkEventClient({
+      appId: 'cli_a123',
+      appSecret: 'secret',
+      onEvent: vi.fn(),
+      dispatcherFactory: makeDispatcherFactory(calls),
+      wsClientFactory: makeWsClientFactory(calls),
+      logger: { warn() {}, info() {} },
+    })
+    await client.start()
+    expect(calls.handlers).not.toHaveProperty('card.action.trigger')
+  })
+
   it('surfaces event handler failures as structured logs without throwing to the SDK', async () => {
     const calls = {}
     const warnings = []
