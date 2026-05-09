@@ -2,7 +2,19 @@
 import React from 'react'
 import SessionViewer from '../SessionViewer'
 import { TodoStatus, ResumeSessionInput } from '../api'
-import { useTerminalDockStore, DockTab } from '../store/terminalDockStore'
+import { useTerminalDockStore, DockTab, DockTabStatus } from '../store/terminalDockStore'
+
+function todoStatusToDockStatus(s: TodoStatus): DockTabStatus {
+  switch (s) {
+    case 'ai_running':  return 'running'
+    case 'ai_pending':  return 'pending_reply'
+    case 'ai_done':     return 'idle'
+    case 'done':        return 'idle'
+    case 'todo':        return 'idle'
+    case 'missed':      return 'closed'
+    default:            return 'idle'
+  }
+}
 
 interface Props {
   tab: DockTab
@@ -43,6 +55,10 @@ export default function TerminalDockTab({
       className="terminal-dock-tab"
       style={{ display: visible ? 'flex' : 'none', flexDirection: 'column', flex: 1, minHeight: 0 }}
     >
+      {/* TODO: When AiTerminalMini reports onSessionRecovered with a new sessionId,
+          dock store's tab.id (= old sessionId) becomes stale, leading to duplicate
+          tabs if user re-opens the recovered session. Future task: add
+          dock.renameTab(oldId, newId) action and call here. */}
       <SessionViewer
         sessionId={tab.id}
         todoId={tab.todoId}
@@ -56,6 +72,7 @@ export default function TerminalDockTab({
           setStatus(tab.id, r.exitCode === 0 ? 'idle' : 'closed')
           onDone?.(r)
         }}
+        onStatusChange={(s) => setStatus(tab.id, todoStatusToDockStatus(s))}
         onFork={onFork ? () => onFork() : undefined}
         fillHeight
       />

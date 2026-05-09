@@ -36,6 +36,7 @@ interface Props {
   onSessionSwitch?: (nextSessionId: string) => void
   onClose: () => void
   onDone?: (result: { status: string; exitCode?: number }) => void
+  onStatusChange?: (status: TodoStatus) => void
   fillHeight?: boolean
 }
 
@@ -51,7 +52,7 @@ const RESIZE_STABILITY_MS = 200
 const MIN_CONTAINER_WIDTH = 300
 const MIN_VALID_COLS = 30
 
-export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeTarget, onSessionRecovered, onSessionSwitch, onClose, onDone, fillHeight }: Props) {
+export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeTarget, onSessionRecovered, onSessionSwitch, onClose, onDone, onStatusChange, fillHeight }: Props) {
   void onClose
   const { theme, preset, override, customPresets, setPreset, setOverride, resetOverride, saveCustomPreset, deleteCustomPreset } = useTerminalTheme()
   const themeRef = useRef(theme)
@@ -90,6 +91,10 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
   })
   const followTailRef = useRef<boolean>(followTail)
   useEffect(() => { sessionStatusRef.current = sessionStatus }, [sessionStatus])
+  useEffect(() => {
+    onStatusChange?.(sessionStatus)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionStatus])
   useEffect(() => { sessionExpiredRef.current = sessionExpired }, [sessionExpired])
   useEffect(() => { followTailRef.current = followTail }, [followTail])
   const dragRef = useRef<{ startY: number; startH: number } | null>(null)

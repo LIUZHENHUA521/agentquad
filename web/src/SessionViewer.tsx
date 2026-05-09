@@ -14,6 +14,7 @@ interface Props {
   onSessionSwitch?: (nextSessionId: string) => void
   onClose: () => void
   onDone?: (result: { status: string; exitCode?: number }) => void
+  onStatusChange?: (status: TodoStatus) => void
   onFork?: (turnIndex: number, upToTurns: TranscriptTurn[]) => void
   fillHeight?: boolean
 }
