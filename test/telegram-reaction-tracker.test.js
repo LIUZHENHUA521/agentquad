@@ -73,3 +73,69 @@ describe('createReactionTracker — clearReactionsForSession', () => {
     expect(tracker.has('sid-B')).toBe(true)
   })
 })
+
+describe('createReactionTracker — config behavior', () => {
+  it('reactionEnabled=false makes noteUserMessage a no-op', async () => {
+    const { tracker, bot } = makeTracker({
+      config: { telegram: { reactionEnabled: false } },
+    })
+    await tracker.noteUserMessage({ sessionId: 'sid-1', chatId: '-100', messageId: 42 })
+    expect(bot.setMessageReaction).not.toHaveBeenCalled()
+    expect(tracker.has('sid-1')).toBe(false)
+  })
+
+  it('uses configured reactionRunningEmoji', async () => {
+    const { tracker, bot } = makeTracker({
+      config: { telegram: { reactionEnabled: true, reactionRunningEmoji: '👀' } },
+    })
+    await tracker.noteUserMessage({ sessionId: 'sid-1', chatId: '-100', messageId: 42 })
+    expect(bot.setMessageReaction).toHaveBeenCalledWith({ chatId: '-100', messageId: 42, emoji: '👀' })
+  })
+
+  it('defaults reactionEnabled to true when key absent', async () => {
+    const { tracker, bot } = makeTracker({ config: { telegram: {} } })
+    await tracker.noteUserMessage({ sessionId: 'sid-1', chatId: '-100', messageId: 42 })
+    expect(bot.setMessageReaction).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('createReactionTracker — error handling', () => {
+  it('swallows setMessageReaction error in noteUserMessage and still records', async () => {
+    const warns = []
+    const bot = {
+      setMessageReaction: vi.fn(async () => { throw new Error('REACTION_INVALID') }),
+    }
+    const tracker = createReactionTracker({
+      telegramBot: bot,
+      getConfig: () => ({ telegram: {} }),
+      logger: { info() {}, warn: (m) => warns.push(String(m)) },
+    })
+    await expect(tracker.noteUserMessage({ sessionId: 'sid', chatId: '-100', messageId: 42 })).resolves.not.toThrow()
+    expect(tracker.has('sid')).toBe(true)
+    expect(warns.some((w) => w.includes('REACTION_INVALID'))).toBe(true)
+  })
+
+  it('continues clearing remaining messages when one delete fails', async () => {
+    let n = 0
+    const bot = {
+      setMessageReaction: vi.fn(async () => {
+        n++
+        if (n === 2) throw new Error('boom')
+        return { ok: true }
+      }),
+    }
+    const tracker = createReactionTracker({
+      telegramBot: bot,
+      getConfig: () => ({ telegram: {} }),
+      logger: { info() {}, warn() {} },
+    })
+    await tracker.noteUserMessage({ sessionId: 'sid', chatId: '-100', messageId: 1 })
+    await tracker.noteUserMessage({ sessionId: 'sid', chatId: '-100', messageId: 2 })
+    await tracker.noteUserMessage({ sessionId: 'sid', chatId: '-100', messageId: 3 })
+    bot.setMessageReaction.mockClear(); n = 0
+    const r = await tracker.clearReactionsForSession('sid')
+    expect(bot.setMessageReaction).toHaveBeenCalledTimes(3)
+    expect(r.removed).toBe(2)
+    expect(r.total).toBe(3)
+  })
+})
