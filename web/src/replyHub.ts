@@ -129,16 +129,10 @@ export function buildAttentionItems({ todos, liveSessions, seenSessionIds }: Bui
     }
   }
 
-  return items.sort((a, b) => {
-    const rank = (item: AttentionItem) => {
-      if (item.kind === 'interaction') return 0
-      if (item.kind === 'awaiting_reply') return 1
-      return 2
-    }
-    const rankDiff = rank(a) - rank(b)
-    if (rankDiff !== 0) return rankDiff
-    return b.timestamp - a.timestamp
-  })
+  // 纯按"最新一次活动"排序（pending_confirm/awaiting 取 lastOutputAt，
+  // review 取 session.completedAt），不再以 kind 作为首要排序键 ——
+  // 用户希望"最新回复的会话"始终在最上面，kind 由 chip 过滤来区分。
+  return items.sort((a, b) => b.timestamp - a.timestamp)
 }
 
 export function countAttentionItems(items: AttentionItem[]): AttentionCounts {

@@ -135,7 +135,7 @@ describe('buildAttentionItems', () => {
     expect(items[0].kind).toBe('interaction')
   })
 
-  it('sorts待交互 before待验收, then by newest timestamp', () => {
+  it('sorts purely by newest timestamp regardless of kind', () => {
     const items = buildAttentionItems({
       todos: [
         todo({ id: 'todo-1', title: 'Old review', status: 'ai_done', aiSessions: [session({ sessionId: 's-old', completedAt: 1000 })] }),
@@ -145,7 +145,8 @@ describe('buildAttentionItems', () => {
       seenSessionIds: new Set(),
     })
 
-    expect(items.map(item => item.sessionId)).toEqual(['s-pending', 's-new', 's-old'])
+    // s-new (5000) > s-pending (2000) > s-old (1000)
+    expect(items.map(item => item.sessionId)).toEqual(['s-new', 's-pending', 's-old'])
   })
 
   it('counts待交互, 待回复 and 待验收 separately', () => {
@@ -200,7 +201,7 @@ describe('buildAttentionItems', () => {
     expect(items[0].kind).toBe('interaction')
   })
 
-  it('sorts待交互 before 待回复 before 待验收', () => {
+  it('sorts mixed kinds by newest timestamp first', () => {
     const items = buildAttentionItems({
       todos: [
         todo({ id: 'todo-r', title: 'Review', status: 'ai_done', aiSessions: [session({ sessionId: 's-rev', completedAt: 9000 })] }),
@@ -214,7 +215,8 @@ describe('buildAttentionItems', () => {
       seenSessionIds: new Set(),
     })
 
-    expect(items.map(item => item.sessionId)).toEqual(['s-int', 's-await', 's-rev'])
+    // 9000 (review) > 8000 (awaiting) > 1000 (interaction)
+    expect(items.map(item => item.sessionId)).toEqual(['s-rev', 's-await', 's-int'])
   })
 })
 
