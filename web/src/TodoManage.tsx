@@ -39,7 +39,6 @@ import {
   uploadImage,
 } from './api'
 import { renderAppliedTemplates } from './promptRender'
-import SessionViewer from './SessionViewer'
 import SettingsDrawer from './SettingsDrawer'
 import StatsDrawer from './StatsDrawer'
 import TelegramSyncButton from './TelegramSyncButton'
@@ -63,6 +62,7 @@ import {
 import { getTranscriptStats, listPipelineTemplates, listPipelineRunsForTodo, startPipelineRun, PipelineTemplate, PipelineRun } from './api'
 import PipelineRunDrawer from './pipeline/PipelineRunDrawer'
 import TerminalDock from './dock/TerminalDock'
+import { useTerminalDockStore } from './store/terminalDockStore'
 import './TodoManage.css'
 
 const { TextArea } = Input
@@ -161,6 +161,7 @@ interface SortableTodoCardProps {
   onExport: (todo: Todo) => void
   expandedTerminal: { todoId: string; sessionId: string } | null
   setExpandedTerminal: (v: { todoId: string; sessionId: string } | null) => void
+  onOpenSessionInDock: (todo: Todo, sessionId: string) => void
   hiddenTerminalSessionId?: string | null
   hiddenTerminalSessionIdByTodo?: Record<string, string | null>
   onHideTerminal: (todoId: string, sessionId: string) => void
@@ -177,7 +178,7 @@ interface SortableTodoCardProps {
   highlightTodoId?: string | null
 }
 
-function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo = false, onCreateSubtodo, onClick, onToggleDone, onAiExec, onAiExecBoth, onDeleteAiSession, onUpdateSessionLabel, onDelete, onOpenTrae, onOpenTerminal, onOpenNativeResume, onCopyPrompt, onExport, expandedTerminal, setExpandedTerminal, hiddenTerminalSessionId, hiddenTerminalSessionIdByTodo, onHideTerminal, onShowTerminal, terminalCollapsed, collapsedTerminalByTodo, onToggleTerminalCollapsed, sideBySideSessionId, sideBySideByTodo, onSetSideBySide, isNarrow, onRequestFork, onRefresh, highlightTodoId }: SortableTodoCardProps) {
+function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo = false, onCreateSubtodo, onClick, onToggleDone, onAiExec, onAiExecBoth, onDeleteAiSession, onUpdateSessionLabel, onDelete, onOpenTrae, onOpenTerminal, onOpenNativeResume, onCopyPrompt, onExport, expandedTerminal, setExpandedTerminal, onOpenSessionInDock, hiddenTerminalSessionId, hiddenTerminalSessionIdByTodo, onHideTerminal, onShowTerminal, terminalCollapsed, collapsedTerminalByTodo, onToggleTerminalCollapsed, sideBySideSessionId, sideBySideByTodo, onSetSideBySide, isNarrow, onRequestFork, onRefresh, highlightTodoId }: SortableTodoCardProps) {
   const [editingLabelSessionId, setEditingLabelSessionId] = useState<string | null>(null)
   const [editingLabelText, setEditingLabelText] = useState('')
   const [childrenExpanded, setChildrenExpanded] = useState(true)
@@ -305,6 +306,7 @@ function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo = false,
                 if (action === 'open') {
                   onShowTerminal(todo.id)
                   setExpandedTerminal({ todoId: todo.id, sessionId: target.sessionId })
+                  onOpenSessionInDock(todo, target.sessionId)
                   return
                 }
                 if (action === 'resume') {
@@ -357,6 +359,7 @@ function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo = false,
                       if (typeof window !== 'undefined' && window.getSelection()?.toString()) return
                       onShowTerminal(todo.id)
                       setExpandedTerminal({ todoId: todo.id, sessionId: session.sessionId })
+                      onOpenSessionInDock(todo, session.sessionId)
                     }}
                   >
                     <div className="todo-history-body">
@@ -534,6 +537,7 @@ function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo = false,
                       onExport={onExport}
                       expandedTerminal={expandedTerminal}
                       setExpandedTerminal={setExpandedTerminal}
+                      onOpenSessionInDock={onOpenSessionInDock}
                       hiddenTerminalSessionId={hiddenTerminalSessionIdByTodo?.[child.id] || null}
                       hiddenTerminalSessionIdByTodo={hiddenTerminalSessionIdByTodo}
                       onHideTerminal={onHideTerminal}
@@ -556,112 +560,7 @@ function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo = false,
         )}
       </div>
 
-      {/* 内嵌 AI 终端 */}
-      {sessionId && !terminalHidden && (terminalOpen || isAiActive || todo.status === 'ai_done') && (
-        <div
-          className={`todo-terminal-panel ${terminalCollapsed ? 'collapsed' : ''}`}
-          onPointerDown={(e) => e.stopPropagation()}
-          onMouseDown={(e) => e.stopPropagation()}
-          onClick={(e) => e.stopPropagation()}
-          onKeyDown={(e) => e.stopPropagation()}
-          onKeyUp={(e) => e.stopPropagation()}
-        >
-          <div className="todo-terminal-collapse-bar">
-            <span className="collapse-title">
-              {terminalCollapsed ? <DownOutlined style={{ fontSize: 10 }} /> : <UpOutlined style={{ fontSize: 10 }} />}
-              <span>AI 终端 · {toolShortName(selectedSession?.tool)}{selectedSession?.label ? ` · ${selectedSession.label}` : ''}</span>
-            </span>
-            <Space size={4}>
-              {sideBySideSessionId && !isNarrow && (
-                <Tooltip title="关闭并排视图">
-                  <Button
-                    size="small"
-                    type="text"
-                    onClick={() => onSetSideBySide(todo.id, null)}
-                  >并排✕</Button>
-                </Tooltip>
-              )}
-              <Tooltip title={terminalCollapsed ? '展开终端' : '折叠终端'}>
-                <Button
-                  size="small"
-                  type="text"
-                  icon={terminalCollapsed ? <DownOutlined /> : <UpOutlined />}
-                  onClick={() => onToggleTerminalCollapsed(todo.id)}
-                />
-              </Tooltip>
-              <Tooltip title="关闭终端">
-                <Button
-                  size="small"
-                  type="text"
-                  icon={<CloseOutlined />}
-                  onClick={() => {
-                    onHideTerminal(todo.id, sessionId!)
-                    setExpandedTerminal(null)
-                  }}
-                />
-              </Tooltip>
-            </Space>
-          </div>
-          <div className={`todo-terminal-body ${sideBySideSessionId && !isNarrow ? 'side-by-side' : ''}`}>
-          <SessionViewer
-            sessionId={sessionId}
-            todoId={todo.id}
-            status={todo.status}
-            cwd={todo.workDir || resumeTarget?.cwd || null}
-            resumeTarget={resumeTarget ? {
-              todoId: todo.id,
-              tool: resumeTarget.tool,
-              prompt: resumeTarget.prompt,
-              cwd: resumeTarget.cwd || todo.workDir || undefined,
-              nativeSessionId: resumeTarget.nativeSessionId!,
-            } : null}
-            onSessionRecovered={(nextSessionId) => {
-              onShowTerminal(todo.id)
-              setExpandedTerminal({ todoId: todo.id, sessionId: nextSessionId })
-              onRefresh()
-            }}
-            onSessionSwitch={(nextSessionId) => {
-              onShowTerminal(todo.id)
-              setExpandedTerminal({ todoId: todo.id, sessionId: nextSessionId })
-              onRefresh()
-            }}
-            onClose={() => {
-              onHideTerminal(todo.id, sessionId)
-              setExpandedTerminal(null)
-            }}
-            onDone={() => onRefresh()}
-            onFork={() => onRequestFork(todo, sessionId)}
-          />
-          {sideBySideSessionId && !isNarrow && (() => {
-            const rightSession = historySessions.find(s => s.sessionId === sideBySideSessionId)
-            if (!rightSession) return null
-            return (
-              <SessionViewer
-                sessionId={rightSession.sessionId}
-                todoId={todo.id}
-                status={todo.status}
-                cwd={rightSession.cwd || todo.workDir || null}
-                resumeTarget={rightSession.nativeSessionId ? {
-                  todoId: todo.id,
-                  tool: rightSession.tool,
-                  prompt: rightSession.prompt,
-                  cwd: rightSession.cwd || todo.workDir || undefined,
-                  nativeSessionId: rightSession.nativeSessionId,
-                } : null}
-                onSessionRecovered={() => onRefresh()}
-                onSessionSwitch={(nextSessionId) => {
-                  onSetSideBySide(todo.id, nextSessionId)
-                  onRefresh()
-                }}
-                onClose={() => onSetSideBySide(todo.id, null)}
-                onDone={() => onRefresh()}
-                onFork={() => onRequestFork(todo, rightSession.sessionId)}
-              />
-            )
-          })()}
-          </div>
-        </div>
-      )}
+      {/* 内嵌 AI 终端已迁移到 TerminalDock（Task 5） */}
     </div>
   )
 }
@@ -689,6 +588,7 @@ interface QuadrantZoneProps {
   style?: React.CSSProperties
   expandedTerminal: { todoId: string; sessionId: string } | null
   setExpandedTerminal: (v: { todoId: string; sessionId: string } | null) => void
+  onOpenSessionInDock: (todo: Todo, sessionId: string) => void
   hiddenTerminalSessionIdByTodo: Record<string, string | null>
   collapsedTerminalByTodo: Record<string, boolean>
   onToggleTerminalCollapsed: (todoId: string) => void
@@ -702,7 +602,7 @@ interface QuadrantZoneProps {
   highlightTodoId?: string | null
 }
 
-function QuadrantZone({ config, todos, childrenByParentId, childHitIdsByParentId, onCreateSubtodo, onCardClick, onToggleDone, onAiExec, onAiExecBoth, onDeleteAiSession, onUpdateSessionLabel, onDelete, onOpenTrae, onOpenTerminal, onOpenNativeResume, onCopyPrompt, onExport, style, expandedTerminal, setExpandedTerminal, hiddenTerminalSessionIdByTodo, onHideTerminal, onShowTerminal, collapsedTerminalByTodo, onToggleTerminalCollapsed, sideBySideByTodo, onSetSideBySide, isNarrow, onRequestFork, onRefresh, highlightTodoId }: QuadrantZoneProps) {
+function QuadrantZone({ config, todos, childrenByParentId, childHitIdsByParentId, onCreateSubtodo, onCardClick, onToggleDone, onAiExec, onAiExecBoth, onDeleteAiSession, onUpdateSessionLabel, onDelete, onOpenTrae, onOpenTerminal, onOpenNativeResume, onCopyPrompt, onExport, style, expandedTerminal, setExpandedTerminal, onOpenSessionInDock, hiddenTerminalSessionIdByTodo, onHideTerminal, onShowTerminal, collapsedTerminalByTodo, onToggleTerminalCollapsed, sideBySideByTodo, onSetSideBySide, isNarrow, onRequestFork, onRefresh, highlightTodoId }: QuadrantZoneProps) {
   const { setNodeRef, isOver } = useDroppable({ id: `quadrant-${config.q}` })
 
   const header = (
@@ -738,6 +638,7 @@ function QuadrantZone({ config, todos, childrenByParentId, childHitIdsByParentId
             onExport={onExport}
             expandedTerminal={expandedTerminal}
             setExpandedTerminal={setExpandedTerminal}
+            onOpenSessionInDock={onOpenSessionInDock}
             hiddenTerminalSessionId={hiddenTerminalSessionIdByTodo[t.id] || null}
             onHideTerminal={onHideTerminal}
             onShowTerminal={onShowTerminal}
@@ -925,9 +826,6 @@ export default function TodoManage() {
     localStorage.setItem('quadtodo:autoFillPrompt', val ? '1' : '0')
   }, [])
   const [expandedTerminal, setExpandedTerminal] = useState<{ todoId: string; sessionId: string } | null>(null)
-  // 独立于视图模式的浮层终端：点击宠物 / Dashboard 展开终端 时使用，
-  // 因为 expandedTerminal 只能在列表视图的 SortableTodoCard 内被消费
-  const [overlayTerminal, setOverlayTerminal] = useState<{ todoId: string; sessionId: string } | null>(null)
   const [hiddenTerminalSessionIdByTodo, setHiddenTerminalSessionIdByTodo] = useState<Record<string, string | null>>({})
   const [collapsedTerminalByTodo, setCollapsedTerminalByTodo] = useState<Record<string, boolean>>({})
   const [sideBySideByTodo, setSideBySideByTodo] = useState<Record<string, string | null>>({})
@@ -990,12 +888,18 @@ export default function TodoManage() {
     return () => { cancelled = true; clearInterval(t) }
   }, [transcriptDrawerOpen])
 
+  const dockActivate = useTerminalDockStore(s => s.activate)
+  const handleOpenTerminalInDock = useCallback((todo: Todo, sessionId: string) => {
+    dockActivate(todo.id, sessionId, todo.title)
+  }, [dockActivate])
+
   const handleDashboardOpenTerminal = useCallback((_sessionId: string, todoId: string) => {
     setDashboardOpen(false)
-    // 同步 expandedTerminal 以便列表视图切回时能看到；同时用 overlayTerminal 在当前视图直接展示
+    const todo = todos.find(x => x.id === todoId)
+    if (todo) handleOpenTerminalInDock(todo, _sessionId)
+    // 保留 expandedTerminal 状态同步，Task 6 会清理
     setExpandedTerminal({ todoId, sessionId: _sessionId })
-    setOverlayTerminal({ todoId, sessionId: _sessionId })
-  }, [])
+  }, [todos, handleOpenTerminalInDock])
 
   const handleDashboardStop = useCallback(async (sessionId: string) => {
     try {
@@ -1028,7 +932,8 @@ export default function TodoManage() {
     setHiddenTerminalSessionIdByTodo(prev => ({ ...prev, [item.todoId]: null }))
     setCollapsedTerminalByTodo(prev => ({ ...prev, [item.todoId]: false }))
     setExpandedTerminal({ todoId: item.todoId, sessionId: item.sessionId })
-    setOverlayTerminal(null)
+    const todo = todos.find(t => t.id === item.todoId)
+    if (todo) handleOpenTerminalInDock(todo, item.sessionId)
     setHighlightTodoId(item.todoId)
     setPendingJumpTodoId(item.todoId)
 
@@ -1037,7 +942,7 @@ export default function TodoManage() {
       setHighlightTodoId(null)
       highlightTimerRef.current = null
     }, 3000)
-  }, [])
+  }, [todos, handleOpenTerminalInDock])
 
   useEffect(() => {
     if (!pendingJumpTodoId) return
@@ -1324,6 +1229,7 @@ export default function TodoManage() {
         const nextSession = nextTodo.aiSessions[0]
         if (nextSession) {
           setExpandedTerminal({ todoId: todo.id, sessionId: nextSession.sessionId })
+          handleOpenTerminalInDock(todo, nextSession.sessionId)
         } else {
           setExpandedTerminal(null)
         }
@@ -1332,7 +1238,7 @@ export default function TodoManage() {
     } catch (e: any) {
       message.error(e?.message || '删除历史会话失败')
     }
-  }, [fetchTodos])
+  }, [fetchTodos, handleOpenTerminalInDock])
 
   // ─── 重复规则 ───
 
@@ -1517,11 +1423,12 @@ export default function TodoManage() {
       })
       setHiddenTerminalSessionIdByTodo(prev => ({ ...prev, [todo.id]: null }))
       setExpandedTerminal({ todoId: todo.id, sessionId })
+      handleOpenTerminalInDock(todo, sessionId)
       fetchTodos()
     } catch (e: any) {
       message.error(e?.message || 'AI 启动失败')
     }
-  }, [fetchTodos, autoFillPrompt, templates])
+  }, [fetchTodos, autoFillPrompt, templates, handleOpenTerminalInDock])
 
   const handleAiExecBoth = useCallback(async (todo: Todo) => {
     try {
@@ -1535,12 +1442,14 @@ export default function TodoManage() {
       ])
       setHiddenTerminalSessionIdByTodo(prev => ({ ...prev, [todo.id]: null }))
       setExpandedTerminal({ todoId: todo.id, sessionId: r1.sessionId })
+      handleOpenTerminalInDock(todo, r1.sessionId)
+      handleOpenTerminalInDock(todo, r2.sessionId)
       setSideBySideByTodo(prev => ({ ...prev, [todo.id]: r2.sessionId }))
       fetchTodos()
     } catch (e: any) {
       message.error(e?.message || '并行启动失败')
     }
-  }, [fetchTodos, autoFillPrompt, templates])
+  }, [fetchTodos, autoFillPrompt, templates, handleOpenTerminalInDock])
 
   const handleRequestFork = useCallback((todo: Todo, sessionId: string) => {
     setForkTarget({ todo, sessionId })
@@ -1560,12 +1469,14 @@ export default function TodoManage() {
       })
       setHiddenTerminalSessionIdByTodo(prev => ({ ...prev, [r.targetTodoId]: null }))
       setExpandedTerminal({ todoId: r.targetTodoId, sessionId })
+      const targetTodo = todos.find(t => t.id === r.targetTodoId)
+      if (targetTodo) handleOpenTerminalInDock(targetTodo, sessionId)
       fetchTodos()
       message.success('Fork 成功，新会话已启动')
     } catch (e: any) {
       message.error(e?.message || 'Fork 启动失败')
     }
-  }, [fetchTodos])
+  }, [fetchTodos, todos, handleOpenTerminalInDock])
 
   const handleHideTerminal = useCallback((todoId: string, sessionId: string) => {
     setHiddenTerminalSessionIdByTodo(prev => ({ ...prev, [todoId]: sessionId }))
@@ -1582,6 +1493,43 @@ export default function TodoManage() {
   const handleSetSideBySide = useCallback((todoId: string, secondSessionId: string | null) => {
     setSideBySideByTodo(prev => ({ ...prev, [todoId]: secondSessionId }))
   }, [])
+
+  // ─── Dock 集成 ───
+
+  const resolveTabContext = useCallback((tab: { id: string; todoId: string }) => {
+    const todo = todos.find(t => t.id === tab.todoId)
+    if (!todo) return { cwd: null, resumeTarget: null }
+    const sess = (todo.aiSessions || []).find(s => s.sessionId === tab.id)
+    const resumeTarget = sess?.nativeSessionId ? {
+      todoId: todo.id,
+      tool: sess.tool,
+      prompt: sess.prompt,
+      cwd: sess.cwd || todo.workDir || undefined,
+      nativeSessionId: sess.nativeSessionId,
+    } : null
+    return {
+      cwd: todo.workDir || sess?.cwd || null,
+      resumeTarget,
+    }
+  }, [todos])
+
+  const handleDockSessionRecovered = useCallback((_todoId: string, _next: string) => {
+    fetchTodos()
+  }, [fetchTodos])
+
+  const handleDockSessionSwitch = useCallback((_todoId: string, _next: string) => {
+    fetchTodos()
+  }, [fetchTodos])
+
+  const handleDockDone = useCallback((_todoId: string, _sessionId: string) => {
+    fetchTodos()
+  }, [fetchTodos])
+
+  const handleDockFork = useCallback((todoId: string, sessionId: string) => {
+    const todo = todos.find(t => t.id === todoId)
+    if (!todo) return
+    setForkTarget({ todo, sessionId })
+  }, [todos])
 
   // ─── 拖拽 ───
 
@@ -1706,10 +1654,11 @@ export default function TodoManage() {
       const { sessionId } = await openTerminal(cwd || '')
       setHiddenTerminalSessionIdByTodo(prev => ({ ...prev, [todo.id]: null }))
       setExpandedTerminal({ todoId: todo.id, sessionId })
+      handleOpenTerminalInDock(todo, sessionId)
     } catch (e: any) {
       message.error(e?.message || '启动终端失败')
     }
-  }, [])
+  }, [handleOpenTerminalInDock])
 
   const handleOpenNativeResume = useCallback(async (todo: Todo, session: Todo['aiSessions'][number]) => {
     const cwd = session.cwd || todo.workDir || undefined
@@ -1911,6 +1860,7 @@ export default function TodoManage() {
                       onExport={handleExport}
                       expandedTerminal={expandedTerminal}
                       setExpandedTerminal={setExpandedTerminal}
+                      onOpenSessionInDock={handleOpenTerminalInDock}
                       hiddenTerminalSessionId={hiddenTerminalSessionIdByTodo[t.id] || null}
                       onHideTerminal={handleHideTerminal}
                       onShowTerminal={handleShowTerminal}
@@ -1961,6 +1911,7 @@ export default function TodoManage() {
                 style={{ flex: splitV }}
                 expandedTerminal={expandedTerminal}
                 setExpandedTerminal={setExpandedTerminal}
+                onOpenSessionInDock={handleOpenTerminalInDock}
                 hiddenTerminalSessionIdByTodo={hiddenTerminalSessionIdByTodo}
                 collapsedTerminalByTodo={collapsedTerminalByTodo}
                 onToggleTerminalCollapsed={handleToggleTerminalCollapsed}
@@ -2004,6 +1955,7 @@ export default function TodoManage() {
                 style={{ flex: 100 - splitV }}
                 expandedTerminal={expandedTerminal}
                 setExpandedTerminal={setExpandedTerminal}
+                onOpenSessionInDock={handleOpenTerminalInDock}
                 hiddenTerminalSessionIdByTodo={hiddenTerminalSessionIdByTodo}
                 collapsedTerminalByTodo={collapsedTerminalByTodo}
                 onToggleTerminalCollapsed={handleToggleTerminalCollapsed}
@@ -2053,6 +2005,7 @@ export default function TodoManage() {
                 style={{ flex: splitV }}
                 expandedTerminal={expandedTerminal}
                 setExpandedTerminal={setExpandedTerminal}
+                onOpenSessionInDock={handleOpenTerminalInDock}
                 hiddenTerminalSessionIdByTodo={hiddenTerminalSessionIdByTodo}
                 collapsedTerminalByTodo={collapsedTerminalByTodo}
                 onToggleTerminalCollapsed={handleToggleTerminalCollapsed}
@@ -2096,6 +2049,7 @@ export default function TodoManage() {
                 style={{ flex: 100 - splitV }}
                 expandedTerminal={expandedTerminal}
                 setExpandedTerminal={setExpandedTerminal}
+                onOpenSessionInDock={handleOpenTerminalInDock}
                 hiddenTerminalSessionIdByTodo={hiddenTerminalSessionIdByTodo}
                 collapsedTerminalByTodo={collapsedTerminalByTodo}
                 onToggleTerminalCollapsed={handleToggleTerminalCollapsed}
@@ -2562,55 +2516,6 @@ export default function TodoManage() {
         onCancel={() => setForkTarget(null)}
         onConfirm={handleForkConfirm}
       />
-      {(() => {
-        if (!overlayTerminal) return null
-        const t = todos.find(x => x.id === overlayTerminal.todoId)
-        if (!t) return null
-        const sess = (t.aiSessions || []).find(s => s.sessionId === overlayTerminal.sessionId)
-        const resumeTarget = sess?.nativeSessionId ? {
-          todoId: t.id,
-          tool: sess.tool,
-          prompt: sess.prompt,
-          cwd: sess.cwd || t.workDir || undefined,
-          nativeSessionId: sess.nativeSessionId,
-        } : null
-        return (
-          <Modal
-            open
-            onCancel={() => setOverlayTerminal(null)}
-            footer={null}
-            title={`AI 终端 · ${t.title} · ${toolShortName(sess?.tool)}${sess?.label ? ` · ${sess.label}` : ''}`}
-            width="90vw"
-            style={{ top: 20 }}
-            styles={{ body: { padding: 0, height: '80vh', display: 'flex', flexDirection: 'column' } }}
-            destroyOnClose
-          >
-            <SessionViewer
-              key={overlayTerminal.sessionId}
-              sessionId={overlayTerminal.sessionId}
-              todoId={t.id}
-              status={t.status}
-              cwd={t.workDir || resumeTarget?.cwd || null}
-              resumeTarget={resumeTarget}
-              fillHeight
-              onSessionRecovered={(nextSessionId) => {
-                setOverlayTerminal({ todoId: t.id, sessionId: nextSessionId })
-                setExpandedTerminal({ todoId: t.id, sessionId: nextSessionId })
-                fetchTodos()
-              }}
-              onSessionSwitch={(nextSessionId) => {
-                setOverlayTerminal({ todoId: t.id, sessionId: nextSessionId })
-                setExpandedTerminal({ todoId: t.id, sessionId: nextSessionId })
-                fetchTodos()
-              }}
-              onClose={() => setOverlayTerminal(null)}
-              onDone={() => fetchTodos()}
-              onFork={() => { setForkTarget({ todo: t, sessionId: overlayTerminal.sessionId }); setOverlayTerminal(null) }}
-            />
-          </Modal>
-        )
-      })()}
-
       <PipelineRunDrawer
         open={pipelineDrawerOpen}
         runId={pipelineActiveRun?.id ?? null}
@@ -2627,7 +2532,13 @@ export default function TodoManage() {
         }}
       />
       </div>
-      <TerminalDock />
+      <TerminalDock
+        resolveTabContext={resolveTabContext}
+        onSessionRecovered={handleDockSessionRecovered}
+        onSessionSwitch={handleDockSessionSwitch}
+        onDone={handleDockDone}
+        onFork={handleDockFork}
+      />
     </div>
   )
 }
