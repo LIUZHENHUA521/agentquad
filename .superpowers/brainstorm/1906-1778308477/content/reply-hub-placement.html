@@ -1,0 +1,42 @@
+<h2>方案 C：轻量浮动徽标 + AI 面板列表</h2>
+<p class="subtitle">当前选择是：页面上保持一个不打扰的“有回复了”入口；点开后进入更完整的会话列表，再点击定位到对应 Claude Code 区域。</p>
+
+<div class="mockup">
+  <div class="mockup-header">页面右下角浮动入口（示意）</div>
+  <div class="mockup-body">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;min-height:260px;position:relative;">
+      <div style="border:1px solid #e5e7eb;border-radius:10px;padding:12px;background:#fff;">
+        <div style="font-weight:700;margin-bottom:8px;">P0 重要且紧急</div>
+        <div style="border:1px solid #fee2e2;border-radius:8px;padding:10px;margin-bottom:8px;background:#fff7f7;">修登录 bug <span style="float:right;color:#1677ff;">运行中</span></div>
+        <div style="border:1px solid #e5e7eb;border-radius:8px;padding:10px;">补测试</div>
+      </div>
+      <div style="border:1px solid #e5e7eb;border-radius:10px;padding:12px;background:#fff;">
+        <div style="font-weight:700;margin-bottom:8px;">P1 重要不紧急</div>
+        <div style="border:1px solid #dcfce7;border-radius:8px;padding:10px;background:#f6fffb;">重构 AI 终端 <span style="float:right;color:#fa8c16;">待验收</span></div>
+      </div>
+      <button class="mock-button" style="position:absolute;right:14px;bottom:14px;border-radius:999px;box-shadow:0 10px 30px rgba(22,119,255,.25);">
+        回复完成 3
+      </button>
+    </div>
+  </div>
+</div>
+
+<div class="mockup" style="margin-top:16px;">
+  <div class="mockup-header">AI 面板中的“待验收 / 待处理”列表（示意）</div>
+  <div class="mockup-body">
+    <div style="display:flex;flex-direction:column;gap:10px;">
+      <div style="border:1px solid #fed7aa;border-radius:10px;padding:12px;background:#fff7ed;display:flex;justify-content:space-between;gap:12px;align-items:center;">
+        <div><strong>Claude 回复完成</strong><br><span style="color:#6b7280;font-size:12px;">重构 AI 终端 · 2 分钟前 · P1</span></div>
+        <button class="mock-button">定位并展开</button>
+      </div>
+      <div style="border:1px solid #fed7aa;border-radius:10px;padding:12px;background:#fff7ed;display:flex;justify-content:space-between;gap:12px;align-items:center;">
+        <div><strong>Claude 回复完成</strong><br><span style="color:#6b7280;font-size:12px;">修登录 bug · 8 分钟前 · P0</span></div>
+        <button class="mock-button">定位并展开</button>
+      </div>
+      <div style="border:1px solid #fef3c7;border-radius:10px;padding:12px;background:#fffbeb;display:flex;justify-content:space-between;gap:12px;align-items:center;">
+        <div><strong>待交互确认</strong><br><span style="color:#6b7280;font-size:12px;">发布脚本 · 等待工具调用确认</span></div>
+        <button class="mock-button">去回复</button>
+      </div>
+    </div>
+  </div>
+</div>
