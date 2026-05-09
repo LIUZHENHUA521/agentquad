@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import { Drawer, Input, Select, Button, Tag, Space, message, Modal, Empty, Spin, Typography } from 'antd'
+import { Drawer, Input, Select, Button, Tag, Space, message, Modal, Empty, Spin, Typography, Tooltip } from 'antd'
 import { ReloadOutlined, LinkOutlined, DisconnectOutlined, SearchOutlined } from '@ant-design/icons'
 import {
   scanTranscripts, searchTranscripts, bindTranscript, unbindTranscript, previewTranscript,
@@ -23,6 +23,13 @@ function formatTs(ts: number | null | undefined) {
   if (!ts) return '-'
   const d = new Date(ts)
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
+
+const ellipsisTagStyle: React.CSSProperties = {
+  maxWidth: '100%',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
 }
 
 export default function TranscriptSearchDrawer({ open, onClose, preselectTodoId, initialQuery, initialCwd, onBindingChanged }: Props) {
@@ -175,12 +182,15 @@ export default function TranscriptSearchDrawer({ open, onClose, preselectTodoId,
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {items.map(f => {
                   const boundTodo = f.bound_todo_id ? todos.find(t => t.id === f.bound_todo_id) : null
+                  const boundTodoTitle = boundTodo ? `已挂到《${boundTodo.title}》` : ''
                   return (
-                    <div key={f.id} style={{ border: '1px solid #f0f0f0', borderRadius: 6, padding: 10 }}>
-                      <Space size={4} wrap>
+                    <div key={f.id} style={{ border: '1px solid #f0f0f0', borderRadius: 6, padding: 10, minWidth: 0 }}>
+                      <Space size={4} wrap style={{ width: '100%', minWidth: 0 }}>
                         <Tag>{f.tool}</Tag>
                         {boundTodo ? (
-                          <Tag color="success">已挂到《{boundTodo.title}》</Tag>
+                          <Tooltip title={boundTodoTitle}>
+                            <Tag color="success" style={ellipsisTagStyle}>{boundTodoTitle}</Tag>
+                          </Tooltip>
                         ) : (
                           <Tag color="warning">未挂回</Tag>
                         )}
