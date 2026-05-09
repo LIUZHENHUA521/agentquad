@@ -79,6 +79,79 @@ describe('lark-bot outbound SDK facade', () => {
   })
 })
 
+describe('lark-bot extractText mention stripping', () => {
+  it('strips bot mention placeholder so NEW_TASK_TRIGGERS can match "帮我做 X"', async () => {
+    const wizard = { handleInbound: vi.fn().mockResolvedValue({ reply: 'wizard started', action: 'wizard_started' }) }
+    const { bot, apiClient } = makeBot({ wizard })
+
+    await bot.handleEvent({
+      event_id: 'evt_at_bot',
+      event: {
+        message: {
+          chat_id: 'oc_default',
+          message_id: 'om_at',
+          content: '{"text":"@_user_1 帮我做一个登录页"}',
+          mentions: [{ key: '@_user_1', id: { open_id: 'ou_bot' }, name: 'quadtodo' }],
+        },
+        sender: { sender_id: { open_id: 'ou_user' }, sender_type: 'user' },
+      },
+    })
+
+    expect(wizard.handleInbound).toHaveBeenCalledWith(expect.objectContaining({
+      channel: 'lark',
+      text: '帮我做一个登录页',
+    }))
+    expect(apiClient.sendMessage).toHaveBeenCalledWith({ chatId: 'oc_default', text: 'wizard started' })
+  })
+
+  it('strips multiple consecutive mentions and preserves middle text', async () => {
+    const wizard = { handleInbound: vi.fn().mockResolvedValue({ reply: 'ok', action: 'handled' }) }
+    const { bot } = makeBot({ wizard })
+
+    await bot.handleEvent({
+      event_id: 'evt_multi_at',
+      event: {
+        message: {
+          chat_id: 'oc_default',
+          message_id: 'om_multi',
+          content: '{"text":"@_user_1 @_user_2 hello @_user_3 world"}',
+          mentions: [
+            { key: '@_user_1', id: { open_id: 'ou_a' }, name: 'A' },
+            { key: '@_user_2', id: { open_id: 'ou_b' }, name: 'B' },
+            { key: '@_user_3', id: { open_id: 'ou_c' }, name: 'C' },
+          ],
+        },
+        sender: { sender_id: { open_id: 'ou_user' }, sender_type: 'user' },
+      },
+    })
+
+    expect(wizard.handleInbound).toHaveBeenCalledWith(expect.objectContaining({
+      text: 'hello world',
+    }))
+  })
+
+  it('keeps text unchanged when there are no mentions', async () => {
+    const wizard = { handleInbound: vi.fn().mockResolvedValue({ reply: 'ok' }) }
+    const { bot } = makeBot({ wizard })
+
+    await bot.handleEvent({
+      event_id: 'evt_no_mention',
+      event: {
+        message: {
+          chat_id: 'oc_default',
+          message_id: 'om_plain',
+          content: '{"text":"普通消息"}',
+        },
+        sender: { sender_id: { open_id: 'ou_user' }, sender_type: 'user' },
+      },
+    })
+
+    expect(wizard.handleInbound).toHaveBeenCalledWith(expect.objectContaining({
+      text: '普通消息',
+    }))
+  })
+})
+
 describe('lark-bot inbound events', () => {
   it('normalizes thread message event, calls wizard, and replies in thread', async () => {
     const wizard = { handleInbound: vi.fn().mockResolvedValue({ reply: 'thread answer', action: 'answered' }) }

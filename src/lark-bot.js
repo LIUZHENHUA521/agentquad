@@ -5,15 +5,31 @@ function isBlank(value) {
   return value == null || String(value) === ''
 }
 
+function stripMentionKeys(text, mentions) {
+  if (!text || typeof text !== 'string') return text || ''
+  if (!Array.isArray(mentions) || mentions.length === 0) return text
+  let out = text
+  for (const m of mentions) {
+    const key = m?.key
+    if (!key || typeof key !== 'string') continue
+    // 例如 "@_user_1"。占位符通常前后有空格，这里把 "<key> " / " <key>" / "<key>" 都替成空。
+    const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    out = out.replace(new RegExp(escaped + '\\s*', 'g'), '')
+  }
+  return out
+}
+
 export function extractText(message = {}) {
   let content = message.content
   if (typeof content === 'string') {
     try { content = JSON.parse(content) } catch { content = {} }
   }
   if (!content || typeof content !== 'object') return ''
-  if (typeof content.text === 'string') return content.text
-  if (typeof content.title === 'string') return content.title
-  return ''
+  let raw = ''
+  if (typeof content.text === 'string') raw = content.text
+  else if (typeof content.title === 'string') raw = content.title
+  else return ''
+  return stripMentionKeys(raw, message.mentions).replace(/^\s+/, '')
 }
 
 export function rememberSeen(seen, key, max = 500) {
