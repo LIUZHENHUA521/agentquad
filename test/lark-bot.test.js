@@ -108,7 +108,8 @@ describe('lark-bot extractText post (富文本) parsing', () => {
       channel: 'lark',
       text: '帮我做：登录页',
     }))
-    expect(apiClient.sendMessage).toHaveBeenCalledWith({ chatId: 'oc_default', text: 'wizard up' })
+    // reply 进同一条消息（messageId 当 reply target）→ 飞书把它显示在用户当前的 thread 里
+    expect(apiClient.replyInThread).toHaveBeenCalledWith({ rootMessageId: 'om_post', text: 'wizard up' })
   })
 
   it('joins multi-line post bodies with newlines', async () => {
@@ -215,7 +216,7 @@ describe('lark-bot extractText mention stripping', () => {
       channel: 'lark',
       text: '帮我做一个登录页',
     }))
-    expect(apiClient.sendMessage).toHaveBeenCalledWith({ chatId: 'oc_default', text: 'wizard started' })
+    expect(apiClient.replyInThread).toHaveBeenCalledWith({ rootMessageId: 'om_at', text: 'wizard started' })
   })
 
   it('strips multiple consecutive mentions and preserves middle text', async () => {
@@ -328,7 +329,8 @@ describe('lark-bot inbound events', () => {
       text: 'fallback title',
       fromUserId: 'user_1',
     })
-    expect(apiClient.sendMessage).toHaveBeenCalledWith({ chatId: 'oc_default', text: 'chat answer' })
+    // 没 rootMessageId → 退回用 messageId 当 reply target → 飞书把 reply 显示在用户当前消息附近
+    expect(apiClient.replyInThread).toHaveBeenCalledWith({ rootMessageId: 'om_main', text: 'chat answer' })
   })
 
   it('drops other chats, bot/app messages, empty text, and duplicate event/message ids', async () => {
@@ -364,44 +366,47 @@ describe('lark-bot inbound events', () => {
   })
 
   it('retries failed main-stream reply delivery without re-running wizard', async () => {
+    // 没 rootMessageId → 退回用 messageId 当 reply target，走 replyInThread + fallback 都失败再走 retry
     const apiClient = makeApiClient({
-      sendMessage: vi.fn()
-        .mockResolvedValueOnce({ ok: false, reason: 'lark_send_failed', detail: 'send failed' })
+      replyInThread: vi.fn()
+        .mockResolvedValueOnce({ ok: false, reason: 'lark_reply_failed', detail: 'send failed' })
         .mockResolvedValueOnce({ ok: true, payload: { message_id: 'om_sent' } }),
+      sendMessage: vi.fn().mockResolvedValue({ ok: false, reason: 'lark_send_failed', detail: 'fb failed' }),
     })
     const wizard = { handleInbound: vi.fn().mockResolvedValue({ reply: 'please deliver', action: 'answered' }) }
     const { bot } = makeBot({ apiClient, wizard })
     const event = { event_id: 'evt_reply_retry', event: { message: { chat_id: 'oc_default', message_id: 'om_reply_retry', content: '{"text":"reply retry"}' }, sender: { sender_id: { open_id: 'ou_user' }, sender_type: 'user' } } }
 
-    await expect(bot.handleEvent(event)).resolves.toEqual({ ok: false, reason: 'lark_send_failed', detail: 'send failed' })
+    await expect(bot.handleEvent(event)).resolves.toEqual({ ok: false, reason: 'lark_reply_failed', detail: 'send failed' })
     await expect(bot.handleEvent(event)).resolves.toEqual({ ok: true, action: 'answered' })
     await expect(bot.handleEvent(event)).resolves.toEqual({ ok: true, action: 'duplicate' })
 
     expect(wizard.handleInbound).toHaveBeenCalledTimes(1)
-    expect(apiClient.sendMessage).toHaveBeenCalledTimes(2)
-    expect(apiClient.sendMessage).toHaveBeenLastCalledWith({ chatId: 'oc_default', text: 'please deliver' })
+    expect(apiClient.replyInThread).toHaveBeenCalledTimes(2)
+    expect(apiClient.replyInThread).toHaveBeenLastCalledWith({ rootMessageId: 'om_reply_retry', text: 'please deliver' })
   })
 
   it('clears original event id retry cache after redelivery succeeds via message id', async () => {
     const apiClient = makeApiClient({
-      sendMessage: vi.fn()
-        .mockResolvedValueOnce({ ok: false, reason: 'lark_send_failed', detail: 'send failed' })
+      replyInThread: vi.fn()
+        .mockResolvedValueOnce({ ok: false, reason: 'lark_reply_failed', detail: 'send failed' })
         .mockResolvedValueOnce({ ok: true, payload: { message_id: 'om_sent' } }),
+      sendMessage: vi.fn().mockResolvedValue({ ok: false, reason: 'lark_send_failed', detail: 'fb failed' }),
     })
     const wizard = { handleInbound: vi.fn().mockResolvedValue({ reply: 'please deliver once', action: 'answered' }) }
     const { bot } = makeBot({ apiClient, wizard })
     const originalEvent = { event_id: 'evt_original', event: { message: { chat_id: 'oc_default', message_id: 'om_x', content: '{"text":"reply retry"}' }, sender: { sender_id: { open_id: 'ou_user' }, sender_type: 'user' } } }
     const redeliveryEvent = { event_id: 'evt_new', event: { message: { chat_id: 'oc_default', message_id: 'om_x', content: '{"text":"reply retry"}' }, sender: { sender_id: { open_id: 'ou_user' }, sender_type: 'user' } } }
 
-    await expect(bot.handleEvent(originalEvent)).resolves.toEqual({ ok: false, reason: 'lark_send_failed', detail: 'send failed' })
+    await expect(bot.handleEvent(originalEvent)).resolves.toEqual({ ok: false, reason: 'lark_reply_failed', detail: 'send failed' })
     await expect(bot.handleEvent(redeliveryEvent)).resolves.toEqual({ ok: true, action: 'answered' })
     expect(wizard.handleInbound).toHaveBeenCalledTimes(1)
-    expect(apiClient.sendMessage).toHaveBeenCalledTimes(2)
+    expect(apiClient.replyInThread).toHaveBeenCalledTimes(2)
 
     await expect(bot.handleEvent(originalEvent)).resolves.toEqual({ ok: true, action: 'duplicate' })
 
     expect(wizard.handleInbound).toHaveBeenCalledTimes(1)
-    expect(apiClient.sendMessage).toHaveBeenCalledTimes(2)
+    expect(apiClient.replyInThread).toHaveBeenCalledTimes(2)
   })
 
   it('retries failed thread reply when both reply and fallback fail, then succeeds via reply', async () => {
@@ -427,21 +432,66 @@ describe('lark-bot inbound events', () => {
 
   it('keeps cached reply retry pending when redelivery delivery fails again', async () => {
     const apiClient = makeApiClient({
-      sendMessage: vi.fn()
-        .mockResolvedValueOnce({ ok: false, reason: 'lark_send_failed', detail: 'first send failed' })
-        .mockResolvedValueOnce({ ok: false, reason: 'lark_send_failed', detail: 'second send failed' })
+      replyInThread: vi.fn()
+        .mockResolvedValueOnce({ ok: false, reason: 'lark_reply_failed', detail: 'first send failed' })
+        .mockResolvedValueOnce({ ok: false, reason: 'lark_reply_failed', detail: 'second send failed' })
         .mockResolvedValueOnce({ ok: true, payload: { message_id: 'om_sent' } }),
+      sendMessage: vi.fn().mockResolvedValue({ ok: false, reason: 'lark_send_failed', detail: 'fb failed' }),
     })
     const wizard = { handleInbound: vi.fn().mockResolvedValue({ reply: 'eventual reply', action: 'answered' }) }
     const { bot } = makeBot({ apiClient, wizard })
     const event = { event_id: 'evt_reply_retry_pending', event: { message: { chat_id: 'oc_default', message_id: 'om_reply_retry_pending', content: '{"text":"reply retry pending"}' }, sender: { sender_id: { open_id: 'ou_user' }, sender_type: 'user' } } }
 
-    await expect(bot.handleEvent(event)).resolves.toEqual({ ok: false, reason: 'lark_send_failed', detail: 'first send failed' })
+    await expect(bot.handleEvent(event)).resolves.toEqual({ ok: false, reason: 'lark_reply_failed', detail: 'first send failed' })
     await expect(bot.handleEvent(event)).resolves.toEqual({ ok: false, reason: 'reply_retry_failed', detail: 'second send failed' })
     await expect(bot.handleEvent(event)).resolves.toEqual({ ok: true, action: 'answered' })
 
     expect(wizard.handleInbound).toHaveBeenCalledTimes(1)
-    expect(apiClient.sendMessage).toHaveBeenCalledTimes(3)
+    expect(apiClient.replyInThread).toHaveBeenCalledTimes(3)
+  })
+})
+
+describe('lark-bot unbound thread (user-created topic) routing', () => {
+  it('routes wizard reply back into the same lark thread via messageId when rootMessageId is null', async () => {
+    // 用户在新建话题里 @bot 发"帮我做..."，飞书事件: thread_id 非空，root_id 空。
+    // wizard 在新话题里启动，wizard reply 应该 reply 进同一个 thread（用 messageId 当 reply target）。
+    const wizard = { handleInbound: vi.fn().mockResolvedValue({ reply: '📁 选个工作目录', action: 'wizard_started' }) }
+    const { bot, apiClient } = makeBot({ wizard })
+
+    await bot.handleEvent({
+      event_id: 'evt_new_topic',
+      event: {
+        message: {
+          chat_id: 'oc_default',
+          message_id: 'om_user_first_msg',
+          thread_id: 'omt_user_new_topic',
+          // root_id intentionally absent — 新话题第一条消息没 root
+          msg_type: 'post',
+          content: JSON.stringify({
+            content: [[
+              { tag: 'at', user_id: '@_user_1', user_name: 'bot' },
+              { tag: 'text', text: ' 帮我做：登录页' },
+            ]],
+          }),
+          mentions: [{ key: '@_user_1', id: { open_id: 'ou_bot' }, mentioned_type: 'bot' }],
+        },
+        sender: { sender_id: { open_id: 'ou_user' }, sender_type: 'user' },
+      },
+    })
+
+    expect(wizard.handleInbound).toHaveBeenCalledWith(expect.objectContaining({
+      channel: 'lark',
+      threadId: 'omt_user_new_topic',
+      rootMessageId: null,
+      messageId: 'om_user_first_msg',
+      text: '帮我做：登录页',
+    }))
+    // wizard reply 用 messageId 当 reply target，飞书把 reply 显示在用户当前话题里
+    expect(apiClient.replyInThread).toHaveBeenCalledWith({
+      rootMessageId: 'om_user_first_msg',
+      text: '📁 选个工作目录',
+    })
+    expect(apiClient.sendMessage).not.toHaveBeenCalled()
   })
 })
 

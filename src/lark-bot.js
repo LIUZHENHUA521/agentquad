@@ -252,9 +252,14 @@ export function createLarkBot({
 
     const action = result?.action || 'handled'
     if (result?.reply) {
+      // 优先 reply 进用户当前所在的 thread：
+      //   - rootMessageId（用户在已有 thread 里发的回复）
+      //   - 退而求其次用 messageId（用户在新建话题里发第一条消息，没 root_id；
+      //     用 reply API 直接回那条消息可让飞书把 reply 显示在同一个话题里）
+      const replyTarget = ev.rootMessageId || ev.messageId || null
       const replyContext = {
         chatId: ev.chatId,
-        rootMessageId: ev.rootMessageId,
+        rootMessageId: replyTarget,
         text: result.reply,
         action,
         retryKeys: [ev.eventId, ev.messageId].filter(Boolean),

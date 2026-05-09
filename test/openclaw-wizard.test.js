@@ -765,7 +765,10 @@ describe('openclaw-wizard state machine', () => {
     expect(writes).toHaveLength(0)
   })
 
-  it('Lark: thread/root reply fails closed when route lookup is unavailable', async () => {
+  it('Lark: unbound thread reply falls through to NEW_TASK_TRIGGERS so user can start wizard inside their own topic', async () => {
+    // 用户在自己新建的话题里 @bot 发"帮我做 X" → bridge 里没有绑这个 thread 的 session
+    // → 不再 hard reject，fallthrough 到 NEW_TASK_TRIGGERS 启动 wizard。
+    // submitReply / getLastPushedSession 都不应被调用（避免污染 ask_user / lastPush 路由）。
     const writes = []
     const ai2 = {
       sessions: new Map([
@@ -780,7 +783,7 @@ describe('openclaw-wizard state machine', () => {
     const getLastPushedSession = vi.fn(() => 'last-sess')
     const fakeBridge = {
       ...bridge,
-      findSessionByRoute: undefined,
+      findSessionByRoute: () => null,   // 返回 null = unbound thread
       getLastPushedSession,
     }
     const w2 = createOpenClawWizard({
@@ -791,11 +794,10 @@ describe('openclaw-wizard state machine', () => {
     const r = await w2.handleInbound({
       channel: 'lark',
       chatId: 'oc_1',
-      rootMessageId: 'om_missing',
-      text: '帮我做 不应启动新任务',
+      threadId: 'omt_user_new_topic',
+      text: '帮我做 一个登录页',
     })
-    expect(r.action).toBe('session_not_found')
-    expect(r.reply).toContain('没有找到对应运行中的任务')
+    expect(r.action).toBe('wizard_started')
     expect(submitReply).not.toHaveBeenCalled()
     expect(getLastPushedSession).not.toHaveBeenCalled()
     expect(writes).toHaveLength(0)

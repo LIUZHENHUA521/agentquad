@@ -1068,14 +1068,17 @@ export function createOpenClawWizard({
 
     // Lark 任务话题/root 回复必须严格隔离到原始路由：不允许被全局 ask_user、新任务触发词、
     // lastPush 或单活跃 session 等模糊 fallback 消费，避免把群内任务线程回复送到不相关会话。
-    if (isLarkThreadReply) {
-      if (!openclaw?.findSessionByRoute) {
-        return { reply: '没有找到对应运行中的任务', action: 'session_not_found' }
-      }
-      const sid = openclaw.findSessionByRoute({ channel, chatId, threadId, rootMessageId })
-      if (!sid) {
-        return { reply: '没有找到对应运行中的任务', action: 'session_not_found' }
-      }
+    //
+    // 但 *用户自己新建的话题* 也是 thread message，并未绑过任何 quadtodo session ——
+    // 这种情况下要把消息当成普通群消息处理（让 NEW_TASK_TRIGGERS / wizard 能在新话题里启动）。
+    // 所以 thread 路径只在 *找到了绑定到这个 thread 的 PTY session* 时启用 stdin proxy。
+    let larkBoundThreadSid = null
+    if (isLarkThreadReply && openclaw?.findSessionByRoute) {
+      larkBoundThreadSid = openclaw.findSessionByRoute({ channel, chatId, threadId, rootMessageId }) || null
+    }
+
+    if (larkBoundThreadSid) {
+      const sid = larkBoundThreadSid
       if (!pty?.write || !pty.has?.(sid)) {
         return {
           reply: '这个任务已结束，请在群里重新发起任务。',
@@ -1188,10 +1191,11 @@ export function createOpenClawWizard({
     // 只在 General（threadId 空）才允许 NEW_TASK_TRIGGERS 启动 wizard。
     const isInTopicOfSupergroup =
       channel === 'telegram' && chatId && /^-100\d+/.test(String(chatId)) && threadId != null
-    const newTaskGateOpen = !isInTopicOfSupergroup && !isLarkThreadReply
+    // unbound lark thread（用户自己新建的话题，没绑 session）也允许 NEW_TASK_TRIGGERS
+    const newTaskGateOpen = !isInTopicOfSupergroup && !larkBoundThreadSid
 
     // 2. 进行中 wizard → 推进
-    const active = isLarkThreadReply ? null : getActiveWizard(routeKey)
+    const active = larkBoundThreadSid ? null : getActiveWizard(routeKey)
     if (active) {
       // 触发完成动作的 message id 总是最新一条 → 滚动更新
       if (messageId) active.triggerMessageId = messageId
