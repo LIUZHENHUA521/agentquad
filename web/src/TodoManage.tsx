@@ -770,6 +770,7 @@ export default function TodoManage() {
   // 数据
   const [todos, setTodos] = useState<Todo[]>([])
   const [loading, setLoading] = useState(false)
+  const [lastFetchedFilter, setLastFetchedFilter] = useState<'todo' | 'done' | ''>('todo')
   const [templates, setTemplates] = useState<PromptTemplate[]>([])
   const refreshTemplates = useCallback(async () => {
     try { setTemplates(await listTemplates()) } catch { /* ignore */ }
@@ -934,6 +935,7 @@ export default function TodoManage() {
     catch { return new Set() }
   })
   const [highlightTodoId, setHighlightTodoId] = useState<string | null>(null)
+  const [pendingJumpTodoId, setPendingJumpTodoId] = useState<string | null>(null)
   const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [forkTarget, setForkTarget] = useState<{ todo: Todo; sessionId: string } | null>(null)
   const [isNarrow, setIsNarrow] = useState<boolean>(() => typeof window !== 'undefined' ? window.innerWidth < 900 : false)
@@ -1010,24 +1012,39 @@ export default function TodoManage() {
   const handleOpenAttentionItem = useCallback((item: AttentionItem) => {
     setDashboardOpen(false)
     setViewMode('list')
-    setFilterStatus('')
     setKeyword('')
+    setFilterStatus('todo')
     setHiddenTerminalSessionIdByTodo(prev => ({ ...prev, [item.todoId]: null }))
     setCollapsedTerminalByTodo(prev => ({ ...prev, [item.todoId]: false }))
     setExpandedTerminal({ todoId: item.todoId, sessionId: item.sessionId })
     setOverlayTerminal(null)
     setHighlightTodoId(item.todoId)
+    setPendingJumpTodoId(item.todoId)
 
     if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current)
     highlightTimerRef.current = setTimeout(() => {
       setHighlightTodoId(null)
       highlightTimerRef.current = null
     }, 3000)
-
-    window.setTimeout(() => {
-      document.getElementById(`todo-card-${item.todoId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-    }, 120)
   }, [])
+
+  useEffect(() => {
+    if (!pendingJumpTodoId) return
+    if (lastFetchedFilter !== filterStatus) return
+    if (todos.find(t => t.id === pendingJumpTodoId)) {
+      const targetId = pendingJumpTodoId
+      window.setTimeout(() => {
+        document.getElementById(`todo-card-${targetId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }, 80)
+      setPendingJumpTodoId(null)
+      return
+    }
+    if (filterStatus === 'todo') {
+      setFilterStatus('')
+      return
+    }
+    setPendingJumpTodoId(null)
+  }, [todos, pendingJumpTodoId, filterStatus, lastFetchedFilter])
 
   useEffect(() => {
     return () => {
@@ -1058,6 +1075,7 @@ export default function TodoManage() {
       if (keyword) params.keyword = keyword
       const list = await listTodos(params)
       setTodos(list)
+      setLastFetchedFilter(filterStatus)
     } catch (e: any) {
       message.error(e?.message || '网络错误')
     }
