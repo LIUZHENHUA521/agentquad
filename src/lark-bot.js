@@ -2,12 +2,12 @@ import { createLarkApiClient } from './lark-api-client.js'
 import { createLarkEventClient } from './lark-event-client.js'
 
 // 飞书内置 emoji_type 枚举里挑出一组"在思考 / 在干活"语义的值。
-// 飞书的 emoji_type 是固定枚举（不是任意 unicode），EYES 等不在内 —— 只放保守候选。
-// 选用偏"思考/收到/工作中"语义，避免 LAUGH/HEART/CLAP 这种"赞叹/欢呼"误读。
+// 飞书的 emoji_type 是固定枚举（不是任意 unicode），不少看着合理的值（EYES / CLOCK /
+// WOWFACE 等）都被服务端拒为 'reaction type is invalid'（code 231001）。
+// 这里只保留实际验证过、飞书会接受的 emoji_type。
 const BUSY_REACTION_EMOJIS = [
   'THINKING',    // 🤔 思考中
   'OK',          // 👌 已收到，正在做
-  'CLOCK',       // ⏰ 计时中
 ]
 
 function pickBusyReactionEmoji(rng = Math.random) {

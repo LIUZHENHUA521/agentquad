@@ -194,6 +194,26 @@ describe('lark-api-client', () => {
     await expect(client.replyWithCard({ rootMessageId: 'om_x' })).resolves.toEqual({ ok: false, reason: 'card_required' })
   })
 
+  it('surfaces Feishu response code+msg in error detail (not just axios status)', async () => {
+    // 飞书业务错误（如 reaction type is invalid）在 axios error.response.data 里。
+    // normalizeError 应该优先抓 {code, msg} 而不是 axios 的 message。
+    const sdkClient = makeSdkClient({
+      im: {
+        messageReaction: {
+          create: vi.fn().mockRejectedValue(Object.assign(new Error('Request failed with status code 400'), {
+            response: { data: { code: 231001, msg: 'reaction type is invalid.' } },
+          })),
+        },
+      },
+    })
+    const client = createLarkApiClient({ appId: 'cli_a123', appSecret: 'secret', clientFactory: () => sdkClient })
+
+    const r = await client.addReaction({ messageId: 'om_user', emojiType: 'BOGUS' })
+    expect(r.ok).toBe(false)
+    expect(r.reason).toBe('lark_reaction_failed')
+    expect(r.detail).toBe('code 231001: reaction type is invalid.')
+  })
+
   it('deleteReaction calls SDK delete with message_id + reaction_id and validates input', async () => {
     const sdkClient = makeSdkClient()
     const client = createLarkApiClient({ appId: 'cli_a123', appSecret: 'secret', clientFactory: () => sdkClient })

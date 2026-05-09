@@ -10,6 +10,16 @@ function normalizePayload(response) {
 }
 
 function normalizeError(error) {
+  // 飞书 SDK 把 axios 错误抛出来，response.data 里有 {code, msg} 是真正的业务错误。
+  // 优先把它捞出来 —— "code 231001: reaction type is invalid" 比 "Request failed with
+  // status code 400" 有用得多。
+  const data = error?.response?.data
+  if (data && typeof data === 'object') {
+    const parts = []
+    if (data.code != null) parts.push(`code ${data.code}`)
+    if (data.msg) parts.push(data.msg)
+    if (parts.length) return parts.join(': ')
+  }
   return error?.message || error?.description || String(error)
 }
 

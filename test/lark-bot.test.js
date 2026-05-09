@@ -114,11 +114,17 @@ describe('lark-bot busy reaction', () => {
     })
   })
 
-  it('whitelist now contains "thinking" semantics (not laugh/heart/clap noise)', () => {
-    // 用户反馈：之前混了 LAUGH/HEART/CLAP 等"赞叹/欢呼"语义太杂；改成"在思考/在干活"。
+  it('whitelist contains only Feishu-validated thinking-semantics emojis', () => {
+    // 用户反馈：之前混了 LAUGH/HEART/CLAP 等"赞叹/欢呼"语义太杂；改成"在思考"。
+    // 然后又发现 CLOCK 被飞书拒（code 231001 reaction type is invalid），删掉。
     expect(BUSY_REACTION_EMOJIS).toContain('THINKING')
-    for (const e of ['LAUGH', 'HEART', 'CLAP', 'WINK', 'WOWFACE', 'BLUSH', 'WHIMPER', 'WOW', 'THUMBSUP']) {
-      expect(BUSY_REACTION_EMOJIS).not.toContain(e)
+    expect(BUSY_REACTION_EMOJIS).toContain('OK')
+    for (const invalid of ['EYES', 'CLOCK', 'WOWFACE']) {
+      // 已经踩过坑确认飞书拒绝的值
+      expect(BUSY_REACTION_EMOJIS).not.toContain(invalid)
+    }
+    for (const noisy of ['LAUGH', 'HEART', 'CLAP', 'WINK', 'BLUSH', 'WHIMPER', 'WOW', 'THUMBSUP']) {
+      expect(BUSY_REACTION_EMOJIS).not.toContain(noisy)
     }
   })
 
