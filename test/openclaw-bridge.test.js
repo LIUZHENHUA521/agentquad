@@ -236,7 +236,8 @@ describe('openclaw-bridge.postText', () => {
     expect(calls).toHaveLength(0)
   })
 
-  it('postText falls back to lark sendMessage when replyInThread fails (e.g. root withdrawn)', async () => {
+  it('postText drops the message when lark replyInThread fails (does not fallback to chat send)', async () => {
+    // thread root 失效（用户撤回）→ 不要把 PTY 输出泼到群主消息流。
     const replyCalls = []
     const sendCalls = []
     const bridge = createOpenClawBridge({
@@ -250,7 +251,7 @@ describe('openclaw-bridge.postText', () => {
         },
         sendMessage: async (args) => {
           sendCalls.push(args)
-          return { ok: true, payload: { message_id: 'om_fallback' } }
+          return { ok: true, payload: { message_id: 'om_should_not_be_sent' } }
         },
       },
     })
@@ -261,32 +262,11 @@ describe('openclaw-bridge.postText', () => {
       rootMessageId: 'om_withdrawn',
     })
     const r = await bridge.postText({ sessionId: 's-lark-fb', message: 'AI output' })
-    expect(r.ok).toBe(true)
-    expect(r.replyFallback).toBe(true)
-    expect(r.payload).toEqual({ message_id: 'om_fallback' })
-    expect(replyCalls).toEqual([{ rootMessageId: 'om_withdrawn', text: 'AI output' }])
-    expect(sendCalls).toEqual([{ chatId: 'oc_1', text: 'AI output' }])
-  })
-
-  it('postText keeps original failure when both lark reply and fallback fail', async () => {
-    const bridge = createOpenClawBridge({
-      getConfig: () => ({ openclaw: { enabled: true, channel: 'lark' } }),
-      spawnFn: spy({ stdout: '{}' }),
-      logger: { warn() {}, info() {} },
-      larkBot: {
-        replyInThread: async () => ({ ok: false, reason: 'lark_reply_failed', detail: 'reply boom' }),
-        sendMessage: async () => ({ ok: false, reason: 'lark_send_failed', detail: 'send boom' }),
-      },
-    })
-    bridge.registerSessionRoute('s-lark-double', {
-      channel: 'lark',
-      targetUserId: 'oc_1',
-      rootMessageId: 'om_root',
-    })
-    const r = await bridge.postText({ sessionId: 's-lark-double', message: 'AI output' })
     expect(r.ok).toBe(false)
     expect(r.reason).toBe('lark_reply_failed')
-    expect(r.detail).toBe('reply boom')
+    expect(r.detail).toBe('The message was withdrawn.')
+    expect(replyCalls).toEqual([{ rootMessageId: 'om_withdrawn', text: 'AI output' }])
+    expect(sendCalls).toEqual([])  // 不再 fallback
   })
 
   it('postText refuses lark route without rootMessageId', async () => {

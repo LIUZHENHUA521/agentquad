@@ -163,19 +163,11 @@ export function createLarkBot({
     return getApiClient().addReaction({ messageId, emojiType })
   }
 
-  // thread root 被撤回 / 飞书 5xx 时，回退到 chat-level sendMessage，避免 bot 完全沉默。
-  // 兜底仅当 chatId 可用时启用；纯 reply 没有 chatId 的话就保留原失败语义。
+  // thread root 失效时（用户撤回 / 飞书 5xx）静默 drop。"撤回 root" = 用户明示
+  // "不想看这个对话了"，把消息泼到群主消息流是污染。reply 失败就让它失败。
   async function deliverReply({ chatId, rootMessageId, text } = {}) {
     if (!rootMessageId) return sendMessage({ chatId, text })
-    const r = await replyInThread({ rootMessageId, text })
-    if (r?.ok) return r
-    if (chatId && r?.reason === 'lark_reply_failed') {
-      logger.warn?.(`[lark-bot] reply failed (${r.detail || 'unknown'}); fallback to chat sendMessage`)
-      const fb = await sendMessage({ chatId, text })
-      if (fb?.ok) return { ...fb, replyFallback: true }
-      return r
-    }
-    return r
+    return replyInThread({ rootMessageId, text })
   }
 
   function clearPendingReplyRetry(replyContext, ev) {

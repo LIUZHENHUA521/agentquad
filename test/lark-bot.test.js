@@ -571,11 +571,12 @@ describe('lark-bot unbound thread (user-created topic) routing', () => {
   })
 })
 
-describe('lark-bot reply fallback', () => {
-  it('falls back to sendMessage when replyInThread fails (e.g. root message withdrawn)', async () => {
+describe('lark-bot reply when thread root is gone', () => {
+  it('does NOT fallback to sendMessage when replyInThread fails (root withdrawn)', async () => {
+    // 用户撤回 thread root = 不想看了，对应消息直接放弃，不污染群主消息流
     const apiClient = makeApiClient({
       replyInThread: vi.fn().mockResolvedValue({ ok: false, reason: 'lark_reply_failed', detail: 'The message was withdrawn.' }),
-      sendMessage: vi.fn().mockResolvedValue({ ok: true, payload: { message_id: 'om_fallback' } }),
+      sendMessage: vi.fn().mockResolvedValue({ ok: true, payload: { message_id: 'om_should_not_be_sent' } }),
     })
     const wizard = { handleInbound: vi.fn().mockResolvedValue({ reply: 'wizard reply', action: 'wizard_started' }) }
     const { bot } = makeBot({ apiClient, wizard })
@@ -583,27 +584,10 @@ describe('lark-bot reply fallback', () => {
 
     const r = await bot.handleEvent(event)
 
-    expect(r).toEqual({ ok: true, action: 'wizard_started' })
-    expect(apiClient.replyInThread).toHaveBeenCalledWith({ rootMessageId: 'om_withdrawn_root', text: 'wizard reply' })
-    expect(apiClient.sendMessage).toHaveBeenCalledWith({ chatId: 'oc_default', text: 'wizard reply' })
-  })
-
-  it('keeps the original failure when fallback also fails', async () => {
-    const apiClient = makeApiClient({
-      replyInThread: vi.fn().mockResolvedValue({ ok: false, reason: 'lark_reply_failed', detail: 'reply boom' }),
-      sendMessage: vi.fn().mockResolvedValue({ ok: false, reason: 'lark_send_failed', detail: 'send boom' }),
-    })
-    const wizard = { handleInbound: vi.fn().mockResolvedValue({ reply: 'doomed', action: 'attempted' }) }
-    const { bot } = makeBot({ apiClient, wizard })
-    const event = { event_id: 'evt_double_fail', event: { message: { chat_id: 'oc_default', message_id: 'om_x', root_id: 'om_root', content: '{"text":"帮我做一个任务"}' }, sender: { sender_id: { open_id: 'ou_user' }, sender_type: 'user' } } }
-
-    const r = await bot.handleEvent(event)
-
     expect(r.ok).toBe(false)
     expect(r.reason).toBe('lark_reply_failed')
-    expect(r.detail).toBe('reply boom')
-    expect(apiClient.replyInThread).toHaveBeenCalledTimes(1)
-    expect(apiClient.sendMessage).toHaveBeenCalledTimes(1)
+    expect(apiClient.replyInThread).toHaveBeenCalledWith({ rootMessageId: 'om_withdrawn_root', text: 'wizard reply' })
+    expect(apiClient.sendMessage).not.toHaveBeenCalled()
   })
 })
 
