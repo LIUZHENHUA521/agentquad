@@ -1,6 +1,7 @@
 import React from 'react'
 import { Tooltip } from 'antd'
 import type { AttentionItem, AttentionCounts } from '../replyHub'
+import { useIsMobile } from '../hooks/useIsMobile'
 
 interface Props {
   items: AttentionItem[]
@@ -11,6 +12,8 @@ interface Props {
 }
 
 export default function AttentionRail({ items, counts, hasNew, onActivate, onOpenDashboard }: Props) {
+  const isMobile = useIsMobile()
+  if (isMobile) return null
   // Empty state: 8px thin line
   if (counts.total === 0) {
     return <div className="attention-rail attention-rail--empty" />

@@ -21,6 +21,7 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import type { ResumeSessionInput } from '../api'
 import { useTerminalDockStore, DOCK_LIMITS, DockTab } from '../store/terminalDockStore'
+import { useIsMobile } from '../hooks/useIsMobile'
 import TerminalDockTab from './TerminalDockTab'
 import PopOutTerminalWindow from './PopOutTerminalWindow'
 import './dock.css'
@@ -76,6 +77,7 @@ export default function TerminalDock({
   resolveTabContext, onSessionRecovered, onSessionSwitch, onDone, onFork,
 }: Props = {}) {
   const { widthPx, isCollapsed, openTabs, activeTabId, splitSecondaryTabId, poppedOutTabIds, toggleCollapsed, setWidth } = useTerminalDockStore()
+  const isMobile = useIsMobile()
   const dragStartRef = useRef<{ x: number; w: number } | null>(null)
   const moveHandlerRef = useRef<((ev: MouseEvent) => void) | null>(null)
   const upHandlerRef = useRef<(() => void) | null>(null)
@@ -154,6 +156,10 @@ export default function TerminalDock({
     })
 
   if (isCollapsed) {
+    if (isMobile) {
+      // mobile: dock is opened on demand from cards/dashboard, no idle stub
+      return <>{poppedNodes}</>
+    }
     return (
       <>
         <div className="terminal-dock terminal-dock--collapsed">
@@ -174,10 +180,10 @@ export default function TerminalDock({
   return (
     <>
     <div
-      className="terminal-dock"
-      style={{ width: widthPx, minWidth: DOCK_LIMITS.MIN_W, maxWidth: DOCK_LIMITS.MAX_W }}
+      className={`terminal-dock ${isMobile ? 'is-mobile' : ''}`}
+      style={isMobile ? undefined : { width: widthPx, minWidth: DOCK_LIMITS.MIN_W, maxWidth: DOCK_LIMITS.MAX_W }}
     >
-      <div className="terminal-dock__divider" onMouseDown={onMouseDownDivider} />
+      {!isMobile && <div className="terminal-dock__divider" onMouseDown={onMouseDownDivider} />}
       <div className="terminal-dock__head">
         <span className="terminal-dock__title">AI 终端 Dock</span>
         <span className="terminal-dock__count">{openTabs.length} 个会话</span>

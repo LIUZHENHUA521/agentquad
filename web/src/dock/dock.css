@@ -110,3 +110,17 @@
 .terminal-dock__body.is-split .terminal-dock__pane.is-secondary {
   border-left: 2px solid #1677ff;
 }
+
+/* === Mobile === */
+@media (max-width: 768px) {
+  .terminal-dock.is-mobile {
+    position: fixed;
+    inset: 0;
+    width: 100% !important;
+    max-width: 100% !important;
+    z-index: 800;
+    border-left: none;
+  }
+  /* Hide pc-only controls on mobile (split, popout) */
+  .terminal-dock.is-mobile .pc-only { display: none !important; }
+}
