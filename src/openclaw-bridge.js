@@ -15,6 +15,7 @@ import { readFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
 import { toTelegramV2, toPlainText } from './telegram-markdown.js'
+import { hasPermissionButtons, buildPermissionCard } from './lark-card.js'
 
 const DEFAULT_CLI_BIN = 'openclaw'
 // openclaw CLI 冷启动 ~17s + Telegram 网络 ~10s，给 60s 足够
@@ -254,6 +255,22 @@ export function createOpenClawBridge({
         return { ok: false, reason: 'lark_root_message_missing' }
       }
       if (!larkBot?.replyInThread) return { ok: false, reason: 'lark_bot_not_running' }
+
+      // 权限按钮：把 telegram 风格的 inline_keyboard 转成飞书 interactive card
+      // 走 replyWithCard 回到同 thread；按钮 value 保留 qt:perm:<short>:allow|deny
+      // callback_data，飞书 card.action.trigger 事件触发后由 lark-bot 路由回 wizard。
+      if (hasPermissionButtons(replyMarkup) && larkBot?.replyWithCard) {
+        const card = buildPermissionCard({ message, replyMarkup })
+        const cardR = await larkBot.replyWithCard({ rootMessageId, card })
+        if (cardR.ok) {
+          recordSend()
+          if (sessionId && rawTarget) lastPushByPeer.set(String(rawTarget), { sessionId, sentAt: Date.now() })
+          return { ok: true, payload: cardR.payload, fast: true, card: true }
+        }
+        logger.warn?.(`[openclaw-bridge] lark permission card send failed (${cardR.reason || 'unknown'}: ${cardR.detail || ''}); falling back to plain text reply`)
+        // 卡片发失败 → fallback 到纯文本（至少把"等待授权"消息丢进 thread，让用户知道）
+      }
+
       const r = await larkBot.replyInThread({ rootMessageId, text: message })
       if (r.ok) {
         recordSend()

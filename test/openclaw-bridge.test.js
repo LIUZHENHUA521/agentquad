@@ -236,6 +236,84 @@ describe('openclaw-bridge.postText', () => {
     expect(calls).toHaveLength(0)
   })
 
+  it('postText sends a lark interactive card when replyMarkup carries qt:perm: buttons', async () => {
+    const cardCalls = []
+    const replyCalls = []
+    const bridge = createOpenClawBridge({
+      getConfig: () => ({ openclaw: { enabled: true, channel: 'lark' } }),
+      spawnFn: spy({ stdout: '{}' }),
+      logger: { warn() {}, info() {} },
+      larkBot: {
+        replyInThread: async (args) => {
+          replyCalls.push(args)
+          return { ok: true, payload: { message_id: 'om_text_should_not_send' } }
+        },
+        replyWithCard: async (args) => {
+          cardCalls.push(args)
+          return { ok: true, payload: { message_id: 'om_card' } }
+        },
+      },
+    })
+    bridge.registerSessionRoute('s-lark-card', {
+      channel: 'lark',
+      targetUserId: 'oc_1',
+      threadId: 'omt_1',
+      rootMessageId: 'om_root',
+    })
+    const r = await bridge.postText({
+      sessionId: 's-lark-card',
+      message: '请允许 git push',
+      replyMarkup: {
+        inline_keyboard: [[
+          { text: 'Allow', callback_data: 'qt:perm:abcd:allow' },
+          { text: 'Deny', callback_data: 'qt:perm:abcd:deny' },
+        ]],
+      },
+    })
+
+    expect(r.ok).toBe(true)
+    expect(r.card).toBe(true)
+    expect(replyCalls).toEqual([])  // 没走纯文本路径
+    expect(cardCalls).toHaveLength(1)
+    expect(cardCalls[0].rootMessageId).toBe('om_root')
+    expect(cardCalls[0].card.elements.find((el) => el.tag === 'action').actions).toHaveLength(2)
+  })
+
+  it('postText falls back to plain text reply when the lark card send fails', async () => {
+    const cardCalls = []
+    const replyCalls = []
+    const bridge = createOpenClawBridge({
+      getConfig: () => ({ openclaw: { enabled: true, channel: 'lark' } }),
+      spawnFn: spy({ stdout: '{}' }),
+      logger: { warn() {}, info() {} },
+      larkBot: {
+        replyInThread: async (args) => {
+          replyCalls.push(args)
+          return { ok: true, payload: { message_id: 'om_text' } }
+        },
+        replyWithCard: async (args) => {
+          cardCalls.push(args)
+          return { ok: false, reason: 'lark_send_card_failed', detail: 'card boom' }
+        },
+      },
+    })
+    bridge.registerSessionRoute('s-lark-card-fb', {
+      channel: 'lark',
+      targetUserId: 'oc_1',
+      rootMessageId: 'om_root',
+    })
+    const r = await bridge.postText({
+      sessionId: 's-lark-card-fb',
+      message: '请允许某操作',
+      replyMarkup: { inline_keyboard: [[{ text: 'Allow', callback_data: 'qt:perm:xyz:allow' }]] },
+    })
+
+    expect(cardCalls).toHaveLength(1)
+    expect(replyCalls).toEqual([{ rootMessageId: 'om_root', text: '请允许某操作' }])
+    expect(r.ok).toBe(true)
+    expect(r.card).toBeUndefined()
+  })
+
   it('postText drops the message when lark replyInThread fails (does not fallback to chat send)', async () => {
     // thread root 失效（用户撤回）→ 不要把 PTY 输出泼到群主消息流。
     const replyCalls = []
