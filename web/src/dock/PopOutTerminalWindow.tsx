@@ -1,4 +1,14 @@
 // web/src/dock/PopOutTerminalWindow.tsx
+//
+// KNOWN LIMITATION: when a tab toggles between docked and popped-out, React's
+// reconciler treats the two render positions (in-dock pane wrapper vs.
+// PopOutTerminalWindow body via Portal) as distinct, so the inner
+// TerminalDockTab unmounts and remounts. xterm + WebSocket are recreated and
+// scrollback is lost. The full fix is to route every tab through createPortal
+// with a dynamic DOM target (dock body div vs document.body) so the React
+// subtree under TerminalDockTab stays structurally stable. Deferred — the
+// rework is non-trivial and the user-facing impact is limited to the
+// transition moment.
 import React, { useCallback, useRef, useState } from 'react'
 import { Button, Tooltip } from 'antd'
 import {
