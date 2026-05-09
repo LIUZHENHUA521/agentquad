@@ -41,6 +41,7 @@ import { createTelegramConfigRouter } from "./routes/telegram-config.js";
 import { createTelegramBot, readBotTokenWithSource } from "./telegram-bot.js";
 import { createLarkBot } from "./lark-bot.js";
 import { createLoadingTracker } from "./telegram-loading-status.js";
+import { createReactionTracker } from "./telegram-reaction-tracker.js";
 import { buildTelegramCommands } from "./telegram-commands.js";
 import { createProbeRegistry, isMaskedToken, maskBotToken } from "./telegram-config-service.js";
 import { isMaskedLarkAppSecret, larkAppSecretSource, maskLarkAppSecret } from "./lark-config-service.js";
@@ -1049,6 +1050,7 @@ export function createServer(opts = {}) {
 	const telegramBotHolder = { current: null }
 	const larkBotHolder = { current: null }
 	const loadingTrackerHolder = { current: null }
+	const reactionTrackerHolder = { current: null }
 	const probeRegistry = createProbeRegistry()
 
 	// wizard lazy ref 必须先声明，因为 createTelegramBot 需要它
@@ -1065,6 +1067,11 @@ export function createServer(opts = {}) {
 			console.log('[telegram] disabled, skipping bot start')
 			return
 		}
+		// lazyRef 解循环依赖：bot dispatch 需要 reactionTracker，但 reactionTracker 又依赖 bot
+		const reactionTrackerLazyRef = {
+			noteUserMessage: (...args) => reactionTrackerHolder.current?.noteUserMessage?.(...args) ?? Promise.resolve(),
+			clearReactionsForSession: (...args) => reactionTrackerHolder.current?.clearReactionsForSession?.(...args) ?? Promise.resolve({ ok: true, removed: 0 }),
+		}
 		const bot = createTelegramBot({
 			getConfig: () => loadConfig({ rootDir: configRootDir }),
 			wizard: {
@@ -1072,6 +1079,7 @@ export function createServer(opts = {}) {
 				handleCallback: (...args) => openclawWizardLazyRef.handleCallback(...args),
 				handleTopicEvent: (...args) => openclawWizardLazyRef.handleTopicEvent(...args),
 			},
+			reactionTracker: reactionTrackerLazyRef,
 			logger: { warn: (...a) => console.warn(...a), info: (...a) => console.log(...a) },
 		})
 		telegramBotHolder.current = bot
@@ -1080,6 +1088,11 @@ export function createServer(opts = {}) {
 			openclaw: openclawBridge,
 			logger: console,
 			getConfig: () => loadConfig({ rootDir: configRootDir }),
+		})
+		reactionTrackerHolder.current = createReactionTracker({
+			telegramBot: bot,
+			getConfig: () => loadConfig({ rootDir: configRootDir }),
+			logger: console,
 		})
 		openclawBridge.setTelegramBot(bot)
 		bot.start()
@@ -1107,6 +1120,7 @@ export function createServer(opts = {}) {
 		try { await bot.stop?.() } catch (e) { console.warn(`[telegram] stop failed: ${e.message}`) }
 		telegramBotHolder.current = null
 		loadingTrackerHolder.current = null
+		reactionTrackerHolder.current = null
 		try { openclawBridge.setTelegramBot(null) } catch { /* ignore */ }
 		console.log('[telegram] bot stopped')
 	}
@@ -1198,7 +1212,7 @@ export function createServer(opts = {}) {
 						'createForumTopic', 'closeForumTopic', 'reopenForumTopic', 'editForumTopic',
 						'setMessageReaction', 'setMyCommands', 'deleteMyCommands', 'getMe',
 						'replyInThread', 'handleEvent', 'handleCardAction',
-						'sendCard', 'replyWithCard', 'clearReactionsForSession',
+						'sendCard', 'replyWithCard', 'clearReactionsForSession', 'noteUserMessage',
 					])
 					if (asyncMethods.has(prop)) {
 						return async () => { throw new Error(`${kind}_not_running`) }
@@ -1219,6 +1233,7 @@ export function createServer(opts = {}) {
 	const telegramBotProxy = unwrapHolder(telegramBotHolder, 'telegram_bot')
 	const larkBotProxy = unwrapHolder(larkBotHolder, 'lark_bot')
 	const loadingTrackerProxy = unwrapHolder(loadingTrackerHolder, 'loading_tracker')
+	const reactionTrackerProxy = unwrapHolder(reactionTrackerHolder, 'reaction_tracker')
 
 	const openclawHookHandler = createOpenClawHookHandler({
 		db,
@@ -1227,7 +1242,8 @@ export function createServer(opts = {}) {
 		pty,
 		telegramBot: telegramBotProxy,
 		larkBot: larkBotProxy,                                // Stop hook → 清掉 lark "在思考" reaction
-		loadingTracker: loadingTrackerProxy,                  // Stop hook → 标题切 💤
+		loadingTracker: loadingTrackerProxy,                  // Stop hook → 标题切 ✅/❌/⏹（终态）
+		reactionTracker: reactionTrackerProxy,                // Stop hook → 清 telegram "✍" reaction
 		getConfig: () => loadConfig({ rootDir: configRootDir }),
 	});
 	app.use("/api/openclaw/hook", createOpenClawHookRouter({ hookHandler: openclawHookHandler }));
