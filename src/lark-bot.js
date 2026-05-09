@@ -192,7 +192,11 @@ export function createLarkBot({
       return { ok: true, action: 'ignored_self' }
     }
     if (isBlank(ev.text)) {
-      logger.info?.(`[lark-bot] ignored_empty: no text (eventId=${ev.eventId})`)
+      const rawMsg = raw?.event?.message || raw?.message || {}
+      const msgType = rawMsg.msg_type || rawMsg.message_type || '(unknown)'
+      const contentRaw = typeof rawMsg.content === 'string' ? rawMsg.content : JSON.stringify(rawMsg.content || {})
+      const mentions = JSON.stringify(rawMsg.mentions || [])
+      logger.warn?.(`[lark-bot] ignored_empty: no text (eventId=${ev.eventId} msg_type=${msgType} content=${contentRaw.slice(0, 240)} mentions=${mentions.slice(0, 240)})`)
       return { ok: true, action: 'ignored_empty' }
     }
     logger.info?.(`[lark-bot] dispatching to wizard: chatId=${ev.chatId} thread=${ev.threadId || '-'} root=${ev.rootMessageId || '-'} text="${(ev.text || '').slice(0, 80)}"`)
