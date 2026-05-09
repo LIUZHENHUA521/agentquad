@@ -994,3 +994,82 @@ describe('openclaw-hook usage footer integration', () => {
     expect(msg).toMatch(/turn:\s+in 1\.2k/)
   })
 })
+
+describe('openclaw-hook handler — reactionTracker integration', () => {
+  let db, bridge
+
+  beforeEach(() => {
+    db = openDb(':memory:')
+  })
+
+  it('on stop with telegram route, clears reactions for sessionId', async () => {
+    const reactionTracker = { clearReactionsForSession: vi.fn(async () => ({ ok: true, removed: 1 })) }
+    bridge = makeFakeBridge({
+      route: { channel: 'telegram', targetUserId: '-100', threadId: 5, topicName: 't' },
+    })
+    bridge.registerSessionRoute('sid-tg', { channel: 'telegram', targetUserId: '-100', threadId: 5, topicName: 't' })
+
+    const handler = createOpenClawHookHandler({
+      db,
+      openclaw: bridge,
+      reactionTracker,
+      cooldownMs: 0,
+    })
+    await handler.handle({ event: 'stop', sessionId: 'sid-tg', cleanContent: '搞完了' })
+    await new Promise((r) => setImmediate(r))
+    expect(reactionTracker.clearReactionsForSession).toHaveBeenCalledWith('sid-tg')
+  })
+
+  it('on stop with lark route, does NOT call telegram reactionTracker', async () => {
+    const reactionTracker = { clearReactionsForSession: vi.fn(async () => ({ ok: true })) }
+    const larkBot = { clearReactionsForSession: vi.fn(async () => ({ ok: true })) }
+    bridge = makeFakeBridge({
+      route: { channel: 'lark', chatId: 'oc-x', rootMessageId: 'mid' },
+    })
+    bridge.registerSessionRoute('sid-lk', { channel: 'lark', chatId: 'oc-x', rootMessageId: 'mid' })
+
+    const handler = createOpenClawHookHandler({
+      db,
+      openclaw: bridge,
+      reactionTracker,
+      larkBot,
+      cooldownMs: 0,
+    })
+    await handler.handle({ event: 'stop', sessionId: 'sid-lk', cleanContent: 'ok' })
+    await new Promise((r) => setImmediate(r))
+    expect(reactionTracker.clearReactionsForSession).not.toHaveBeenCalled()
+    expect(larkBot.clearReactionsForSession).toHaveBeenCalledWith('sid-lk')
+  })
+
+  it('on session-end with telegram route, also clears reactions (cleanup safety net)', async () => {
+    const reactionTracker = { clearReactionsForSession: vi.fn(async () => ({ ok: true })) }
+    bridge = makeFakeBridge({
+      route: { channel: 'telegram', targetUserId: '-100', threadId: 5, topicName: 't' },
+    })
+    bridge.registerSessionRoute('sid-tg2', { channel: 'telegram', targetUserId: '-100', threadId: 5, topicName: 't' })
+
+    const handler = createOpenClawHookHandler({
+      db,
+      openclaw: bridge,
+      reactionTracker,
+      cooldownMs: 0,
+    })
+    await handler.handle({ event: 'session-end', sessionId: 'sid-tg2', cleanContent: '收工' })
+    await new Promise((r) => setImmediate(r))
+    expect(reactionTracker.clearReactionsForSession).toHaveBeenCalledWith('sid-tg2')
+  })
+
+  it('does not throw when reactionTracker is null', async () => {
+    bridge = makeFakeBridge({
+      route: { channel: 'telegram', targetUserId: '-100', threadId: 5, topicName: 't' },
+    })
+    bridge.registerSessionRoute('sid-tg3', { channel: 'telegram', targetUserId: '-100', threadId: 5, topicName: 't' })
+    const handler = createOpenClawHookHandler({
+      db,
+      openclaw: bridge,
+      reactionTracker: null,
+      cooldownMs: 0,
+    })
+    await expect(handler.handle({ event: 'stop', sessionId: 'sid-tg3', cleanContent: 'x' })).resolves.not.toThrow()
+  })
+})

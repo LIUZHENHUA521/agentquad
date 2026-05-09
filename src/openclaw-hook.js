@@ -223,6 +223,7 @@ function buildMessage({ event, todoId, todoTitle, cleanContent, snippet, histori
 export function createOpenClawHookHandler({
   db, openclaw, aiTerminal = null,
   pty = null, telegramBot = null, larkBot = null, loadingTracker = null,
+  reactionTracker = null,
   cooldownMs = DEFAULT_COOLDOWN_MS,
   getConfig = null,                  // () => app config（用于读 telegram.notificationCooldownMs）
   logger = console,
@@ -642,6 +643,13 @@ export function createOpenClawHookHandler({
         const route = openclaw.resolveRoute?.(sessionId)
         if (route?.channel === 'lark') {
           larkBot.clearReactionsForSession(sessionId).catch((e) => logger.warn?.(`[openclaw-hook] clearReactionsForSession failed: ${e.message}`))
+        }
+      }
+      // Stop / session-end → 清掉 telegram "✍" reaction（如果是 telegram route）
+      if ((evt === 'stop' || evt === 'session-end') && sessionId && reactionTracker?.clearReactionsForSession) {
+        const route = openclaw.resolveRoute?.(sessionId)
+        if (route?.channel === 'telegram') {
+          reactionTracker.clearReactionsForSession(sessionId).catch((e) => logger.warn?.(`[openclaw-hook] tg clearReactionsForSession failed: ${e.message}`))
         }
       }
       return { ok: true, action: 'sent', message, attachment: attachmentPath }
