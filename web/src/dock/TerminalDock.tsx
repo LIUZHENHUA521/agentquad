@@ -86,6 +86,36 @@ export default function TerminalDock({
           <Button type="text" size="small" icon={<CloseOutlined />} onClick={toggleCollapsed} />
         </Tooltip>
       </div>
+      {openTabs.length > 0 && (
+        <div className="terminal-dock__tabs">
+          {openTabs.map(tab => (
+            <div
+              key={tab.id}
+              className={`terminal-dock__tab ${tab.id === activeTabId ? 'is-active' : ''}`}
+              onClick={() => useTerminalDockStore.getState().setActive(tab.id)}
+              onMouseDown={(e) => {
+                if (e.button === 1) {
+                  e.preventDefault()
+                  useTerminalDockStore.getState().close(tab.id)
+                }
+              }}
+              title={tab.todoTitle}
+            >
+              <span className={`terminal-dock__tab-dot status-${tab.status}`} />
+              <span className="terminal-dock__tab-label">
+                {tab.todoTitle.length > 14 ? tab.todoTitle.slice(0, 14) + '…' : tab.todoTitle}
+              </span>
+              <CloseOutlined
+                className="terminal-dock__tab-close"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  useTerminalDockStore.getState().close(tab.id)
+                }}
+              />
+            </div>
+          ))}
+        </div>
+      )}
       <div className="terminal-dock__body">
         {openTabs.length === 0 ? (
           <div className="terminal-dock__empty">没有打开的会话</div>

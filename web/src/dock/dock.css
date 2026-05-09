@@ -46,3 +46,52 @@
   color: #bfbfbf;
 }
 .terminal-dock__expand-btn { padding: 4px; }
+
+/* === Tab strip === */
+.terminal-dock__tabs {
+  display: flex;
+  flex-direction: row;
+  gap: 2px;
+  padding: 4px 6px 0 6px;
+  border-bottom: 1px solid #f0f0f0;
+  background: #fafafa;
+  overflow-x: auto;
+  flex: 0 0 auto;
+}
+.terminal-dock__tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border: 1px solid transparent;
+  border-radius: 4px 4px 0 0;
+  cursor: pointer;
+  flex: 0 0 auto;
+  user-select: none;
+  font-size: 12px;
+  color: #595959;
+}
+.terminal-dock__tab:hover { background: #f0f0f0; }
+.terminal-dock__tab.is-active {
+  background: #fff;
+  border-color: #d9d9d9;
+  border-bottom-color: #fff;
+  margin-bottom: -1px;
+  color: #262626;
+  font-weight: 500;
+}
+.terminal-dock__tab-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #bfbfbf;
+}
+.terminal-dock__tab-dot.status-running { background: #52c41a; }
+.terminal-dock__tab-dot.status-pending_reply { background: #faad14; }
+.terminal-dock__tab-dot.status-idle { background: #bfbfbf; }
+.terminal-dock__tab-dot.status-closed { background: #ff4d4f; }
+.terminal-dock__tab-close {
+  font-size: 10px;
+  opacity: 0.5;
+}
+.terminal-dock__tab-close:hover { opacity: 1; color: #ff4d4f; }
