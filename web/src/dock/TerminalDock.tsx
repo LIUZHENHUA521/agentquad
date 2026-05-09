@@ -1,7 +1,8 @@
 // web/src/dock/TerminalDock.tsx
 import React, { useCallback, useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { Button, Dropdown, Tooltip, message } from 'antd'
-import { CloseOutlined, MenuFoldOutlined, ColumnWidthOutlined, MergeCellsOutlined } from '@ant-design/icons'
+import { CloseOutlined, MenuFoldOutlined, ColumnWidthOutlined, MergeCellsOutlined, ExportOutlined } from '@ant-design/icons'
 import {
   DndContext,
   closestCenter,
@@ -21,6 +22,7 @@ import { CSS } from '@dnd-kit/utilities'
 import type { ResumeSessionInput } from '../api'
 import { useTerminalDockStore, DOCK_LIMITS, DockTab } from '../store/terminalDockStore'
 import TerminalDockTab from './TerminalDockTab'
+import PopOutTerminalWindow from './PopOutTerminalWindow'
 import './dock.css'
 
 function SortableDockTab({ tab, isActive }: { tab: DockTab; isActive: boolean }) {
@@ -73,7 +75,7 @@ interface Props {
 export default function TerminalDock({
   resolveTabContext, onSessionRecovered, onSessionSwitch, onDone, onFork,
 }: Props = {}) {
-  const { widthPx, isCollapsed, openTabs, activeTabId, splitSecondaryTabId, toggleCollapsed, setWidth } = useTerminalDockStore()
+  const { widthPx, isCollapsed, openTabs, activeTabId, splitSecondaryTabId, poppedOutTabIds, toggleCollapsed, setWidth } = useTerminalDockStore()
   const dragStartRef = useRef<{ x: number; w: number } | null>(null)
   const moveHandlerRef = useRef<((ev: MouseEvent) => void) | null>(null)
   const upHandlerRef = useRef<(() => void) | null>(null)
@@ -126,22 +128,51 @@ export default function TerminalDock({
     useTerminalDockStore.getState().reorder(arrayMove(ids, oldIdx, newIdx))
   }
 
+  // Render popped-out tabs via Portal to document.body so they survive even
+  // when the dock is collapsed or the tab is otherwise not visible in-dock.
+  const poppedNodes = openTabs
+    .filter(tab => poppedOutTabIds.includes(tab.id))
+    .map(tab => {
+      const ctx = resolveTabContext?.(tab) ?? { cwd: null, resumeTarget: null }
+      const tabNode = (
+        <TerminalDockTab
+          tab={tab}
+          cwd={ctx.cwd}
+          resumeTarget={ctx.resumeTarget}
+          visible={true}
+          onSessionRecovered={onSessionRecovered ? (next) => onSessionRecovered(tab.todoId, next) : undefined}
+          onSessionSwitch={onSessionSwitch ? (next) => onSessionSwitch(tab.todoId, next) : undefined}
+          onDone={onDone ? (r) => onDone(tab.todoId, tab.id, r) : undefined}
+          onFork={onFork ? () => onFork(tab.todoId, tab.id) : undefined}
+        />
+      )
+      return createPortal(
+        <PopOutTerminalWindow tabId={tab.id}>{tabNode}</PopOutTerminalWindow>,
+        document.body,
+        tab.id,
+      )
+    })
+
   if (isCollapsed) {
     return (
-      <div className="terminal-dock terminal-dock--collapsed">
-        <Tooltip title="展开 AI 终端 Dock">
-          <Button
-            type="text"
-            icon={<MenuFoldOutlined style={{ transform: 'scaleX(-1)' }} />}
-            onClick={toggleCollapsed}
-            className="terminal-dock__expand-btn"
-          />
-        </Tooltip>
-      </div>
+      <>
+        <div className="terminal-dock terminal-dock--collapsed">
+          <Tooltip title="展开 AI 终端 Dock">
+            <Button
+              type="text"
+              icon={<MenuFoldOutlined style={{ transform: 'scaleX(-1)' }} />}
+              onClick={toggleCollapsed}
+              className="terminal-dock__expand-btn"
+            />
+          </Tooltip>
+        </div>
+        {poppedNodes}
+      </>
     )
   }
 
   return (
+    <>
     <div
       className="terminal-dock"
       style={{ width: widthPx, minWidth: DOCK_LIMITS.MIN_W, maxWidth: DOCK_LIMITS.MAX_W }}
@@ -182,6 +213,16 @@ export default function TerminalDock({
             />
           </Tooltip>
         )}
+        {activeTabId && !poppedOutTabIds.includes(activeTabId) && (
+          <Tooltip title="弹出浮层">
+            <Button
+              type="text" size="small"
+              icon={<ExportOutlined />}
+              className="pc-only"
+              onClick={() => useTerminalDockStore.getState().popOut(activeTabId)}
+            />
+          </Tooltip>
+        )}
         <Tooltip title="折叠">
           <Button type="text" size="small" icon={<CloseOutlined />} onClick={toggleCollapsed} />
         </Tooltip>
@@ -202,31 +243,43 @@ export default function TerminalDock({
           <div className="terminal-dock__empty">没有打开的会话</div>
         ) : (
           openTabs.map(tab => {
+            // Popped-out tabs are rendered via Portal in `poppedNodes` below.
+            // Skip them here so we don't duplicate the TerminalDockTab instance
+            // (which would mean two xterm + two WebSocket per session).
+            if (poppedOutTabIds.includes(tab.id)) return null
+
             const ctx = resolveTabContext?.(tab) ?? { cwd: null, resumeTarget: null }
             const isPrimary = tab.id === activeTabId
             const isSecondary = tab.id === splitSecondaryTabId
-            const isVisible = isPrimary || isSecondary
+            const isVisibleInDock = isPrimary || isSecondary
+
+            const tabNode = (
+              <TerminalDockTab
+                tab={tab}
+                cwd={ctx.cwd}
+                resumeTarget={ctx.resumeTarget}
+                visible={true}
+                onSessionRecovered={onSessionRecovered ? (next) => onSessionRecovered(tab.todoId, next) : undefined}
+                onSessionSwitch={onSessionSwitch ? (next) => onSessionSwitch(tab.todoId, next) : undefined}
+                onDone={onDone ? (r) => onDone(tab.todoId, tab.id, r) : undefined}
+                onFork={onFork ? () => onFork(tab.todoId, tab.id) : undefined}
+              />
+            )
+
             return (
               <div
                 key={tab.id}
                 className={`terminal-dock__pane ${isSecondary ? 'is-secondary' : ''} ${isPrimary ? 'is-primary' : ''}`}
-                style={{ display: isVisible ? 'flex' : 'none', flexDirection: 'column', flex: 1, minWidth: 0, minHeight: 0 }}
+                style={{ display: isVisibleInDock ? 'flex' : 'none', flexDirection: 'column', flex: 1, minWidth: 0, minHeight: 0 }}
               >
-                <TerminalDockTab
-                  tab={tab}
-                  cwd={ctx.cwd}
-                  resumeTarget={ctx.resumeTarget}
-                  visible={isVisible}
-                  onSessionRecovered={onSessionRecovered ? (next) => onSessionRecovered(tab.todoId, next) : undefined}
-                  onSessionSwitch={onSessionSwitch ? (next) => onSessionSwitch(tab.todoId, next) : undefined}
-                  onDone={onDone ? (r) => onDone(tab.todoId, tab.id, r) : undefined}
-                  onFork={onFork ? () => onFork(tab.todoId, tab.id) : undefined}
-                />
+                {tabNode}
               </div>
             )
           })
         )}
       </div>
     </div>
+    {poppedNodes}
+    </>
   )
 }

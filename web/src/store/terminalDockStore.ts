@@ -111,10 +111,15 @@ export const useTerminalDockStore = create<DockState>((set, get) => ({
   unsplit: () => set({ splitSecondaryTabId: null }),
 
   popOut: (tabId) => {
-    const { poppedOutTabIds } = get()
+    const { poppedOutTabIds, openTabs, activeTabId } = get()
     if (poppedOutTabIds.includes(tabId)) return
     if (poppedOutTabIds.length >= 4) return
-    set({ poppedOutTabIds: [...poppedOutTabIds, tabId] })
+    let nextActive = activeTabId
+    if (activeTabId === tabId) {
+      const candidates = openTabs.filter(t => t.id !== tabId && !poppedOutTabIds.includes(t.id))
+      nextActive = candidates[candidates.length - 1]?.id ?? null
+    }
+    set({ poppedOutTabIds: [...poppedOutTabIds, tabId], activeTabId: nextActive })
   },
   dock: (tabId) => {
     const { poppedOutTabIds } = get()
