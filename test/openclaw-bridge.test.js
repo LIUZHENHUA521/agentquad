@@ -472,6 +472,37 @@ describe('openclaw-bridge.postText', () => {
     expect(bridge.hasExplicitRoute(undefined)).toBe(false)
   })
 
+  it('findSessionByShortId returns a registered route whose suffix matches', () => {
+    const bridge = createOpenClawBridge({
+      getConfig: () => ({ openclaw: { enabled: true, targetUserId: 'peer' } }),
+      spawnFn: spy({ stdout: '{}' }),
+      logger: { warn() {}, info() {} },
+    })
+    bridge.registerSessionRoute('ai-session-abcd', { targetUserId: 'peer', threadId: 1 })
+    expect(bridge.findSessionByShortId('abcd')).toBe('ai-session-abcd')
+  })
+
+  it('findSessionByShortId returns null for missing short id', () => {
+    const bridge = createOpenClawBridge({
+      getConfig: () => ({ openclaw: { enabled: true, targetUserId: 'peer' } }),
+      spawnFn: spy({ stdout: '{}' }),
+      logger: { warn() {}, info() {} },
+    })
+    bridge.registerSessionRoute('ai-session-abcd', { targetUserId: 'peer', threadId: 1 })
+    expect(bridge.findSessionByShortId('zzzz')).toBeNull()
+  })
+
+  it('findSessionByShortId returns null when suffix is ambiguous', () => {
+    const bridge = createOpenClawBridge({
+      getConfig: () => ({ openclaw: { enabled: true, targetUserId: 'peer' } }),
+      spawnFn: spy({ stdout: '{}' }),
+      logger: { warn() {}, info() {} },
+    })
+    bridge.registerSessionRoute('ai-one-abcd', { targetUserId: 'peer', threadId: 1 })
+    bridge.registerSessionRoute('ai-two-abcd', { targetUserId: 'peer', threadId: 2 })
+    expect(bridge.findSessionByShortId('abcd')).toBeNull()
+  })
+
   it('clearSessionRoute logs reason when actually deleting (diagnostic)', () => {
     const infoLines = []
     const bridge = createOpenClawBridge({

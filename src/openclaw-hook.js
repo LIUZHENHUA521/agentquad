@@ -266,6 +266,63 @@ export function createOpenClawHookHandler({
     } catch { return true }
   }
 
+  function getSessionPermissionMode(sessionId) {
+    const sess = sessionId && aiTerminal?.sessions?.get(sessionId)
+    return sess?.permissionMode || sess?.autoMode || 'default'
+  }
+
+  function resolveExplicitTelegramRoute(sessionId) {
+    if (!sessionId) return null
+    if (!openclaw.hasExplicitRoute?.(sessionId)) return null
+    const route = openclaw.resolveRoute?.(sessionId)
+    if (route?.channel === 'telegram' || !!route?.threadId) return route
+    return null
+  }
+
+  function suppressPermissionNotifications() {
+    try {
+      const cfg = getConfig?.() || {}
+      return cfg.telegram?.suppressPermissionNotifications === true
+    } catch { return false }
+  }
+
+  function isPermissionReminderEligible(sessionId) {
+    if (!sessionId) return false
+    if (!resolveExplicitTelegramRoute(sessionId)) return false
+    if (suppressPermissionNotifications()) return false
+    return getSessionPermissionMode(sessionId) !== 'bypass'
+  }
+
+  function permissionShortId(sessionId) {
+    return String(sessionId || '').slice(-4)
+  }
+
+  function buildPermissionReplyMarkup(sessionId) {
+    const shortId = permissionShortId(sessionId)
+    return {
+      inline_keyboard: [[
+        { text: '允许（Enter）', callback_data: `qt:perm:${shortId}:allow` },
+        { text: '拒绝/退出（Esc）', callback_data: `qt:perm:${shortId}:deny` },
+      ]],
+    }
+  }
+
+  function isPermissionishNotification(text) {
+    return /do you want to allow|allow\s+(this|the).*(command|tool|operation)|requires?\s+(permission|approval|authorization)|needs?\s+(permission|approval|authorization)|permission\s+required|waiting\s+for\s+(permission|approval|authorization)|是否.*(允许|授权|批准)|需要.*(确认|授权|批准|允许)|等待.*(确认|授权|批准|允许)/i.test(String(text || ''))
+  }
+
+  function buildPermissionishProbe({ cleanContent, snippet, historicalRaw, hookPayload, message }) {
+    const parts = [cleanContent, snippet, historicalRaw, message]
+    if (hookPayload && typeof hookPayload === 'object') {
+      parts.push(hookPayload.message, hookPayload.summary)
+    }
+    return parts.filter((part) => typeof part === 'string' && part.trim()).join('\n')
+  }
+
+  function buildPermissionNotificationMessage(message) {
+    return `⚠️ Claude Code 正在等待授权确认。\n按钮会向终端发送 Enter/Esc。\n\n${message}`
+  }
+
   // ── token usage footer 配置 ──
   // showUsage    : 是否在每条推送末尾追加 token / 费用 footer（默认 true）
   // showUsageCny : footer 里是否同时显示人民币（默认 true）
@@ -338,20 +395,7 @@ export function createOpenClawHookHandler({
       return { ok: true, action: 'skipped', reason: 'ask_user_pending' }
     }
 
-    // 1b-pre) 默认抑制 idle Notification（noise）—— 早于 cooldown / jsonl / postText
-    if (evt === 'notification' && notificationSuppressed()) {
-      return { ok: true, action: 'skipped', reason: 'notification_suppressed' }
-    }
-
-    // 1b) Notification cooldown（idle 提醒太频繁的关键修复）
-    //     Notification 是 Claude Code 每隔 ~60s 触发一次的 idle 心跳；
-    //     单 session 内默认 10 分钟内只发一次，可通过 telegram.notificationCooldownMs 调
-    if (evt === 'notification') {
-      const cd = notificationCooldownMs()
-      if (cd > 0 && isOnCooldown(sessionId, evt, cd)) {
-        return { ok: true, action: 'skipped', reason: 'notification_cooldown', cooldownMs: cd }
-      }
-    }
+    const permissionReminderEligible = evt === 'notification' && isPermissionReminderEligible(sessionId)
 
     if (evt === 'stop') {
       notifyWebTurnDone(sessionId, todoTitle)
@@ -482,6 +526,36 @@ export function createOpenClawHookHandler({
       snippet,
       historicalRaw,
     })
+
+    const permissionish = evt === 'notification' && isPermissionishNotification(buildPermissionishProbe({
+      cleanContent,
+      snippet,
+      historicalRaw,
+      hookPayload,
+      message,
+    }))
+
+    // 1b-pre) 默认抑制 idle Notification（noise）。Notification 需要先构造可检查的内容，
+    // 只有显式 Telegram 路由上的非 bypass 授权提示才允许绕过抑制。
+    if (evt === 'notification' && notificationSuppressed() && !(permissionReminderEligible && permissionish)) {
+      return { ok: true, action: 'skipped', reason: 'notification_suppressed' }
+    }
+
+    // 1b) Notification cooldown（idle/permission 提醒太频繁的关键修复）
+    //     Notification 是 Claude Code 每隔 ~60s 触发一次的 idle 心跳；
+    //     单 session 内默认 10 分钟内只发一次，可通过 telegram.notificationCooldownMs 调
+    if (evt === 'notification') {
+      const cd = notificationCooldownMs()
+      if (cd > 0 && isOnCooldown(sessionId, evt, cd)) {
+        return { ok: true, action: 'skipped', reason: 'notification_cooldown', cooldownMs: cd }
+      }
+    }
+
+    let replyMarkup = null
+    if (evt === 'notification' && permissionReminderEligible && permissionish) {
+      message = buildPermissionNotificationMessage(message)
+      replyMarkup = buildPermissionReplyMarkup(sessionId)
+    }
     // footer 永远附在最末尾（即使消息被截短到附件也要保留，让用户能看到费用）
     if (usageFooter) message = `${message}\n\n${usageFooter}`
 
@@ -490,6 +564,7 @@ export function createOpenClawHookHandler({
       sessionId,
       message,
       attachment: attachmentPath,    // bridge 转给 telegramBot.sendDocument
+      replyMarkup,
     })
 
     // 5) SessionEnd 后处理：close topic + 改名 ✅ + 清状态

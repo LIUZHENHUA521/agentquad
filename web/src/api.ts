@@ -133,6 +133,7 @@ export interface AppConfig {
     allowedFromUserIds?: string[]
     notificationCooldownMs?: number
     suppressNotificationEvents?: boolean
+    defaultPermissionMode?: 'default' | 'acceptEdits' | 'bypass'
     autoCreateTopic?: boolean
     pollRetryDelayMs?: number
     minRenameIntervalMs?: number

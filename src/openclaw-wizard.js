@@ -59,6 +59,11 @@ const QUADRANTS = [
   { id: 4, label: '不重要不紧急' },
 ]
 
+function telegramPermissionMode(cfg = {}) {
+  const mode = cfg.telegram?.defaultPermissionMode
+  return ['default', 'acceptEdits', 'bypass'].includes(mode) ? mode : 'bypass'
+}
+
 function defaultRecentWorkDirs(db, limit = 5) {
   try {
     const rows = db.raw.prepare(`
@@ -175,6 +180,18 @@ function buildTemplateMessage(templates) {
 // 数字按钮 label 沿用 "1. xxx" 序号 —— 跟纯文本 prompt 保持一致，
 // 所以双轨用户（按按钮的 / 回数字的）看到的是同一个心智模型。
 const CALLBACK_PREFIX = 'qt'
+const PERMISSION_CALLBACK_KIND = 'perm'
+const PERMISSION_ACTION_ALLOW = 'allow'
+const PERMISSION_ACTION_DENY = 'deny'
+
+function parsePermissionCallback(callbackData) {
+  const parts = String(callbackData || '').split(':')
+  if (parts.length !== 4 || parts[0] !== CALLBACK_PREFIX || parts[1] !== PERMISSION_CALLBACK_KIND) return null
+  const short = parts[2]
+  const action = parts[3]
+  if (!/^[a-z0-9]{4}$/i.test(short) || ![PERMISSION_ACTION_ALLOW, PERMISSION_ACTION_DENY].includes(action)) return null
+  return { short, action }
+}
 
 function ellipsisLabel(s, max = 50) {
   const str = String(s || '')
@@ -572,6 +589,7 @@ export function createOpenClawWizard({
         const cfg = getConfig?.() || {}
         const tool = cfg.defaultTool || 'claude'
         const port = cfg.port || 5677
+        const permissionMode = telegramPermissionMode(cfg)
         const sessionId = `ai-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
 
         let prompt
@@ -636,7 +654,7 @@ export function createOpenClawWizard({
             prompt,
             tool,
             cwd: w.chosenWorkdir || cfg.defaultCwd || null,
-            permissionMode: 'bypass',
+            permissionMode,
             label: w.chosenTemplate ? `template:${w.chosenTemplate.name}` : null,
             extraEnv,
             skipTelegram: true,   // wizard 自管 topic（下面单独 createForumTopic）
@@ -893,6 +911,7 @@ export function createOpenClawWizard({
     }
     const cfg = getConfig?.() || {}
     const port = cfg.port || 5677
+    const permissionMode = telegramPermissionMode(cfg)
     const newSessionId = `ai-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
     const extraEnv = {
       QUADTODO_SESSION_ID: newSessionId,
@@ -908,7 +927,7 @@ export function createOpenClawWizard({
         prompt: '继续之前的任务',
         tool: aiSession.tool || 'claude',
         cwd: aiSession.cwd || cfg.defaultCwd || null,
-        permissionMode: 'bypass',
+        permissionMode,
         extraEnv,
         resumeNativeId: aiSession.nativeSessionId,
         skipTelegram: true,   // 重开走的是已存在 topic（重注路由），不另建
@@ -1405,6 +1424,15 @@ export function createOpenClawWizard({
       return handleAskUserCallback(askCb, { chatId, threadId })
     }
 
+    // ── 权限按钮路径（qt:perm:<short>:allow|deny）──────────────────
+    const permCb = parsePermissionCallback(callbackData)
+    if (permCb) {
+      return handlePermissionCallback(permCb, { chatId, threadId })
+    }
+    if (callbackData.startsWith(`${CALLBACK_PREFIX}:${PERMISSION_CALLBACK_KIND}:`)) {
+      return { toast: '无效的权限按钮', action: 'invalid', editOriginal: true }
+    }
+
     // ── 多 session ambiguous 按钮路径（qt:rt:<short>）─────────────
     // 用户从 ambiguous 提示里点了某个 session → 写 lastPushByPeer 把这个 chat 绑过去，
     // 用户**重新发**一条消息时自动路由到所选 session（不重放当前消息，避免状态机化）。
@@ -1513,6 +1541,56 @@ export function createOpenClawWizard({
     }
 
     return { toast: '未知按钮', action: 'invalid' }
+  }
+
+  // ─── 权限按钮回调 ───────────────────────────────────────────────
+  async function handlePermissionCallback({ short, action } = {}, { chatId, threadId } = {}) {
+    const stale = () => ({
+      toast: '会话已结束',
+      reply: `⚠️ 会话已结束（#${short}），无法发送权限选择。`,
+      action: 'permission_session_stale',
+      editOriginal: true,
+    })
+
+    const sid = openclaw?.findSessionByShortId?.(short) || null
+    if (!sid || !pty?.has?.(sid)) return stale()
+    const route = openclaw?.resolveRoute?.(sid) || null
+    const sameChat = route && String(route.targetUserId) === String(chatId)
+    const sameThread = (route?.threadId || null) === (threadId || null)
+    const telegramRouted = route?.channel === 'telegram' || route?.threadId != null
+    if (!sameChat || !sameThread || !telegramRouted) return stale()
+
+    if (action === PERMISSION_ACTION_ALLOW) {
+      try {
+        pty.write(sid, '\r')
+      } catch (e) {
+        logger.warn?.(`[wizard] permission allow write failed: ${e.message}`)
+        return stale()
+      }
+      return {
+        toast: '已发送 Enter',
+        chosenLabel: '允许（Enter）',
+        action: 'permission_allow_sent',
+        editOriginal: true,
+      }
+    }
+
+    if (action === PERMISSION_ACTION_DENY) {
+      try {
+        pty.write(sid, '\x1b')
+      } catch (e) {
+        logger.warn?.(`[wizard] permission deny write failed: ${e.message}`)
+        return stale()
+      }
+      return {
+        toast: '已发送 Esc',
+        chosenLabel: '拒绝/退出（Esc）',
+        action: 'permission_deny_sent',
+        editOriginal: true,
+      }
+    }
+
+    return { toast: '无效的权限按钮', action: 'invalid' }
   }
 
   // ─── ask_user 按钮回调 ──────────────────────────────────────────

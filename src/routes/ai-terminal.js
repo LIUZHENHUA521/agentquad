@@ -313,6 +313,7 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, g
         sessionCwd = located.cwd
       }
     }
+    const effectivePermissionMode = permissionMode || 'default'
     const session = {
       sessionId,
       todoId,
@@ -328,7 +329,8 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, g
       recentOutput: '',
       cwd: sessionCwd,
       currentCwd: sessionCwd,
-      autoMode: permissionMode && permissionMode !== 'default' ? permissionMode : null,
+      permissionMode: effectivePermissionMode,
+      autoMode: effectivePermissionMode !== 'default' ? effectivePermissionMode : null,
       lastOutputAt: null,
       outputBytesTotal: 0,
     }

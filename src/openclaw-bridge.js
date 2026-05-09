@@ -451,6 +451,22 @@ export function createOpenClawBridge({
   }
 
   /**
+   * 反查：按 sessionId 后缀找唯一 session。
+   * 权限按钮只携带短码；短码碰撞时保守返回 null，避免点错会话。
+   */
+  function findSessionByShortId(shortId) {
+    if (!shortId) return null
+    const short = String(shortId)
+    let found = null
+    for (const sid of sessionRoutes.keys()) {
+      if (!String(sid).endsWith(short)) continue
+      if (found) return null
+      found = sid
+    }
+    return found
+  }
+
+  /**
    * 反查：找绑定到 (chatId, threadId/rootMessageId) 的 session。
    * Telegram Topic / Lark thread 路由用：用户在 task topic/thread 里回话时知道写哪个 PTY。
    * 返回 sessionId 或 null。
@@ -533,6 +549,7 @@ export function createOpenClawBridge({
     clearLastPushForSession,
     clearLastPushForPeer,
     findSessionsByTarget,
+    findSessionByShortId,
     findSessionByRoute,
     setTelegramBot,
     setLarkBot,
