@@ -144,6 +144,14 @@ export interface AppConfig {
     defaultSupergroupId?: string                                // legacy
     [key: string]: unknown
   }
+  lark?: {
+    enabled?: boolean
+    chatId?: string
+    requireThreadGroup?: boolean
+    eventSubscribeEnabled?: boolean
+    notificationCooldownMs?: number
+    [key: string]: unknown
+  }
   pricing: PricingConfig
 }
 

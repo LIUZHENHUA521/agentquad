@@ -32,6 +32,21 @@ const ellipsisTagStyle: React.CSSProperties = {
   whiteSpace: 'nowrap',
 }
 
+const resultHeaderStyle: React.CSSProperties = {
+  display: 'flex',
+  flexWrap: 'wrap',
+  alignItems: 'center',
+  gap: 4,
+  width: '100%',
+  minWidth: 0,
+}
+
+const boundTagSlotStyle: React.CSSProperties = {
+  flex: '1 1 180px',
+  minWidth: 0,
+  maxWidth: '100%',
+}
+
 export default function TranscriptSearchDrawer({ open, onClose, preselectTodoId, initialQuery, initialCwd, onBindingChanged }: Props) {
   const [q, setQ] = useState('')
   const [tool, setTool] = useState<AiTool | ''>('')
@@ -185,19 +200,21 @@ export default function TranscriptSearchDrawer({ open, onClose, preselectTodoId,
                   const boundTodoTitle = boundTodo ? `已挂到《${boundTodo.title}》` : ''
                   return (
                     <div key={f.id} style={{ border: '1px solid #f0f0f0', borderRadius: 6, padding: 10, minWidth: 0 }}>
-                      <Space size={4} wrap style={{ width: '100%', minWidth: 0 }}>
+                      <div style={resultHeaderStyle}>
                         <Tag>{f.tool}</Tag>
                         {boundTodo ? (
-                          <Tooltip title={boundTodoTitle}>
-                            <Tag color="success" style={ellipsisTagStyle}>{boundTodoTitle}</Tag>
-                          </Tooltip>
+                          <span style={boundTagSlotStyle}>
+                            <Tooltip title={boundTodoTitle}>
+                              <Tag color="success" style={ellipsisTagStyle}>{boundTodoTitle}</Tag>
+                            </Tooltip>
+                          </span>
                         ) : (
                           <Tag color="warning">未挂回</Tag>
                         )}
                         <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                           {formatTs(f.started_at)} · {f.turn_count} 轮
                         </Typography.Text>
-                      </Space>
+                      </div>
                       <div style={{ fontSize: 12, color: '#888', marginTop: 4, wordBreak: 'break-all' }}>
                         cwd: {f.cwd || '-'}
                       </div>
