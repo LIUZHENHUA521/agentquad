@@ -101,6 +101,8 @@ export interface PricingConfig {
   default: PricingRate
   models: Record<string, PricingRate>
   cnyRate: number
+  showInPush?: boolean
+  showCnyInPush?: boolean
 }
 
 export interface AppConfig {
@@ -571,7 +573,7 @@ export function getTerminalWsUrl(sessionId: string): string {
   return `${proto}//${location.host}/ws/terminal/${sessionId}`
 }
 
-// ─── Dashboard / PetView 相关 ───
+// ─── Dashboard 相关 ───
 
 export interface LiveSession {
   sessionId: string

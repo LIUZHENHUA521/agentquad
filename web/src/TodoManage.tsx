@@ -48,7 +48,6 @@ import TemplateDrawer from './TemplateDrawer'
 import ForkDialog from './ForkDialog'
 import DashboardDrawer from './dashboard/DashboardDrawer'
 import ReportDrawer from './ReportDrawer'
-import PetView from './pet/PetView'
 import TranscriptSearchDrawer from './transcripts/TranscriptSearchDrawer'
 import { useAiSessionStore } from './store/aiSessionStore'
 import {
@@ -719,11 +718,11 @@ export default function TodoManage() {
   const isMobile = useIsMobile()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [cmdPaletteOpen, setCmdPaletteOpen] = useState(false)
-  const [viewMode, setViewMode] = useState<'list' | 'priority' | 'pet'>(() => {
+  const [viewMode, setViewMode] = useState<'list' | 'priority'>(() => {
     const saved = localStorage.getItem('quadtodo:viewMode')
     return saved === 'priority' || saved === 'list' ? saved : 'list'
   })
-  const changeViewMode = useCallback((v: 'list' | 'priority' | 'pet') => {
+  const changeViewMode = useCallback((v: 'list' | 'priority') => {
     setViewMode(v)
     localStorage.setItem('quadtodo:viewMode', v)
   }, [])
@@ -1700,7 +1699,7 @@ export default function TodoManage() {
         <Segmented
           size="small"
           value={viewMode}
-          onChange={(v) => changeViewMode(v as 'list' | 'priority' | 'pet')}
+          onChange={(v) => changeViewMode(v as 'list' | 'priority')}
           options={[
             { label: '列表', value: 'list' },
             { label: '优先级', value: 'priority' },
@@ -1709,9 +1708,7 @@ export default function TodoManage() {
       </div>
       </div>
 
-      {viewMode === 'pet' ? (
-        <PetView onPetClick={handleDashboardOpenTerminal} />
-      ) : viewMode === 'priority' ? (
+      {viewMode === 'priority' ? (
         <Spin spinning={loading}>
           <DndContext
             sensors={sensors}
