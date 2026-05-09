@@ -1,0 +1,49 @@
+/* web/src/dock/dock.css */
+.terminal-dock {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+  height: 100%;
+  border-left: 1px solid #d9d9d9;
+  background: #fff;
+  user-select: none;
+}
+.terminal-dock--collapsed {
+  width: 24px;
+  flex: 0 0 24px;
+  align-items: center;
+  justify-content: flex-start;
+  padding-top: 8px;
+}
+.terminal-dock__divider {
+  position: absolute;
+  left: -3px;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+  z-index: 5;
+}
+.terminal-dock__divider:hover {
+  background: rgba(22, 119, 255, 0.2);
+}
+.terminal-dock__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid #f0f0f0;
+}
+.terminal-dock__title { font-weight: 600; flex: 1; }
+.terminal-dock__count { color: #8c8c8c; font-size: 12px; }
+.terminal-dock__body { flex: 1; min-height: 0; overflow: hidden; }
+.terminal-dock__empty,
+.terminal-dock__placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: #bfbfbf;
+}
+.terminal-dock__expand-btn { padding: 4px; }
