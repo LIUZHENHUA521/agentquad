@@ -21,11 +21,21 @@ export default function TerminalDockTab({
   const close = useTerminalDockStore(s => s.close)
   const setStatus = useTerminalDockStore(s => s.setStatus)
 
-  // Map dock-local status back to TodoStatus expected by AiTerminalMini.
-  // Stage 3 (Task 9) will refine this with onStatusChange wiring.
-  const todoStatus: TodoStatus = (tab.status === 'pending_reply'
-    ? 'pending_confirm'
-    : 'doing') as TodoStatus
+  // DockTabStatus -> TodoStatus mapping (Task 9 will wire bidirectional updates via onStatusChange)
+  let todoStatus: TodoStatus
+  switch (tab.status) {
+    case 'pending_reply':
+      todoStatus = 'ai_pending'
+      break
+    case 'running':
+      todoStatus = 'ai_running'
+      break
+    case 'idle':
+    case 'closed':
+    default:
+      todoStatus = 'ai_done'
+      break
+  }
 
   return (
     <div
