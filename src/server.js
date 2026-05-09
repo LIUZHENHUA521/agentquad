@@ -1197,7 +1197,8 @@ export function createServer(opts = {}) {
 						'answerCallbackQuery',
 						'createForumTopic', 'closeForumTopic', 'reopenForumTopic', 'editForumTopic',
 						'setMessageReaction', 'setMyCommands', 'deleteMyCommands', 'getMe',
-						'replyInThread', 'handleEvent',
+						'replyInThread', 'handleEvent', 'handleCardAction',
+						'sendCard', 'replyWithCard', 'clearReactionsForSession',
 					])
 					if (asyncMethods.has(prop)) {
 						return async () => { throw new Error(`${kind}_not_running`) }
@@ -1225,6 +1226,7 @@ export function createServer(opts = {}) {
 		aiTerminal: ait,
 		pty,
 		telegramBot: telegramBotProxy,
+		larkBot: larkBotProxy,                                // Stop hook → 清掉 lark "在思考" reaction
 		loadingTracker: loadingTrackerProxy,                  // Stop hook → 标题切 💤
 		getConfig: () => loadConfig({ rootDir: configRootDir }),
 	});

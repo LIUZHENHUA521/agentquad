@@ -10,6 +10,7 @@ function makeSdkClient(overrides = {}) {
       },
       messageReaction: {
         create: vi.fn().mockResolvedValue({ data: { reaction_id: 'rid_1', operator: { operator_id: 'ou_bot', operator_type: 'app' }, action_time: '1' } }),
+        delete: vi.fn().mockResolvedValue({ data: { reaction_id: 'rid_1' } }),
       },
     },
     // 卡片复用同一个 message.create / reply 接口，靠 msg_type=interactive 区分；
@@ -191,6 +192,20 @@ describe('lark-api-client', () => {
     await expect(client.sendCard({ chatId: 'oc_1' })).resolves.toEqual({ ok: false, reason: 'card_required' })
     await expect(client.replyWithCard({ card: {} })).resolves.toEqual({ ok: false, reason: 'rootMessageId_required' })
     await expect(client.replyWithCard({ rootMessageId: 'om_x' })).resolves.toEqual({ ok: false, reason: 'card_required' })
+  })
+
+  it('deleteReaction calls SDK delete with message_id + reaction_id and validates input', async () => {
+    const sdkClient = makeSdkClient()
+    const client = createLarkApiClient({ appId: 'cli_a123', appSecret: 'secret', clientFactory: () => sdkClient })
+
+    const r = await client.deleteReaction({ messageId: 'om_user', reactionId: 'rid_1' })
+    expect(r.ok).toBe(true)
+    expect(sdkClient.im.messageReaction.delete).toHaveBeenCalledWith({
+      path: { message_id: 'om_user', reaction_id: 'rid_1' },
+    })
+
+    await expect(client.deleteReaction({ reactionId: 'rid_1' })).resolves.toEqual({ ok: false, reason: 'messageId_required' })
+    await expect(client.deleteReaction({ messageId: 'om_user' })).resolves.toEqual({ ok: false, reason: 'reactionId_required' })
   })
 
   it('tests credentials without sending a chat message', async () => {

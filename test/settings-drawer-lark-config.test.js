@@ -41,12 +41,12 @@ describe('SettingsDrawer Lark notification settings', () => {
     expect(settingsSource).toContain('notificationCooldownMs: Number(values.larkNotificationCooldownMs) || 0')
   })
 
-  it('groups Telegram and Lark under the notification-channel section', () => {
-    expect(settingsSource).toContain('<Text strong>通知渠道</Text>')
+  it('exposes Lark settings under a dedicated tab/section with all form items', () => {
+    // SettingsDrawer 用 Tabs 切换 telegram / lark / 其他面板；不强制具体 layout，
+    // 只验证 Lark 面板的核心 form items + 关键文案存在。
     expect(settingsSource).toContain("key: 'telegram'")
     expect(settingsSource).toContain("key: 'lark'")
-    expect(settingsSource).toContain('Telegram · 话题群同步、bot 配置、通知与白名单')
-    expect(settingsSource).toContain('Lark / 飞书 · 话题群双向通知')
+    expect(settingsSource).toContain('Lark / 飞书')
     expect(settingsSource).toContain('Lark 的话题由话题群中的主消息/thread 承载，不是 Telegram Forum Topic 那种原生 topic 对象。')
     expect(settingsSource).toContain('name="larkAppId"')
     expect(settingsSource).toContain('name="larkAppSecret"')

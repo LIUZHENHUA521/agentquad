@@ -135,6 +135,22 @@ export function createLarkApiClient({ appId, appSecret, clientFactory = defaultC
     }
   }
 
+  async function deleteReaction({ messageId, reactionId } = {}) {
+    if (!hasCredentials()) return { ok: false, reason: 'lark_credentials_missing' }
+    if (isBlank(messageId)) return { ok: false, reason: 'messageId_required' }
+    if (isBlank(reactionId)) return { ok: false, reason: 'reactionId_required' }
+    try {
+      const response = await getClient().im.messageReaction.delete({
+        path: { message_id: String(messageId), reaction_id: String(reactionId) },
+      })
+      return { ok: true, payload: normalizePayload(response) }
+    } catch (e) {
+      const detail = normalizeError(e)
+      logger.warn?.(`[lark-api] reaction delete failed: ${detail}`)
+      return { ok: false, reason: 'lark_reaction_delete_failed', detail }
+    }
+  }
+
   async function testConnection() {
     if (!hasCredentials()) return { ok: false, reason: 'lark_credentials_missing' }
     try {
@@ -152,5 +168,5 @@ export function createLarkApiClient({ appId, appSecret, clientFactory = defaultC
     }
   }
 
-  return { sendMessage, replyInThread, sendCard, replyWithCard, addReaction, testConnection }
+  return { sendMessage, replyInThread, sendCard, replyWithCard, addReaction, deleteReaction, testConnection }
 }

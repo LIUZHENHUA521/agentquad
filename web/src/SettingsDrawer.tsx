@@ -1,4 +1,4 @@
-import { Drawer, Descriptions, Alert, Typography, Form, Input, InputNumber, Button, Radio, Space, message, Tag, Switch, Collapse } from 'antd'
+import { Drawer, Descriptions, Alert, Typography, Form, Input, InputNumber, Button, Radio, Space, message, Tag, Switch, Collapse, Tabs, Segmented } from 'antd'
 import { MinusCircleOutlined, PlusOutlined } from '@ant-design/icons'
 import { useEffect, useState } from 'react'
 import { getStatus, getConfig, updateConfig, AppConfig, pickDirectory, ToolDiagnostic, testTelegram, testLark, type ProbeHit } from './api'
@@ -82,10 +82,17 @@ function larkSourceLabel(source: 'quadtodo' | 'missing' | 'input'): string {
   return 'missing'
 }
 
+type ToolKey = 'claude' | 'codex' | 'cursor'
+const TOOL_LABEL: Record<ToolKey, string> = {
+  claude: 'Claude',
+  codex: 'Codex',
+  cursor: 'Cursor',
+}
+
 export default function SettingsDrawer({ open, onClose }: Props) {
   const [status, setStatus] = useState<{ version: string; activeSessions: number } | null>(null)
   const [config, setConfig] = useState<AppConfig | null>(null)
-  const [toolDiagnostics, setToolDiagnostics] = useState<Record<'claude' | 'codex' | 'cursor', ToolDiagnostic> | null>(null)
+  const [toolDiagnostics, setToolDiagnostics] = useState<Record<ToolKey, ToolDiagnostic> | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [pickingDefaultCwd, setPickingDefaultCwd] = useState(false)
@@ -103,9 +110,11 @@ export default function SettingsDrawer({ open, onClose }: Props) {
   const [larkSecretSource, setLarkSecretSource] = useState<'quadtodo' | 'missing'>('missing')
   const [larkTesting, setLarkTesting] = useState(false)
   const [larkTestResult, setLarkTestResult] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState<'run' | 'tools' | 'telegram' | 'lark' | 'pricing'>('run')
+  const [viewingTool, setViewingTool] = useState<ToolKey>('claude')
   const [form] = Form.useForm()
 
-  const buildToolPatch = (tool: 'claude' | 'codex' | 'cursor', nextCommandValue: string, nextBinValue: string) => {
+  const buildToolPatch = (tool: ToolKey, nextCommandValue: string, nextBinValue: string) => {
     const meta = toolDiagnostics?.[tool]
     const parsedCommand = splitCommandLine(nextCommandValue.trim())
     const baseCommand = parsedCommand[0] || ''
@@ -185,6 +194,7 @@ export default function SettingsDrawer({ open, onClose }: Props) {
         setTokenSource((result.config.telegram?.botTokenSource as 'quadtodo' | 'openclaw' | 'missing' | undefined) || 'missing')
         setTokenMasked(result.config.telegram?.botTokenMasked || '')
         setLarkSecretSource((result.config.lark?.appSecretSource as 'quadtodo' | 'missing' | undefined) || 'missing')
+        setViewingTool((result.config.defaultTool as ToolKey) || 'claude')
         setErr(null)
       })
       .catch((e) => setErr(e.message))
@@ -300,9 +310,9 @@ export default function SettingsDrawer({ open, onClose }: Props) {
     }
   }
 
-  const TOOLS: Array<'claude' | 'codex' | 'cursor'> = ['claude', 'codex', 'cursor']
+  const TOOLS: ToolKey[] = ['claude', 'codex', 'cursor']
 
-  const handleRedetectTool = async (tool: 'claude' | 'codex' | 'cursor') => {
+  const handleRedetectTool = async (tool: ToolKey) => {
     if (!config) return
     try {
       const toolsPatch: any = {}
@@ -335,7 +345,7 @@ export default function SettingsDrawer({ open, onClose }: Props) {
     }
   }
 
-  const renderToolMeta = (tool: 'claude' | 'codex' | 'cursor') => {
+  const renderToolMeta = (tool: ToolKey) => {
     const meta = toolDiagnostics?.[tool]
     if (!meta) return null
     const sourceText = meta.source === 'env'
@@ -382,6 +392,498 @@ export default function SettingsDrawer({ open, onClose }: Props) {
     )
   }
 
+  const renderToolFields = (tool: ToolKey) => {
+    const cmdField = `${tool}Command`
+    const binField = `${tool}Bin`
+    const placeholder: Record<ToolKey, { cmd: string; bin: string; extra: string }> = {
+      claude: {
+        cmd: 'claude',
+        bin: '/Users/liuzhenhua/.nvm/versions/node/v20.19.5/bin/claude',
+        extra: '默认是 claude，如果公司内封装成 claude-w，可以在这里修改。',
+      },
+      codex: {
+        cmd: 'codex',
+        bin: '/Users/liuzhenhua/.nvm/versions/node/v20.19.5/bin/codex',
+        extra: '默认是 codex，如果公司内封装成 codex-w，可以在这里修改。',
+      },
+      cursor: {
+        cmd: 'cursor-agent',
+        bin: '/Users/liuzhenhua/.local/bin/cursor-agent',
+        extra: '默认是 cursor-agent；新会话会先跑 `cursor-agent create-chat` 拿 chatId 再用 --resume 进入交互。',
+      },
+    }
+    const p = placeholder[tool]
+    return (
+      <>
+        <Form.Item name={cmdField} label="启动命令" extra={p.extra}>
+          <Input placeholder={p.cmd} />
+        </Form.Item>
+        <Form.Item name={binField} label="二进制路径">
+          <Input placeholder={p.bin} />
+        </Form.Item>
+        {renderToolMeta(tool)}
+      </>
+    )
+  }
+
+  const runTab = (
+    <>
+      <Form.Item
+        label="默认启动目录"
+        extra="新开的 AI 会话会默认在这个目录里启动。保存后立即对新会话生效。"
+      >
+        <Space.Compact block>
+          <Form.Item name="defaultCwd" noStyle rules={[{ required: true, message: '请输入默认启动目录' }]}>
+            <Input allowClear placeholder="/Users/liuzhenhua/Desktop/code/crazyCombo" />
+          </Form.Item>
+          <Button loading={pickingDefaultCwd} onClick={handlePickDefaultCwd}>选择目录</Button>
+        </Space.Compact>
+      </Form.Item>
+
+      <Form.Item
+        label="终端链接打开编辑器"
+        extra="终端中的文件路径点击时会使用该编辑器打开；也是卡片「代码」按钮的默认项。"
+      >
+        <Radio.Group
+          value={linkEditor}
+          onChange={(e) => {
+            const v = e.target.value as 'trae-cn' | 'trae' | 'cursor'
+            setLinkEditor(v)
+            try { localStorage.setItem('quadtodo.editor', v) } catch {}
+          }}
+        >
+          <Radio.Button value="trae-cn">Trae CN</Radio.Button>
+          <Radio.Button value="trae">Trae</Radio.Button>
+          <Radio.Button value="cursor">Cursor</Radio.Button>
+        </Radio.Group>
+      </Form.Item>
+
+      <Form.Item
+        name="port"
+        label="服务端口"
+        rules={[{ required: true, message: '请输入服务端口' }]}
+        extra="端口会保存到配置文件，重启 quadtodo 后生效。"
+      >
+        <Input type="number" min={1} max={65535} />
+      </Form.Item>
+    </>
+  )
+
+  const toolsTab = (
+    <>
+      <Form.Item
+        name="defaultTool"
+        label="默认工具"
+        extra="新开会话时默认启动的 AI 工具。"
+        rules={[{ required: true, message: '请选择默认工具' }]}
+      >
+        <Radio.Group>
+          <Radio.Button value="claude">Claude</Radio.Button>
+          <Radio.Button value="codex">Codex</Radio.Button>
+          <Radio.Button value="cursor">Cursor</Radio.Button>
+        </Radio.Group>
+      </Form.Item>
+
+      <Form.Item label="查看工具配置">
+        <Segmented
+          value={viewingTool}
+          onChange={(v) => setViewingTool(v as ToolKey)}
+          options={TOOLS.map((t) => ({ label: TOOL_LABEL[t], value: t }))}
+        />
+      </Form.Item>
+
+      {/* 同时挂载三组 Form.Item，未选中的隐藏。这样所有字段都被 Form 管理，切换不丢值。 */}
+      <div style={{ display: viewingTool === 'claude' ? 'block' : 'none' }}>{renderToolFields('claude')}</div>
+      <div style={{ display: viewingTool === 'codex' ? 'block' : 'none' }}>{renderToolFields('codex')}</div>
+      <div style={{ display: viewingTool === 'cursor' ? 'block' : 'none' }}>{renderToolFields('cursor')}</div>
+    </>
+  )
+
+  const telegramTab = (
+    <Collapse
+      defaultActiveKey={['basic', 'topic', 'notify', 'security']}
+      items={[
+        {
+          key: 'basic',
+          label: '基础',
+          children: (
+            <>
+              <Form.Item name="telegramEnabled" label="启用 Telegram" valuePropName="checked">
+                <Switch />
+              </Form.Item>
+
+              <Form.Item label="Bot Token" required>
+                <Space.Compact style={{ width: '100%' }}>
+                  <Form.Item name="telegramBotToken" noStyle>
+                    <Input.Password placeholder="paste token here，留空 = 用兜底来源" autoComplete="new-password" />
+                  </Form.Item>
+                  <Button
+                    loading={testing}
+                    onClick={async () => {
+                      setTesting(true)
+                      try {
+                        const rawToken = String(form.getFieldValue('telegramBotToken') || '').trim()
+                        const input = rawToken && !isMaskedToken(rawToken) ? { botToken: rawToken } : {}
+                        const r = await testTelegram(input)
+                        if (r.ok) {
+                          const sourceLabel = telegramSourceLabel(r.source)
+                          setTestResult(`✓ ${r.botUsername ? '@' + r.botUsername : `id=${r.botId}`}（来源：${sourceLabel}）`)
+                          message.success(r.source === 'input' ? 'Telegram 连通，保存后生效' : 'Telegram 连通')
+                        } else {
+                          setTestResult(`✗ ${r.errorReason || 'unknown'}`)
+                          message.error(r.errorReason || '测试失败')
+                        }
+                      } catch (e: any) {
+                        setTestResult(`✗ ${e.message}`)
+                      } finally {
+                        setTesting(false)
+                      }
+                    }}
+                  >测试</Button>
+                </Space.Compact>
+                <div style={{ marginTop: 4, fontSize: 12 }}>
+                  <Tag color={tokenSource === 'quadtodo' ? 'default' : tokenSource === 'openclaw' ? 'orange' : 'error'}>
+                    {tokenSource === 'quadtodo' && '来自 quadtodo 配置'}
+                    {tokenSource === 'openclaw' && '来自 ~/.openclaw/openclaw.json（兜底）'}
+                    {tokenSource === 'missing' && '未配置'}
+                  </Tag>
+                  {testResult && <span style={{ marginLeft: 8 }}>{testResult}</span>}
+                </div>
+              </Form.Item>
+
+              <Form.Item label="Supergroup ID">
+                <Space.Compact style={{ width: '100%' }}>
+                  <Form.Item name="telegramSupergroupId" noStyle>
+                    <Input placeholder="-1001234567890" />
+                  </Form.Item>
+                  <Button onClick={() => setProbeOpen(true)}>抓 ID</Button>
+                </Space.Compact>
+              </Form.Item>
+
+              <Form.Item
+                name="telegramAllowedChatIds"
+                label="白名单 chatIds"
+                extra="一行一个 chat_id；空 = 拒绝所有（强制白名单）"
+              >
+                <Input.TextArea rows={3} placeholder="-1001234567890" />
+              </Form.Item>
+            </>
+          ),
+        },
+        {
+          key: 'topic',
+          label: 'Topic 行为',
+          children: (
+            <>
+              <Form.Item name="telegramUseTopics" label="启用 Topics" valuePropName="checked">
+                <Switch />
+              </Form.Item>
+              <Form.Item name="telegramCreateTopicOnTaskStart" label="任务启动时建 Topic" valuePropName="checked">
+                <Switch />
+              </Form.Item>
+              <Form.Item name="telegramCloseTopicOnSessionEnd" label="Session 结束关 Topic" valuePropName="checked">
+                <Switch />
+              </Form.Item>
+              <Form.Item name="telegramAutoCreateTopic" label="非 wizard 起的 PTY 自动镜像" valuePropName="checked">
+                <Switch />
+              </Form.Item>
+              <Form.Item name="telegramTopicNameTemplate" label="Topic 名模板" extra="占位符：{shortCode} {title}">
+                <Input />
+              </Form.Item>
+              <Form.Item name="telegramTopicNameDoneTemplate" label="完成模板" extra="占位符：{originalName}">
+                <Input />
+              </Form.Item>
+            </>
+          ),
+        },
+        {
+          key: 'notify',
+          label: '通知行为',
+          children: (
+            <>
+              <Form.Item
+                name="telegramNotificationCooldownMs"
+                label="同 session idle 提醒最小间隔 (ms)"
+                extra="0 = 关闭去重，每次都推。默认 600000（10 分钟）。"
+              >
+                <InputNumber min={0} step={60_000} style={{ width: '100%' }} />
+              </Form.Item>
+              <Form.Item name="telegramSuppressNotificationEvents" label="丢弃 idle Notification 事件" valuePropName="checked">
+                <Switch />
+              </Form.Item>
+              <Form.Item
+                name="telegramDefaultPermissionMode"
+                label="Telegram 默认权限模式"
+                extra="新建/恢复 Telegram 任务时使用。非 bypass 模式下，等待授权时会发 Telegram 按钮提醒。"
+              >
+                <Radio.Group>
+                  <Radio.Button value="default">默认（需确认）</Radio.Button>
+                  <Radio.Button value="acceptEdits">半托管</Radio.Button>
+                  <Radio.Button value="bypass">完全托管</Radio.Button>
+                </Radio.Group>
+              </Form.Item>
+            </>
+          ),
+        },
+        {
+          key: 'security',
+          label: '安全',
+          children: (
+            <Form.Item
+              name="telegramAllowedFromUserIds"
+              label="白名单 fromUserIds"
+              extra="一行一个 user_id；空 = 不限"
+            >
+              <Input.TextArea rows={3} />
+            </Form.Item>
+          ),
+        },
+        {
+          key: 'advanced',
+          label: '高级（不动也行）',
+          children: (
+            <>
+              <Form.Item name="telegramLongPollTimeoutSec" label="长轮询超时 (秒)">
+                <InputNumber min={5} max={120} style={{ width: '100%' }} />
+              </Form.Item>
+              <Form.Item name="telegramPollRetryDelayMs" label="拉取失败退避起点 (ms)">
+                <InputNumber min={500} step={500} style={{ width: '100%' }} />
+              </Form.Item>
+              <Form.Item name="telegramMinRenameIntervalMs" label="Topic 重命名最小间隔 (ms)">
+                <InputNumber min={1000} step={1000} style={{ width: '100%' }} />
+              </Form.Item>
+            </>
+          ),
+        },
+      ]}
+    />
+  )
+
+  const larkTab = (
+    <>
+      <Alert
+        type="info"
+        showIcon
+        style={{ marginBottom: 12 }}
+        message="Lark 话题群适配说明"
+        description="Lark 的话题由话题群中的主消息/thread 承载，不是 Telegram Forum Topic 那种原生 topic 对象。"
+      />
+
+      <Form.Item name="larkEnabled" label="启用 Lark / 飞书通知" valuePropName="checked">
+        <Switch />
+      </Form.Item>
+
+      <Form.Item name="larkAppId" label="App ID" extra="飞书/Lark 自建应用的 App ID，例如 cli_xxx。">
+        <Input placeholder="cli_xxx" />
+      </Form.Item>
+
+      <Form.Item label="App Secret" required>
+        <Space.Compact style={{ width: '100%' }}>
+          <Form.Item name="larkAppSecret" noStyle>
+            <Input.Password placeholder="paste app secret here，留空/遮罩 = 保留现有值" autoComplete="new-password" />
+          </Form.Item>
+          <Button
+            loading={larkTesting}
+            onClick={async () => {
+              setLarkTesting(true)
+              try {
+                const rawAppId = String(form.getFieldValue('larkAppId') || '').trim()
+                const rawSecret = String(form.getFieldValue('larkAppSecret') || '').trim()
+                const input = {
+                  appId: rawAppId,
+                  appSecret: rawSecret && !isMaskedLarkSecret(rawSecret) ? rawSecret : undefined,
+                }
+                const r = await testLark(input)
+                if (r.ok) {
+                  setLarkTestResult(`✓ 来源：${larkSourceLabel(r.source)}`)
+                  message.success(r.source === 'input' ? 'Lark 连通，保存后生效' : 'Lark 连通')
+                } else {
+                  setLarkTestResult(`✗ ${r.errorReason || 'unknown'}`)
+                  message.error(r.errorReason || '测试失败')
+                }
+              } catch (e: any) {
+                setLarkTestResult(`✗ ${e.message}`)
+              } finally {
+                setLarkTesting(false)
+              }
+            }}
+          >测试</Button>
+        </Space.Compact>
+        <div style={{ marginTop: 4, fontSize: 12 }}>
+          <Tag color={larkSecretSource === 'quadtodo' ? 'default' : 'error'}>
+            {larkSecretSource === 'quadtodo' && '来自 quadtodo 配置'}
+            {larkSecretSource === 'missing' && '未配置'}
+          </Tag>
+          {larkTestResult && <span style={{ marginLeft: 8 }}>{larkTestResult}</span>}
+        </div>
+      </Form.Item>
+
+      <Form.Item
+        name="larkChatId"
+        label="话题群 Chat ID"
+        extra="目标群需要是话题群/thread group；机器人需要在群内并具备发消息权限。"
+      >
+        <Input placeholder="oc_xxxxxxxxxxxxxxxxx" />
+      </Form.Item>
+
+      <Form.Item
+        name="larkRequireThreadGroup"
+        label="要求目标群为话题群 / thread group"
+        valuePropName="checked"
+        extra="保持开启可避免误把普通群当作话题群使用。"
+      >
+        <Switch />
+      </Form.Item>
+
+      <Form.Item
+        name="larkEventSubscribeEnabled"
+        label="启用事件订阅，用于双向消息"
+        valuePropName="checked"
+        extra="关闭后只能从 quadtodo 推送到 Lark，Lark 里的回复不会回到本地会话。"
+      >
+        <Switch />
+      </Form.Item>
+
+      <Form.Item
+        name="larkAutoCreateTopic"
+        label="Web/CLI 起 session 自动镜像到 Lark thread"
+        valuePropName="checked"
+        extra="开启后：在 Web 起 AI session 时自动在话题群里发一条根消息作为 thread anchor，PTY 输出回复到该 thread。关闭则只能从飞书 @bot 起 session。"
+      >
+        <Switch />
+      </Form.Item>
+
+      <Form.Item
+        name="larkDefaultPermissionMode"
+        label="Lark 默认权限模式"
+        extra="新建/恢复 Lark 任务时使用。默认 = 每次写操作都要授权；半托管 = 自动批文件编辑；完全托管（bypass）= 全自动跑。Lark 远程驱动时建议 bypass，否则等待授权时只能干等。"
+      >
+        <Radio.Group>
+          <Radio.Button value="default">默认（需确认）</Radio.Button>
+          <Radio.Button value="acceptEdits">半托管</Radio.Button>
+          <Radio.Button value="bypass">完全托管</Radio.Button>
+        </Radio.Group>
+      </Form.Item>
+
+      <Form.Item
+        name="larkNotificationCooldownMs"
+        label="同 session idle 提醒最小间隔 (ms)"
+        extra="0 = 关闭去重，每次都推。默认 600000（10 分钟）。"
+      >
+        <InputNumber min={0} step={60_000} style={{ width: '100%' }} />
+      </Form.Item>
+    </>
+  )
+
+  const pricingTab = (
+    <>
+      <Alert
+        type="info"
+        showIcon
+        style={{ marginBottom: 12 }}
+        message="估算成本用的单价表，单位 $/1M tokens。保存后下次打开统计面板即生效，无需重启。"
+        description={
+          <>
+            模型匹配使用 glob（<Text code>*</Text> 匹配任意字符），按定义顺序逐条匹配，找不到时落到"默认费率"。
+            官方价目对照：<Text code>https://www.anthropic.com/pricing#api</Text>。
+            <br />
+            注意：删除 Opus / Sonnet / Haiku 等默认模型行后，下次打开此面板会自动恢复（系统始终保证默认项存在）。
+          </>
+        }
+      />
+
+      <Form.Item
+        name="pricingCnyRate"
+        label="CNY 汇率"
+        extra="USD → CNY 换算用；不会自动跟随实时汇率，自行维护。"
+        rules={[{ required: true, message: '请输入 CNY 汇率' }]}
+      >
+        <InputNumber min={0} step={0.1} style={{ width: 160 }} />
+      </Form.Item>
+
+      <Paragraph style={{ marginTop: 8, marginBottom: 8 }}>
+        <Text>默认费率（fallback）</Text>
+      </Paragraph>
+      <Space wrap size={[12, 8]} style={{ marginBottom: 12 }}>
+        <Form.Item name={['pricingDefault', 'input']} label="input" style={{ marginBottom: 0 }}>
+          <InputNumber min={0} step={0.01} style={{ width: 110 }} />
+        </Form.Item>
+        <Form.Item name={['pricingDefault', 'output']} label="output" style={{ marginBottom: 0 }}>
+          <InputNumber min={0} step={0.01} style={{ width: 110 }} />
+        </Form.Item>
+        <Form.Item name={['pricingDefault', 'cacheRead']} label="cacheRead" style={{ marginBottom: 0 }}>
+          <InputNumber min={0} step={0.01} style={{ width: 110 }} />
+        </Form.Item>
+        <Form.Item name={['pricingDefault', 'cacheWrite']} label="cacheWrite" style={{ marginBottom: 0 }}>
+          <InputNumber min={0} step={0.01} style={{ width: 110 }} />
+        </Form.Item>
+      </Space>
+
+      <Paragraph style={{ marginTop: 8, marginBottom: 8 }}>
+        <Text>按模型匹配</Text>
+      </Paragraph>
+      <Form.List name="pricingModels">
+        {(fields, { add, remove }) => (
+          <>
+            {fields.map(({ key, name, ...rest }) => (
+              <div
+                key={key}
+                style={{
+                  padding: 10,
+                  border: '1px solid #ece7dd',
+                  borderRadius: 6,
+                  marginBottom: 8,
+                  background: '#fcfaf5',
+                }}
+              >
+                <Space wrap size={[12, 4]} style={{ width: '100%' }}>
+                  <Form.Item
+                    {...rest}
+                    name={[name, 'pattern']}
+                    label="模型匹配"
+                    style={{ marginBottom: 0 }}
+                  >
+                    <Input placeholder="claude-opus-4-*" style={{ width: 200 }} />
+                  </Form.Item>
+                  <Form.Item {...rest} name={[name, 'input']} label="input" style={{ marginBottom: 0 }}>
+                    <InputNumber min={0} step={0.01} style={{ width: 100 }} />
+                  </Form.Item>
+                  <Form.Item {...rest} name={[name, 'output']} label="output" style={{ marginBottom: 0 }}>
+                    <InputNumber min={0} step={0.01} style={{ width: 100 }} />
+                  </Form.Item>
+                  <Form.Item {...rest} name={[name, 'cacheRead']} label="cacheRead" style={{ marginBottom: 0 }}>
+                    <InputNumber min={0} step={0.01} style={{ width: 100 }} />
+                  </Form.Item>
+                  <Form.Item {...rest} name={[name, 'cacheWrite']} label="cacheWrite" style={{ marginBottom: 0 }}>
+                    <InputNumber min={0} step={0.01} style={{ width: 100 }} />
+                  </Form.Item>
+                  <Button
+                    type="text"
+                    danger
+                    icon={<MinusCircleOutlined />}
+                    onClick={() => remove(name)}
+                  >
+                    删除
+                  </Button>
+                </Space>
+              </div>
+            ))}
+            <Button
+              type="dashed"
+              onClick={() =>
+                add({ pattern: '', input: 0, output: 0, cacheRead: 0, cacheWrite: 0 })
+              }
+              icon={<PlusOutlined />}
+              block
+            >
+              添加模型
+            </Button>
+          </>
+        )}
+      </Form.List>
+    </>
+  )
+
   return (
     <Drawer
       title="quadtodo 设置"
@@ -396,535 +898,39 @@ export default function SettingsDrawer({ open, onClose }: Props) {
       }
     >
       {err && <Alert type="error" message={err} style={{ marginBottom: 16 }} />}
-      <Descriptions column={1} bordered size="small">
+
+      <Descriptions column={1} bordered size="small" style={{ marginBottom: 16 }}>
         <Descriptions.Item label="版本">{status?.version ?? '-'}</Descriptions.Item>
         <Descriptions.Item label="活跃 AI 会话数">{status?.activeSessions ?? '-'}</Descriptions.Item>
       </Descriptions>
 
-      <Paragraph style={{ marginTop: 24 }}>
-        <Text strong>运行设置</Text>
-      </Paragraph>
       <Form form={form} layout="vertical">
-        <Form.Item
-          label="默认启动目录"
-          extra="新开的 AI 会话会默认在这个目录里启动。保存后立即对新会话生效。"
-        >
-          <Space.Compact block>
-            <Form.Item name="defaultCwd" noStyle rules={[{ required: true, message: '请输入默认启动目录' }]}>
-              <Input allowClear placeholder="/Users/liuzhenhua/Desktop/code/crazyCombo" />
-            </Form.Item>
-            <Button loading={pickingDefaultCwd} onClick={handlePickDefaultCwd}>选择目录</Button>
-          </Space.Compact>
-        </Form.Item>
-
-        <Form.Item
-          name="defaultTool"
-          label="默认工具"
-          rules={[{ required: true, message: '请选择默认工具' }]}
-        >
-          <Radio.Group>
-            <Radio.Button value="claude">Claude</Radio.Button>
-            <Radio.Button value="codex">Codex</Radio.Button>
-            <Radio.Button value="cursor">Cursor</Radio.Button>
-          </Radio.Group>
-        </Form.Item>
-
-        <Form.Item
-          name="claudeCommand"
-          label="Claude 启动命令"
-          extra="默认是 claude，如果公司内封装成 claude-w，可以在这里修改。"
-        >
-          <Input placeholder="claude" />
-        </Form.Item>
-
-        <Form.Item
-          name="claudeBin"
-          label="Claude 二进制路径"
-        >
-          <Input placeholder="/Users/liuzhenhua/.nvm/versions/node/v20.19.5/bin/claude" />
-        </Form.Item>
-        {renderToolMeta('claude')}
-
-        <Form.Item
-          name="codexCommand"
-          label="Codex 启动命令"
-          extra="默认是 codex，如果公司内封装成 codex-w，可以在这里修改。"
-        >
-          <Input placeholder="codex" />
-        </Form.Item>
-
-        <Form.Item
-          name="codexBin"
-          label="Codex 二进制路径"
-        >
-          <Input placeholder="/Users/liuzhenhua/.nvm/versions/node/v20.19.5/bin/codex" />
-        </Form.Item>
-        {renderToolMeta('codex')}
-
-        <Form.Item
-          name="cursorCommand"
-          label="Cursor 启动命令"
-          extra="默认是 cursor-agent；新会话会先跑 `cursor-agent create-chat` 拿 chatId 再用 --resume 进入交互。"
-        >
-          <Input placeholder="cursor-agent" />
-        </Form.Item>
-
-        <Form.Item
-          name="cursorBin"
-          label="Cursor 二进制路径"
-        >
-          <Input placeholder="/Users/liuzhenhua/.local/bin/cursor-agent" />
-        </Form.Item>
-        {renderToolMeta('cursor')}
-
-        <Form.Item
-          label="终端链接打开编辑器"
-          extra="终端中的文件路径点击时会使用该编辑器打开；也是卡片「代码」按钮的默认项。"
-        >
-          <Radio.Group
-            value={linkEditor}
-            onChange={(e) => {
-              const v = e.target.value as 'trae-cn' | 'trae' | 'cursor'
-              setLinkEditor(v)
-              try { localStorage.setItem('quadtodo.editor', v) } catch {}
-            }}
-          >
-            <Radio.Button value="trae-cn">Trae CN</Radio.Button>
-            <Radio.Button value="trae">Trae</Radio.Button>
-            <Radio.Button value="cursor">Cursor</Radio.Button>
-          </Radio.Group>
-        </Form.Item>
-
-        <Form.Item
-          name="port"
-          label="服务端口"
-          rules={[{ required: true, message: '请输入服务端口' }]}
-          extra="端口会保存到配置文件，重启 quadtodo 后生效。"
-        >
-          <Input type="number" min={1} max={65535} />
-        </Form.Item>
-
-        <Paragraph style={{ marginTop: 24, marginBottom: 12 }}>
-          <Text strong>通知渠道</Text>
-          <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
-            Telegram 和 Lark / 飞书的双向通知配置。
-          </Text>
-        </Paragraph>
-
-        <Collapse
-          defaultActiveKey={['telegram', 'lark']}
+        <Tabs
+          activeKey={activeTab}
+          onChange={(k) => setActiveTab(k as typeof activeTab)}
           items={[
-            {
-              key: 'telegram',
-              label: 'Telegram · 话题群同步、bot 配置、通知与白名单',
-              children: (
-                <Collapse
-                  defaultActiveKey={['basic', 'topic', 'notify', 'security']}
-                  items={[
-            {
-              key: 'basic',
-              label: 'Telegram · 基础',
-              children: (
-                <>
-                  <Form.Item name="telegramEnabled" label="启用 Telegram" valuePropName="checked">
-                    <Switch />
-                  </Form.Item>
-
-                  <Form.Item label="Bot Token" required>
-                    <Space.Compact style={{ width: '100%' }}>
-                      <Form.Item name="telegramBotToken" noStyle>
-                        <Input.Password placeholder="paste token here，留空 = 用兜底来源" autoComplete="new-password" />
-                      </Form.Item>
-                      <Button
-                        loading={testing}
-                        onClick={async () => {
-                          setTesting(true)
-                          try {
-                            const rawToken = String(form.getFieldValue('telegramBotToken') || '').trim()
-                            const input = rawToken && !isMaskedToken(rawToken) ? { botToken: rawToken } : {}
-                            const r = await testTelegram(input)
-                            if (r.ok) {
-                              const sourceLabel = telegramSourceLabel(r.source)
-                              setTestResult(`✓ ${r.botUsername ? '@' + r.botUsername : `id=${r.botId}`}（来源：${sourceLabel}）`)
-                              message.success(r.source === 'input' ? 'Telegram 连通，保存后生效' : 'Telegram 连通')
-                            } else {
-                              setTestResult(`✗ ${r.errorReason || 'unknown'}`)
-                              message.error(r.errorReason || '测试失败')
-                            }
-                          } catch (e: any) {
-                            setTestResult(`✗ ${e.message}`)
-                          } finally {
-                            setTesting(false)
-                          }
-                        }}
-                      >测试</Button>
-                    </Space.Compact>
-                    <div style={{ marginTop: 4, fontSize: 12 }}>
-                      <Tag color={tokenSource === 'quadtodo' ? 'default' : tokenSource === 'openclaw' ? 'orange' : 'error'}>
-                        {tokenSource === 'quadtodo' && '来自 quadtodo 配置'}
-                        {tokenSource === 'openclaw' && '来自 ~/.openclaw/openclaw.json（兜底）'}
-                        {tokenSource === 'missing' && '未配置'}
-                      </Tag>
-                      {testResult && <span style={{ marginLeft: 8 }}>{testResult}</span>}
-                    </div>
-                  </Form.Item>
-
-                  <Form.Item label="Supergroup ID">
-                    <Space.Compact style={{ width: '100%' }}>
-                      <Form.Item name="telegramSupergroupId" noStyle>
-                        <Input placeholder="-1001234567890" />
-                      </Form.Item>
-                      <Button onClick={() => setProbeOpen(true)}>抓 ID</Button>
-                    </Space.Compact>
-                  </Form.Item>
-
-                  <Form.Item
-                    name="telegramAllowedChatIds"
-                    label="白名单 chatIds"
-                    extra="一行一个 chat_id；空 = 拒绝所有（强制白名单）"
-                  >
-                    <Input.TextArea rows={3} placeholder="-1001234567890" />
-                  </Form.Item>
-                </>
-              ),
-            },
-            {
-              key: 'topic',
-              label: 'Telegram · Topic 行为',
-              children: (
-                <>
-                  <Form.Item name="telegramUseTopics" label="启用 Topics" valuePropName="checked">
-                    <Switch />
-                  </Form.Item>
-                  <Form.Item name="telegramCreateTopicOnTaskStart" label="任务启动时建 Topic" valuePropName="checked">
-                    <Switch />
-                  </Form.Item>
-                  <Form.Item name="telegramCloseTopicOnSessionEnd" label="Session 结束关 Topic" valuePropName="checked">
-                    <Switch />
-                  </Form.Item>
-                  <Form.Item name="telegramAutoCreateTopic" label="非 wizard 起的 PTY 自动镜像" valuePropName="checked">
-                    <Switch />
-                  </Form.Item>
-                  <Form.Item name="telegramTopicNameTemplate" label="Topic 名模板" extra="占位符：{shortCode} {title}">
-                    <Input />
-                  </Form.Item>
-                  <Form.Item name="telegramTopicNameDoneTemplate" label="完成模板" extra="占位符：{originalName}">
-                    <Input />
-                  </Form.Item>
-                </>
-              ),
-            },
-            {
-              key: 'notify',
-              label: 'Telegram · 通知行为',
-              children: (
-                <>
-                  <Form.Item
-                    name="telegramNotificationCooldownMs"
-                    label="同 session idle 提醒最小间隔 (ms)"
-                    extra="0 = 关闭去重，每次都推。默认 600000（10 分钟）。"
-                  >
-                    <InputNumber min={0} step={60_000} style={{ width: '100%' }} />
-                  </Form.Item>
-                  <Form.Item name="telegramSuppressNotificationEvents" label="丢弃 idle Notification 事件" valuePropName="checked">
-                    <Switch />
-                  </Form.Item>
-                  <Form.Item
-                    name="telegramDefaultPermissionMode"
-                    label="Telegram 默认权限模式"
-                    extra="新建/恢复 Telegram 任务时使用。非 bypass 模式下，等待授权时会发 Telegram 按钮提醒。"
-                  >
-                    <Radio.Group>
-                      <Radio.Button value="default">默认（需确认）</Radio.Button>
-                      <Radio.Button value="acceptEdits">半托管</Radio.Button>
-                      <Radio.Button value="bypass">完全托管</Radio.Button>
-                    </Radio.Group>
-                  </Form.Item>
-                </>
-              ),
-            },
-            {
-              key: 'security',
-              label: 'Telegram · 安全',
-              children: (
-                <Form.Item
-                  name="telegramAllowedFromUserIds"
-                  label="白名单 fromUserIds"
-                  extra="一行一个 user_id；空 = 不限"
-                >
-                  <Input.TextArea rows={3} />
-                </Form.Item>
-              ),
-            },
-            {
-              key: 'advanced',
-              label: 'Telegram · 高级（不动也行）',
-              children: (
-                <>
-                  <Form.Item name="telegramLongPollTimeoutSec" label="长轮询超时 (秒)">
-                    <InputNumber min={5} max={120} style={{ width: '100%' }} />
-                  </Form.Item>
-                  <Form.Item name="telegramPollRetryDelayMs" label="拉取失败退避起点 (ms)">
-                    <InputNumber min={500} step={500} style={{ width: '100%' }} />
-                  </Form.Item>
-                  <Form.Item name="telegramMinRenameIntervalMs" label="Topic 重命名最小间隔 (ms)">
-                    <InputNumber min={1000} step={1000} style={{ width: '100%' }} />
-                  </Form.Item>
-                </>
-              ),
-            },
-                  ]}
-                />
-              ),
-            },
-            {
-              key: 'lark',
-              label: 'Lark / 飞书 · 话题群双向通知',
-              children: (
-                <>
-                  <Alert
-                    type="info"
-                    showIcon
-                    style={{ marginBottom: 12 }}
-                    message="Lark 话题群适配说明"
-                    description="Lark 的话题由话题群中的主消息/thread 承载，不是 Telegram Forum Topic 那种原生 topic 对象。"
-                  />
-
-                  <Form.Item name="larkEnabled" label="启用 Lark / 飞书通知" valuePropName="checked">
-                    <Switch />
-                  </Form.Item>
-
-                  <Form.Item name="larkAppId" label="App ID" extra="飞书/Lark 自建应用的 App ID，例如 cli_xxx。">
-                    <Input placeholder="cli_xxx" />
-                  </Form.Item>
-
-                  <Form.Item label="App Secret" required>
-                    <Space.Compact style={{ width: '100%' }}>
-                      <Form.Item name="larkAppSecret" noStyle>
-                        <Input.Password placeholder="paste app secret here，留空/遮罩 = 保留现有值" autoComplete="new-password" />
-                      </Form.Item>
-                      <Button
-                        loading={larkTesting}
-                        onClick={async () => {
-                          setLarkTesting(true)
-                          try {
-                            const rawAppId = String(form.getFieldValue('larkAppId') || '').trim()
-                            const rawSecret = String(form.getFieldValue('larkAppSecret') || '').trim()
-                            const input = {
-                              appId: rawAppId,
-                              appSecret: rawSecret && !isMaskedLarkSecret(rawSecret) ? rawSecret : undefined,
-                            }
-                            const r = await testLark(input)
-                            if (r.ok) {
-                              setLarkTestResult(`✓ 来源：${larkSourceLabel(r.source)}`)
-                              message.success(r.source === 'input' ? 'Lark 连通，保存后生效' : 'Lark 连通')
-                            } else {
-                              setLarkTestResult(`✗ ${r.errorReason || 'unknown'}`)
-                              message.error(r.errorReason || '测试失败')
-                            }
-                          } catch (e: any) {
-                            setLarkTestResult(`✗ ${e.message}`)
-                          } finally {
-                            setLarkTesting(false)
-                          }
-                        }}
-                      >测试</Button>
-                    </Space.Compact>
-                    <div style={{ marginTop: 4, fontSize: 12 }}>
-                      <Tag color={larkSecretSource === 'quadtodo' ? 'default' : 'error'}>
-                        {larkSecretSource === 'quadtodo' && '来自 quadtodo 配置'}
-                        {larkSecretSource === 'missing' && '未配置'}
-                      </Tag>
-                      {larkTestResult && <span style={{ marginLeft: 8 }}>{larkTestResult}</span>}
-                    </div>
-                  </Form.Item>
-
-                  <Form.Item
-                    name="larkChatId"
-                    label="话题群 Chat ID"
-                    extra="目标群需要是话题群/thread group；机器人需要在群内并具备发消息权限。"
-                  >
-                    <Input placeholder="oc_xxxxxxxxxxxxxxxxx" />
-                  </Form.Item>
-
-                  <Form.Item
-                    name="larkRequireThreadGroup"
-                    label="要求目标群为话题群 / thread group"
-                    valuePropName="checked"
-                    extra="保持开启可避免误把普通群当作话题群使用。"
-                  >
-                    <Switch />
-                  </Form.Item>
-
-                  <Form.Item
-                    name="larkEventSubscribeEnabled"
-                    label="启用事件订阅，用于双向消息"
-                    valuePropName="checked"
-                    extra="关闭后只能从 quadtodo 推送到 Lark，Lark 里的回复不会回到本地会话。"
-                  >
-                    <Switch />
-                  </Form.Item>
-
-                  <Form.Item
-                    name="larkAutoCreateTopic"
-                    label="Web/CLI 起 session 自动镜像到 Lark thread"
-                    valuePropName="checked"
-                    extra="开启后：在 Web 起 AI session 时自动在话题群里发一条根消息作为 thread anchor，PTY 输出回复到该 thread。关闭则只能从飞书 @bot 起 session。"
-                  >
-                    <Switch />
-                  </Form.Item>
-
-                  <Form.Item
-                    name="larkDefaultPermissionMode"
-                    label="Lark 默认权限模式"
-                    extra="新建/恢复 Lark 任务时使用。默认 = 每次写操作都要授权；半托管 = 自动批文件编辑；完全托管（bypass）= 全自动跑。Lark 远程驱动时建议 bypass，否则等待授权时只能干等。"
-                  >
-                    <Radio.Group>
-                      <Radio.Button value="default">默认（需确认）</Radio.Button>
-                      <Radio.Button value="acceptEdits">半托管</Radio.Button>
-                      <Radio.Button value="bypass">完全托管</Radio.Button>
-                    </Radio.Group>
-                  </Form.Item>
-
-                  <Form.Item
-                    name="larkNotificationCooldownMs"
-                    label="同 session idle 提醒最小间隔 (ms)"
-                    extra="0 = 关闭去重，每次都推。默认 600000（10 分钟）。"
-                  >
-                    <InputNumber min={0} step={60_000} style={{ width: '100%' }} />
-                  </Form.Item>
-                </>
-              ),
-            },
+            { key: 'run', label: '运行', children: runTab },
+            { key: 'tools', label: 'AI 工具', children: toolsTab },
+            { key: 'telegram', label: 'Telegram', children: telegramTab },
+            { key: 'lark', label: 'Lark / 飞书', children: larkTab },
+            { key: 'pricing', label: '价目表', children: pricingTab },
           ]}
         />
-
-        <TelegramProbeModal
-          open={probeOpen}
-          onClose={() => setProbeOpen(false)}
-          onPick={(hit: ProbeHit) => {
-            form.setFieldValue('telegramSupergroupId', hit.chatId)
-            const cur = String(form.getFieldValue('telegramAllowedChatIds') || '')
-            if (!cur.split('\n').includes(hit.chatId)) {
-              form.setFieldValue('telegramAllowedChatIds', hit.chatId + (cur ? '\n' + cur : ''))
-            }
-          }}
-        />
-
-        <Paragraph style={{ marginTop: 24, marginBottom: 12 }}>
-          <Text strong>估算价目表</Text>
-          <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
-            单位 $/1M tokens
-          </Text>
-        </Paragraph>
-
-        <Alert
-          type="info"
-          showIcon
-          style={{ marginBottom: 12 }}
-          message="这里是估算成本用的单价表。保存后下次打开统计面板即生效，无需重启。"
-          description={
-            <>
-              模型匹配使用 glob（<Text code>*</Text> 匹配任意字符），按定义顺序逐条匹配，找不到时落到"默认费率"。
-              官方价目对照：<Text code>https://www.anthropic.com/pricing#api</Text>。
-              <br />
-              注意：删除 Opus / Sonnet / Haiku 等默认模型行后，下次打开此面板会自动恢复（系统始终保证默认项存在）。
-            </>
-          }
-        />
-
-        <Form.Item
-          name="pricingCnyRate"
-          label="CNY 汇率"
-          extra="USD → CNY 换算用；不会自动跟随实时汇率，自行维护。"
-          rules={[{ required: true, message: '请输入 CNY 汇率' }]}
-        >
-          <InputNumber min={0} step={0.1} style={{ width: 160 }} />
-        </Form.Item>
-
-        <Paragraph style={{ marginTop: 8, marginBottom: 8 }}>
-          <Text>默认费率（fallback）</Text>
-        </Paragraph>
-        <Space wrap size={[12, 8]} style={{ marginBottom: 12 }}>
-          <Form.Item name={['pricingDefault', 'input']} label="input" style={{ marginBottom: 0 }}>
-            <InputNumber min={0} step={0.01} style={{ width: 110 }} />
-          </Form.Item>
-          <Form.Item name={['pricingDefault', 'output']} label="output" style={{ marginBottom: 0 }}>
-            <InputNumber min={0} step={0.01} style={{ width: 110 }} />
-          </Form.Item>
-          <Form.Item name={['pricingDefault', 'cacheRead']} label="cacheRead" style={{ marginBottom: 0 }}>
-            <InputNumber min={0} step={0.01} style={{ width: 110 }} />
-          </Form.Item>
-          <Form.Item name={['pricingDefault', 'cacheWrite']} label="cacheWrite" style={{ marginBottom: 0 }}>
-            <InputNumber min={0} step={0.01} style={{ width: 110 }} />
-          </Form.Item>
-        </Space>
-
-        <Paragraph style={{ marginTop: 8, marginBottom: 8 }}>
-          <Text>按模型匹配</Text>
-        </Paragraph>
-        <Form.List name="pricingModels">
-          {(fields, { add, remove }) => (
-            <>
-              {fields.map(({ key, name, ...rest }) => (
-                <div
-                  key={key}
-                  style={{
-                    padding: 10,
-                    border: '1px solid #ece7dd',
-                    borderRadius: 6,
-                    marginBottom: 8,
-                    background: '#fcfaf5',
-                  }}
-                >
-                  <Space wrap size={[12, 4]} style={{ width: '100%' }}>
-                    <Form.Item
-                      {...rest}
-                      name={[name, 'pattern']}
-                      label="模型匹配"
-                      style={{ marginBottom: 0 }}
-                    >
-                      <Input placeholder="claude-opus-4-*" style={{ width: 200 }} />
-                    </Form.Item>
-                    <Form.Item {...rest} name={[name, 'input']} label="input" style={{ marginBottom: 0 }}>
-                      <InputNumber min={0} step={0.01} style={{ width: 100 }} />
-                    </Form.Item>
-                    <Form.Item {...rest} name={[name, 'output']} label="output" style={{ marginBottom: 0 }}>
-                      <InputNumber min={0} step={0.01} style={{ width: 100 }} />
-                    </Form.Item>
-                    <Form.Item {...rest} name={[name, 'cacheRead']} label="cacheRead" style={{ marginBottom: 0 }}>
-                      <InputNumber min={0} step={0.01} style={{ width: 100 }} />
-                    </Form.Item>
-                    <Form.Item {...rest} name={[name, 'cacheWrite']} label="cacheWrite" style={{ marginBottom: 0 }}>
-                      <InputNumber min={0} step={0.01} style={{ width: 100 }} />
-                    </Form.Item>
-                    <Button
-                      type="text"
-                      danger
-                      icon={<MinusCircleOutlined />}
-                      onClick={() => remove(name)}
-                    >
-                      删除
-                    </Button>
-                  </Space>
-                </div>
-              ))}
-              <Button
-                type="dashed"
-                onClick={() =>
-                  add({ pattern: '', input: 0, output: 0, cacheRead: 0, cacheWrite: 0 })
-                }
-                icon={<PlusOutlined />}
-                block
-              >
-                添加模型
-              </Button>
-            </>
-          )}
-        </Form.List>
       </Form>
 
-      <Paragraph type="secondary">
+      <TelegramProbeModal
+        open={probeOpen}
+        onClose={() => setProbeOpen(false)}
+        onPick={(hit: ProbeHit) => {
+          form.setFieldValue('telegramSupergroupId', hit.chatId)
+          const cur = String(form.getFieldValue('telegramAllowedChatIds') || '')
+          if (!cur.split('\n').includes(hit.chatId)) {
+            form.setFieldValue('telegramAllowedChatIds', hit.chatId + (cur ? '\n' + cur : ''))
+          }
+        }}
+      />
+
+      <Paragraph type="secondary" style={{ marginTop: 16 }}>
         配置文件位置：<Text code>~/.quadtodo/config.json</Text>
       </Paragraph>
     </Drawer>

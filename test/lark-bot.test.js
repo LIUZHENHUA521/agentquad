@@ -8,6 +8,7 @@ function makeApiClient(overrides = {}) {
     sendCard: vi.fn().mockResolvedValue({ ok: true, payload: { message_id: 'om_card' } }),
     replyWithCard: vi.fn().mockResolvedValue({ ok: true, payload: { message_id: 'om_card_reply' } }),
     addReaction: vi.fn().mockResolvedValue({ ok: true, payload: { reaction_id: 'rid' } }),
+    deleteReaction: vi.fn().mockResolvedValue({ ok: true }),
     ...overrides,
   }
 }
@@ -111,6 +112,75 @@ describe('lark-bot busy reaction', () => {
       const fakeRng = () => i / BUSY_REACTION_EMOJIS.length
       expect(pickBusyReactionEmoji(fakeRng)).toBe(expected)
     })
+  })
+
+  it('whitelist now contains "thinking" semantics (not laugh/heart/clap noise)', () => {
+    // 用户反馈：之前混了 LAUGH/HEART/CLAP 等"赞叹/欢呼"语义太杂；改成"在思考/在干活"。
+    expect(BUSY_REACTION_EMOJIS).toContain('THINKING')
+    for (const e of ['LAUGH', 'HEART', 'CLAP', 'WINK', 'WOWFACE', 'BLUSH', 'WHIMPER', 'WOW', 'THUMBSUP']) {
+      expect(BUSY_REACTION_EMOJIS).not.toContain(e)
+    }
+  })
+
+  it('records reaction_id under the wizard-returned sessionId for later cleanup', async () => {
+    const wizard = {
+      handleInbound: vi.fn().mockResolvedValue({ action: 'stdin_proxy', sessionId: 'sid-abc' }),
+    }
+    const apiClient = makeApiClient({
+      addReaction: vi.fn().mockResolvedValue({ ok: true, payload: { reaction_id: 'rid_xyz' } }),
+    })
+    const { bot } = makeBot({ wizard, apiClient })
+
+    await bot.handleEvent({
+      event_id: 'evt_track',
+      event: {
+        message: { chat_id: 'oc_default', message_id: 'om_user', content: '{"text":"hello"}' },
+        sender: { sender_id: { open_id: 'ou_user' }, sender_type: 'user' },
+      },
+    })
+
+    // pendingReactions 内部记录 (sid-abc → [{messageId: om_user, reactionId: rid_xyz}])
+    // 我们通过测试钩子 _peekPendingReactions 观察。
+    await new Promise((r) => setTimeout(r, 5))
+    const peek = bot.__test__._peekPendingReactions()
+    expect(peek.has('sid-abc')).toBe(true)
+    const records = peek.get('sid-abc')
+    expect(records).toEqual([{ messageId: 'om_user', reactionId: 'rid_xyz' }])
+  })
+
+  it('clearReactionsForSession deletes all reactions tracked for that session and clears the map', async () => {
+    const apiClient = makeApiClient({
+      addReaction: vi.fn().mockResolvedValue({ ok: true, payload: { reaction_id: 'rid_1' } }),
+    })
+    const wizard = {
+      handleInbound: vi.fn().mockResolvedValue({ action: 'stdin_proxy', sessionId: 'sid-clean' }),
+    }
+    const { bot } = makeBot({ apiClient, wizard })
+
+    await bot.handleEvent({
+      event_id: 'evt_a',
+      event: {
+        message: { chat_id: 'oc_default', message_id: 'om_a', content: '{"text":"a"}' },
+        sender: { sender_id: { open_id: 'ou_user' }, sender_type: 'user' },
+      },
+    })
+    await new Promise((r) => setTimeout(r, 5))
+
+    const result = await bot.clearReactionsForSession('sid-clean')
+
+    expect(result.ok).toBe(true)
+    expect(result.removed).toBe(1)
+    expect(apiClient.deleteReaction).toHaveBeenCalledWith({ messageId: 'om_a', reactionId: 'rid_1' })
+    expect(bot.__test__._peekPendingReactions().has('sid-clean')).toBe(false)
+  })
+
+  it('clearReactionsForSession is a no-op when no reactions are tracked', async () => {
+    const apiClient = makeApiClient()
+    const { bot } = makeBot({ apiClient })
+
+    const result = await bot.clearReactionsForSession('sid-empty')
+    expect(result).toEqual({ ok: true, removed: 0 })
+    expect(apiClient.deleteReaction).not.toHaveBeenCalled()
   })
 
   it('does not add reaction when message is filtered (ignored_chat / ignored_self / ignored_empty)', async () => {

@@ -192,6 +192,48 @@ describe('openclaw-hook handler', () => {
     expect(bridge.sent[0].message).toContain('🤖')
   })
 
+  it('calls larkBot.clearReactionsForSession on stop event when route is lark', async () => {
+    const clearReactionsForSession = vi.fn().mockResolvedValue({ ok: true, removed: 2 })
+    bridge.routes.set('sid-lark', { channel: 'lark', targetUserId: 'oc_1', rootMessageId: 'om_root' })
+    handler = createOpenClawHookHandler({
+      db, openclaw: bridge,
+      larkBot: { clearReactionsForSession },
+      cooldownMs: 30000,
+    })
+
+    const r = await handler.handle({
+      event: 'stop',
+      sessionId: 'sid-lark',
+      todoId: 't-lark',
+      todoTitle: 'Lark task',
+    })
+    // 等微任务把 .catch 链跑完
+    await new Promise((res) => setTimeout(res, 5))
+
+    expect(r.ok).toBe(true)
+    expect(clearReactionsForSession).toHaveBeenCalledWith('sid-lark')
+  })
+
+  it('does NOT call larkBot.clearReactionsForSession when route is telegram (only lark routes)', async () => {
+    const clearReactionsForSession = vi.fn()
+    bridge.routes.set('sid-tg', { channel: 'telegram', targetUserId: '-100', threadId: 12 })
+    handler = createOpenClawHookHandler({
+      db, openclaw: bridge,
+      larkBot: { clearReactionsForSession },
+      cooldownMs: 30000,
+    })
+
+    await handler.handle({
+      event: 'stop',
+      sessionId: 'sid-tg',
+      todoId: 't-tg',
+      todoTitle: 'Telegram task',
+    })
+    await new Promise((res) => setTimeout(res, 5))
+
+    expect(clearReactionsForSession).not.toHaveBeenCalled()
+  })
+
   it('broadcasts turn_done for Stop events', async () => {
     const notifyTurnDone = vi.fn(() => true)
     handler = createOpenClawHookHandler({

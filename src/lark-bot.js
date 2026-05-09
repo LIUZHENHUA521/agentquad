@@ -1,20 +1,13 @@
 import { createLarkApiClient } from './lark-api-client.js'
 import { createLarkEventClient } from './lark-event-client.js'
 
-// 飞书内置 emoji_type 枚举里挑出一组"看到/已收到/在干活"语义合理的值。
-// 飞书的 emoji_type 是固定枚举（不是任意 unicode），EYES 等不在内 —— 这里只放
-// 已经踩坑确认或在常见 reaction picker 里出现的合法值。
+// 飞书内置 emoji_type 枚举里挑出一组"在思考 / 在干活"语义的值。
+// 飞书的 emoji_type 是固定枚举（不是任意 unicode），EYES 等不在内 —— 只放保守候选。
+// 选用偏"思考/收到/工作中"语义，避免 LAUGH/HEART/CLAP 这种"赞叹/欢呼"误读。
 const BUSY_REACTION_EMOJIS = [
-  'OK',          // 👌
-  'THUMBSUP',    // 👍
-  'HEART',       // ❤️
-  'LAUGH',       // 😆
-  'BLUSH',       // 😊
-  'WINK',        // 😉
-  'WOW',         // 😯
-  'WHIMPER',     // 🥺
-  'WOWFACE',     // 🤩
-  'CLAP',        // 👏
+  'THINKING',    // 🤔 思考中
+  'OK',          // 👌 已收到，正在做
+  'CLOCK',       // ⏰ 计时中
 ]
 
 function pickBusyReactionEmoji(rng = Math.random) {
@@ -158,6 +151,9 @@ export function createLarkBot({
 
   const seenEvents = new Map()
   const pendingReplyRetries = new Map()
+  // sessionId → [{messageId, reactionId}]：跟踪每个 PTY session 期间 bot 加在用户消息上
+  // 的 "在干活" reaction，等到 hook 报告 stop（Claude Code 完成一轮回复）时批量删掉。
+  const pendingReactions = new Map()
   let running = false
   let apiClient = null
   let eventClient = null
@@ -288,11 +284,16 @@ export function createLarkBot({
     }
     logger.info?.(`[lark-bot] dispatching to wizard: chatId=${ev.chatId} thread=${ev.threadId || '-'} root=${ev.rootMessageId || '-'} text="${(ev.text || '').slice(0, 80)}"`)
 
-    // 立即加 reaction 让用户知道 bot 看到了 / 在干活；不 await，避免拖慢 wizard。
-    // 从合法 emoji_type 白名单里随机选一个，每条消息长得不一样更有趣。
+    // 立即加 "在思考/在干活" reaction 让用户知道 bot 收到了；不 await，避免拖慢 wizard。
+    // 拿到 reaction_id 后跟 wizard 返回的 sessionId 配对，等到 PTY 完成一轮回复时清掉。
+    let reactionPromise = null
     if (ev.messageId && hasCredentials()) {
-      getApiClient().addReaction({ messageId: ev.messageId, emojiType: pickBusyReactionEmoji() })
-        .catch((e) => logger.warn?.(`[lark-bot] reaction failed: ${e.message}`))
+      reactionPromise = getApiClient()
+        .addReaction({ messageId: ev.messageId, emojiType: pickBusyReactionEmoji() })
+        .catch((e) => {
+          logger.warn?.(`[lark-bot] reaction failed: ${e.message}`)
+          return null
+        })
     }
 
     let result
@@ -309,6 +310,19 @@ export function createLarkBot({
     } catch (e) {
       forgetEvent()
       return { ok: false, reason: 'wizard_failed', detail: e.message }
+    }
+
+    // 关联 reaction 到 sessionId（如果 wizard 返回的是 stdin proxy 或 wizard_done 形态）。
+    // 拿到 reaction_id 后存到 pendingReactions[sid]，等 PTY 完成时一次性删掉。
+    const linkSid = result?.sessionId || null
+    if (linkSid && reactionPromise && ev.messageId) {
+      reactionPromise.then((r) => {
+        const reactionId = r?.payload?.reaction_id || null
+        if (!reactionId) return
+        const list = pendingReactions.get(linkSid) || []
+        list.push({ messageId: ev.messageId, reactionId })
+        pendingReactions.set(linkSid, list)
+      }).catch(() => {})
     }
 
     const action = result?.action || 'handled'
@@ -392,6 +406,25 @@ export function createLarkBot({
     return { ok: true }
   }
 
+  /**
+   * Claude Code 完成一轮回复后调用：把这个 session 期间加的 "在思考" reaction 全部删掉。
+   * 调用方一般是 openclaw-hook 处理 stop / done event 时。失败 swallow，主流程不阻塞。
+   */
+  async function clearReactionsForSession(sessionId) {
+    if (!sessionId) return { ok: true, removed: 0 }
+    const list = pendingReactions.get(sessionId)
+    pendingReactions.delete(sessionId)
+    if (!list || list.length === 0) return { ok: true, removed: 0 }
+    if (!hasCredentials()) return { ok: false, reason: 'lark_credentials_missing' }
+    let removed = 0
+    for (const { messageId, reactionId } of list) {
+      const r = await getApiClient().deleteReaction({ messageId, reactionId }).catch((e) => ({ ok: false, detail: e.message }))
+      if (r?.ok) removed++
+      else logger.warn?.(`[lark-bot] reaction delete failed for sid=${sessionId} msg=${messageId} reaction=${reactionId}: ${r?.detail || r?.reason || 'unknown'}`)
+    }
+    return { ok: true, removed, total: list.length }
+  }
+
   function describe() {
     const cfg = getConfig()?.lark || {}
     const eventStatus = eventClient?.describe?.() || null
@@ -401,10 +434,11 @@ export function createLarkBot({
       eventSubscribeEnabled: cfg.eventSubscribeEnabled !== false,
       running,
       eventStatus,
+      pendingReactionSessions: pendingReactions.size,
     }
   }
 
-  return { start, stop, sendMessage, replyInThread, sendCard, replyWithCard, handleEvent, handleCardAction, describe, __test__: { normalizeEvent, normalizeCardAction } }
+  return { start, stop, sendMessage, replyInThread, sendCard, replyWithCard, handleEvent, handleCardAction, clearReactionsForSession, describe, __test__: { normalizeEvent, normalizeCardAction, _peekPendingReactions: () => new Map(pendingReactions) } }
 }
 
 export { BUSY_REACTION_EMOJIS, pickBusyReactionEmoji }
