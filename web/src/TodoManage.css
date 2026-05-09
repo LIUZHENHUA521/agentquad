@@ -883,3 +883,17 @@ body {
     display: none;
   }
 }
+
+/* === Terminal dock shell layout === */
+.todo-manage-shell {
+  display: flex;
+  flex-direction: row;
+  width: 100%;
+  height: 100vh;
+  min-height: 0;
+}
+.todo-manage__main {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+}

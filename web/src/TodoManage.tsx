@@ -62,6 +62,7 @@ import {
 } from './replyHub'
 import { getTranscriptStats, listPipelineTemplates, listPipelineRunsForTodo, startPipelineRun, PipelineTemplate, PipelineRun } from './api'
 import PipelineRunDrawer from './pipeline/PipelineRunDrawer'
+import TerminalDock from './dock/TerminalDock'
 import './TodoManage.css'
 
 const { TextArea } = Input
@@ -1757,7 +1758,8 @@ export default function TodoManage() {
   // ─── 渲染 ───
 
   return (
-    <div style={{ padding: 16 }}>
+    <div className="todo-manage-shell">
+      <div className="todo-manage__main" style={{ padding: 16 }}>
       <div className="todo-sticky-header">
       {/* 工具栏 */}
       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginBottom: 12 }}>
@@ -2624,6 +2626,8 @@ export default function TodoManage() {
           fetchTodos()
         }}
       />
+      </div>
+      <TerminalDock />
     </div>
   )
 }
