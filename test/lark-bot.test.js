@@ -290,11 +290,13 @@ describe('lark-bot inbound events', () => {
     expect(apiClient.sendMessage).toHaveBeenCalledTimes(2)
   })
 
-  it('retries failed thread reply delivery without re-running wizard', async () => {
+  it('retries failed thread reply when both reply and fallback fail, then succeeds via reply', async () => {
+    // 两条路径都失败 → 入 retry 队列；下一次同 event_id 再来时重投递成功
     const apiClient = makeApiClient({
       replyInThread: vi.fn()
         .mockResolvedValueOnce({ ok: false, reason: 'lark_reply_failed', detail: 'reply failed' })
         .mockResolvedValueOnce({ ok: true, payload: { message_id: 'om_reply' } }),
+      sendMessage: vi.fn().mockResolvedValue({ ok: false, reason: 'lark_send_failed', detail: 'fallback failed' }),
     })
     const wizard = { handleInbound: vi.fn().mockResolvedValue({ reply: 'thread answer', action: 'answered_thread' }) }
     const { bot } = makeBot({ apiClient, wizard })
@@ -326,6 +328,42 @@ describe('lark-bot inbound events', () => {
 
     expect(wizard.handleInbound).toHaveBeenCalledTimes(1)
     expect(apiClient.sendMessage).toHaveBeenCalledTimes(3)
+  })
+})
+
+describe('lark-bot reply fallback', () => {
+  it('falls back to sendMessage when replyInThread fails (e.g. root message withdrawn)', async () => {
+    const apiClient = makeApiClient({
+      replyInThread: vi.fn().mockResolvedValue({ ok: false, reason: 'lark_reply_failed', detail: 'The message was withdrawn.' }),
+      sendMessage: vi.fn().mockResolvedValue({ ok: true, payload: { message_id: 'om_fallback' } }),
+    })
+    const wizard = { handleInbound: vi.fn().mockResolvedValue({ reply: 'wizard reply', action: 'wizard_started' }) }
+    const { bot } = makeBot({ apiClient, wizard })
+    const event = { event_id: 'evt_withdrawn', event: { message: { chat_id: 'oc_default', message_id: 'om_in', root_id: 'om_withdrawn_root', content: '{"text":"帮我做一个任务"}' }, sender: { sender_id: { open_id: 'ou_user' }, sender_type: 'user' } } }
+
+    const r = await bot.handleEvent(event)
+
+    expect(r).toEqual({ ok: true, action: 'wizard_started' })
+    expect(apiClient.replyInThread).toHaveBeenCalledWith({ rootMessageId: 'om_withdrawn_root', text: 'wizard reply' })
+    expect(apiClient.sendMessage).toHaveBeenCalledWith({ chatId: 'oc_default', text: 'wizard reply' })
+  })
+
+  it('keeps the original failure when fallback also fails', async () => {
+    const apiClient = makeApiClient({
+      replyInThread: vi.fn().mockResolvedValue({ ok: false, reason: 'lark_reply_failed', detail: 'reply boom' }),
+      sendMessage: vi.fn().mockResolvedValue({ ok: false, reason: 'lark_send_failed', detail: 'send boom' }),
+    })
+    const wizard = { handleInbound: vi.fn().mockResolvedValue({ reply: 'doomed', action: 'attempted' }) }
+    const { bot } = makeBot({ apiClient, wizard })
+    const event = { event_id: 'evt_double_fail', event: { message: { chat_id: 'oc_default', message_id: 'om_x', root_id: 'om_root', content: '{"text":"帮我做一个任务"}' }, sender: { sender_id: { open_id: 'ou_user' }, sender_type: 'user' } } }
+
+    const r = await bot.handleEvent(event)
+
+    expect(r.ok).toBe(false)
+    expect(r.reason).toBe('lark_reply_failed')
+    expect(r.detail).toBe('reply boom')
+    expect(apiClient.replyInThread).toHaveBeenCalledTimes(1)
+    expect(apiClient.sendMessage).toHaveBeenCalledTimes(1)
   })
 })
 

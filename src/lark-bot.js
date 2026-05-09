@@ -124,10 +124,19 @@ export function createLarkBot({
     return getApiClient().replyInThread({ rootMessageId, text })
   }
 
+  // thread root 被撤回 / 飞书 5xx 时，回退到 chat-level sendMessage，避免 bot 完全沉默。
+  // 兜底仅当 chatId 可用时启用；纯 reply 没有 chatId 的话就保留原失败语义。
   async function deliverReply({ chatId, rootMessageId, text } = {}) {
-    return rootMessageId
-      ? replyInThread({ rootMessageId, text })
-      : sendMessage({ chatId, text })
+    if (!rootMessageId) return sendMessage({ chatId, text })
+    const r = await replyInThread({ rootMessageId, text })
+    if (r?.ok) return r
+    if (chatId && r?.reason === 'lark_reply_failed') {
+      logger.warn?.(`[lark-bot] reply failed (${r.detail || 'unknown'}); fallback to chat sendMessage`)
+      const fb = await sendMessage({ chatId, text })
+      if (fb?.ok) return { ...fb, replyFallback: true }
+      return r
+    }
+    return r
   }
 
   function clearPendingReplyRetry(replyContext, ev) {
