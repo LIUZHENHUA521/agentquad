@@ -36,7 +36,13 @@
 }
 .terminal-dock__title { font-weight: 600; flex: 1; }
 .terminal-dock__count { color: #8c8c8c; font-size: 12px; }
-.terminal-dock__body { flex: 1; min-height: 0; overflow: hidden; }
+.terminal-dock__body {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: row;
+}
 .terminal-dock__empty,
 .terminal-dock__placeholder {
   display: flex;
@@ -95,3 +101,12 @@
   opacity: 0.5;
 }
 .terminal-dock__tab-close:hover { opacity: 1; color: #ff4d4f; }
+
+/* === Split mode === */
+.terminal-dock__pane {
+  flex: 1;
+  min-width: 0;
+}
+.terminal-dock__body.is-split .terminal-dock__pane.is-secondary {
+  border-left: 2px solid #1677ff;
+}

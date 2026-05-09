@@ -1,7 +1,7 @@
 // web/src/dock/TerminalDock.tsx
 import React, { useCallback, useEffect, useRef } from 'react'
-import { Button, Tooltip } from 'antd'
-import { CloseOutlined, MenuFoldOutlined } from '@ant-design/icons'
+import { Button, Dropdown, Tooltip, message } from 'antd'
+import { CloseOutlined, MenuFoldOutlined, ColumnWidthOutlined, MergeCellsOutlined } from '@ant-design/icons'
 import {
   DndContext,
   closestCenter,
@@ -73,7 +73,7 @@ interface Props {
 export default function TerminalDock({
   resolveTabContext, onSessionRecovered, onSessionSwitch, onDone, onFork,
 }: Props = {}) {
-  const { widthPx, isCollapsed, openTabs, activeTabId, toggleCollapsed, setWidth } = useTerminalDockStore()
+  const { widthPx, isCollapsed, openTabs, activeTabId, splitSecondaryTabId, toggleCollapsed, setWidth } = useTerminalDockStore()
   const dragStartRef = useRef<{ x: number; w: number } | null>(null)
   const moveHandlerRef = useRef<((ev: MouseEvent) => void) | null>(null)
   const upHandlerRef = useRef<(() => void) | null>(null)
@@ -150,6 +150,38 @@ export default function TerminalDock({
       <div className="terminal-dock__head">
         <span className="terminal-dock__title">AI 终端 Dock</span>
         <span className="terminal-dock__count">{openTabs.length} 个会话</span>
+        {activeTabId && openTabs.length >= 2 && !splitSecondaryTabId && (
+          <Dropdown
+            menu={{
+              items: openTabs
+                .filter(t => t.id !== activeTabId)
+                .map(t => ({ key: t.id, label: t.todoTitle.length > 18 ? t.todoTitle.slice(0, 18) + '…' : t.todoTitle })),
+              onClick: ({ key }) => {
+                const canSplit = widthPx >= 720 && window.innerWidth >= 1280
+                if (!canSplit) {
+                  message.warning('Dock 宽度需 ≥ 720 且窗口宽度 ≥ 1280 才能并排')
+                  return
+                }
+                useTerminalDockStore.getState().splitWith(String(key))
+              },
+            }}
+            trigger={['click']}
+          >
+            <Tooltip title="并排比对另一个会话">
+              <Button type="text" size="small" icon={<ColumnWidthOutlined />} className="pc-only" />
+            </Tooltip>
+          </Dropdown>
+        )}
+        {splitSecondaryTabId && (
+          <Tooltip title="退出并排">
+            <Button
+              type="text" size="small"
+              icon={<MergeCellsOutlined />}
+              onClick={() => useTerminalDockStore.getState().unsplit()}
+              className="pc-only"
+            />
+          </Tooltip>
+        )}
         <Tooltip title="折叠">
           <Button type="text" size="small" icon={<CloseOutlined />} onClick={toggleCollapsed} />
         </Tooltip>
@@ -165,24 +197,32 @@ export default function TerminalDock({
           </SortableContext>
         </DndContext>
       )}
-      <div className="terminal-dock__body">
+      <div className={`terminal-dock__body ${splitSecondaryTabId ? 'is-split' : ''}`}>
         {openTabs.length === 0 ? (
           <div className="terminal-dock__empty">没有打开的会话</div>
         ) : (
           openTabs.map(tab => {
             const ctx = resolveTabContext?.(tab) ?? { cwd: null, resumeTarget: null }
+            const isPrimary = tab.id === activeTabId
+            const isSecondary = tab.id === splitSecondaryTabId
+            const isVisible = isPrimary || isSecondary
             return (
-              <TerminalDockTab
+              <div
                 key={tab.id}
-                tab={tab}
-                cwd={ctx.cwd}
-                resumeTarget={ctx.resumeTarget}
-                visible={tab.id === activeTabId}
-                onSessionRecovered={onSessionRecovered ? (next) => onSessionRecovered(tab.todoId, next) : undefined}
-                onSessionSwitch={onSessionSwitch ? (next) => onSessionSwitch(tab.todoId, next) : undefined}
-                onDone={onDone ? (r) => onDone(tab.todoId, tab.id, r) : undefined}
-                onFork={onFork ? () => onFork(tab.todoId, tab.id) : undefined}
-              />
+                className={`terminal-dock__pane ${isSecondary ? 'is-secondary' : ''} ${isPrimary ? 'is-primary' : ''}`}
+                style={{ display: isVisible ? 'flex' : 'none', flexDirection: 'column', flex: 1, minWidth: 0, minHeight: 0 }}
+              >
+                <TerminalDockTab
+                  tab={tab}
+                  cwd={ctx.cwd}
+                  resumeTarget={ctx.resumeTarget}
+                  visible={isVisible}
+                  onSessionRecovered={onSessionRecovered ? (next) => onSessionRecovered(tab.todoId, next) : undefined}
+                  onSessionSwitch={onSessionSwitch ? (next) => onSessionSwitch(tab.todoId, next) : undefined}
+                  onDone={onDone ? (r) => onDone(tab.todoId, tab.id, r) : undefined}
+                  onFork={onFork ? () => onFork(tab.todoId, tab.id) : undefined}
+                />
+              </div>
             )
           })
         )}
