@@ -2,10 +2,64 @@
 import React, { useCallback, useEffect, useRef } from 'react'
 import { Button, Tooltip } from 'antd'
 import { CloseOutlined, MenuFoldOutlined } from '@ant-design/icons'
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core'
+import {
+  arrayMove,
+  SortableContext,
+  horizontalListSortingStrategy,
+  useSortable,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import type { ResumeSessionInput } from '../api'
 import { useTerminalDockStore, DOCK_LIMITS, DockTab } from '../store/terminalDockStore'
 import TerminalDockTab from './TerminalDockTab'
 import './dock.css'
+
+function SortableDockTab({ tab, isActive }: { tab: DockTab; isActive: boolean }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: tab.id })
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.6 : 1,
+  }
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      {...listeners}
+      className={`terminal-dock__tab ${isActive ? 'is-active' : ''}`}
+      onClick={() => useTerminalDockStore.getState().setActive(tab.id)}
+      onMouseDown={(e) => {
+        if (e.button === 1) {
+          e.preventDefault()
+          useTerminalDockStore.getState().close(tab.id)
+        }
+      }}
+      title={tab.todoTitle}
+    >
+      <span className={`terminal-dock__tab-dot status-${tab.status}`} />
+      <span className="terminal-dock__tab-label">
+        {tab.todoTitle.length > 14 ? tab.todoTitle.slice(0, 14) + '…' : tab.todoTitle}
+      </span>
+      <CloseOutlined
+        className="terminal-dock__tab-close"
+        onClick={(e) => {
+          e.stopPropagation()
+          useTerminalDockStore.getState().close(tab.id)
+        }}
+      />
+    </div>
+  )
+}
 
 interface Props {
   // Resolve per-tab context. TodoManage looks up its `todos` to provide cwd + resumeTarget.
@@ -58,6 +112,20 @@ export default function TerminalDock({
     }
   }, [])
 
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor),
+  )
+  const onDragEnd = (e: DragEndEvent) => {
+    const { active, over } = e
+    if (!over || active.id === over.id) return
+    const ids = openTabs.map(t => t.id)
+    const oldIdx = ids.indexOf(String(active.id))
+    const newIdx = ids.indexOf(String(over.id))
+    if (oldIdx < 0 || newIdx < 0) return
+    useTerminalDockStore.getState().reorder(arrayMove(ids, oldIdx, newIdx))
+  }
+
   if (isCollapsed) {
     return (
       <div className="terminal-dock terminal-dock--collapsed">
@@ -87,34 +155,15 @@ export default function TerminalDock({
         </Tooltip>
       </div>
       {openTabs.length > 0 && (
-        <div className="terminal-dock__tabs">
-          {openTabs.map(tab => (
-            <div
-              key={tab.id}
-              className={`terminal-dock__tab ${tab.id === activeTabId ? 'is-active' : ''}`}
-              onClick={() => useTerminalDockStore.getState().setActive(tab.id)}
-              onMouseDown={(e) => {
-                if (e.button === 1) {
-                  e.preventDefault()
-                  useTerminalDockStore.getState().close(tab.id)
-                }
-              }}
-              title={tab.todoTitle}
-            >
-              <span className={`terminal-dock__tab-dot status-${tab.status}`} />
-              <span className="terminal-dock__tab-label">
-                {tab.todoTitle.length > 14 ? tab.todoTitle.slice(0, 14) + '…' : tab.todoTitle}
-              </span>
-              <CloseOutlined
-                className="terminal-dock__tab-close"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  useTerminalDockStore.getState().close(tab.id)
-                }}
-              />
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+          <SortableContext items={openTabs.map(t => t.id)} strategy={horizontalListSortingStrategy}>
+            <div className="terminal-dock__tabs">
+              {openTabs.map(tab => (
+                <SortableDockTab key={tab.id} tab={tab} isActive={tab.id === activeTabId} />
+              ))}
             </div>
-          ))}
-        </div>
+          </SortableContext>
+        </DndContext>
       )}
       <div className="terminal-dock__body">
         {openTabs.length === 0 ? (
