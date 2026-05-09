@@ -16,4 +16,15 @@ describe('TranscriptSearchDrawer layout regression', () => {
     expect(source).toContain('title={boundTodoTitle}')
     expect(source).toContain('style={ellipsisTagStyle}')
   })
+
+  it('allows the result card header row to shrink before long tags are ellipsized', () => {
+    expect(source).toContain('const resultHeaderStyle')
+    expect(source).toContain("display: 'flex'")
+    expect(source).toContain("flexWrap: 'wrap'")
+    expect(source).toContain('const boundTagSlotStyle')
+    expect(source).toContain("flex: '1 1 180px'")
+    expect(source).toContain("maxWidth: '100%'")
+    expect(source).toContain('style={resultHeaderStyle}')
+    expect(source).toContain('style={boundTagSlotStyle}')
+  })
 })
