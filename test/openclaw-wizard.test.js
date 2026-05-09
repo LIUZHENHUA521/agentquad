@@ -597,7 +597,10 @@ describe('openclaw-wizard state machine', () => {
       channel: 'lark',
       targetUserId: 'oc_1',
       threadId: 'omt_user_topic',
-      rootMessageId: 'om_user_first',  // ← 复用用户消息当 anchor，PTY 后续 reply 仍走同 thread
+      // 飞书 reply_in_thread=true 后，thread 后续消息事件的 root_id 指向 *quadtodo
+      // 这条 reply* 的 message_id（不是用户原消息）。lark route 必须锚到 reply 返回的
+      // message_id，否则用户继续对话时 findSessionByRoute 匹配不到。
+      rootMessageId: 'om_intro_in_thread',
     }))
   })
 

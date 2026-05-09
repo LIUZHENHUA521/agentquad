@@ -579,9 +579,12 @@ export function createOpenClawWizard({
             const sent = await larkBot.replyInThread({ rootMessageId: reuseThreadAnchor, text: intro })
             if (sent?.ok !== false) {
               const payload = sent?.payload || sent || {}
-              // 用户那条消息（reuseThreadAnchor）就是 lark 这条 thread 的入口；后续 PTY
-              // replyInThread 用同一个 anchor 仍会落到同一话题。
-              larkRootMessageId = reuseThreadAnchor
+              // 飞书 reply_in_thread=true 后，thread 后续消息事件的 root_id 字段
+              // 指向的是 *这条 quadtodo reply* 的 message_id（不是用户原消息 id）。
+              // 所以 lark route 必须锚到 reply 返回的 payload.message_id，否则
+              // findSessionByRoute({rootMessageId: ev.root_id}) 在用户继续对话时匹配不到。
+              const replyMessageId = payload.message_id != null ? String(payload.message_id) : null
+              larkRootMessageId = replyMessageId || reuseThreadAnchor
               larkThreadId = w.threadId || (payload.thread_id != null ? String(payload.thread_id) : null)
               larkMessageAppLink = payload.message_app_link != null ? String(payload.message_app_link) : null
             } else {

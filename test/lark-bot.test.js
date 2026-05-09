@@ -81,7 +81,7 @@ describe('lark-bot outbound SDK facade', () => {
 })
 
 describe('lark-bot busy reaction', () => {
-  it('adds 👀 (EYES) reaction to user message before dispatching to wizard', async () => {
+  it('adds 👍 (THUMBSUP) reaction to user message before dispatching to wizard', async () => {
     const wizard = { handleInbound: vi.fn().mockResolvedValue({ reply: 'wizard up', action: 'wizard_started' }) }
     const { bot, apiClient } = makeBot({ wizard })
 
@@ -97,7 +97,7 @@ describe('lark-bot busy reaction', () => {
       },
     })
 
-    expect(apiClient.addReaction).toHaveBeenCalledWith({ messageId: 'om_user_input', emojiType: 'EYES' })
+    expect(apiClient.addReaction).toHaveBeenCalledWith({ messageId: 'om_user_input', emojiType: 'THUMBSUP' })
     expect(wizard.handleInbound).toHaveBeenCalledTimes(1)
   })
 

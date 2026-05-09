@@ -157,7 +157,7 @@ export function createLarkBot({
     return getApiClient().replyInThread({ rootMessageId, text })
   }
 
-  async function addReaction({ messageId, emojiType = 'EYES' } = {}) {
+  async function addReaction({ messageId, emojiType = 'THUMBSUP' } = {}) {
     if (isBlank(messageId)) return { ok: false, reason: 'messageId_required' }
     if (!hasCredentials()) return { ok: false, reason: 'lark_credentials_missing' }
     return getApiClient().addReaction({ messageId, emojiType })
@@ -232,9 +232,10 @@ export function createLarkBot({
     }
     logger.info?.(`[lark-bot] dispatching to wizard: chatId=${ev.chatId} thread=${ev.threadId || '-'} root=${ev.rootMessageId || '-'} text="${(ev.text || '').slice(0, 80)}"`)
 
-    // 立即加 👀 reaction 让用户知道 bot 看到了 / 在干活；不 await，避免拖慢 wizard
+    // 立即加 reaction 让用户知道 bot 看到了 / 在干活；不 await，避免拖慢 wizard
+    // emoji_type 是飞书内置枚举（不是任意 unicode）：THUMBSUP / OK / HEART / LAUGH / ...
     if (ev.messageId && hasCredentials()) {
-      getApiClient().addReaction({ messageId: ev.messageId, emojiType: 'EYES' })
+      getApiClient().addReaction({ messageId: ev.messageId, emojiType: 'THUMBSUP' })
         .catch((e) => logger.warn?.(`[lark-bot] reaction failed: ${e.message}`))
     }
 

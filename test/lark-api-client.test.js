@@ -96,21 +96,21 @@ describe('lark-api-client', () => {
     const sdkClient = makeSdkClient()
     const client = createLarkApiClient({ appId: 'cli_a123', appSecret: 'secret', clientFactory: () => sdkClient })
 
-    const result = await client.addReaction({ messageId: 'om_user', emojiType: 'EYES' })
+    const result = await client.addReaction({ messageId: 'om_user', emojiType: 'THUMBSUP' })
 
     expect(result).toEqual({ ok: true, payload: { reaction_id: 'rid_1', operator: { operator_id: 'ou_bot', operator_type: 'app' }, action_time: '1' } })
     expect(sdkClient.im.messageReaction.create).toHaveBeenCalledWith({
       path: { message_id: 'om_user' },
-      data: { reaction_type: { emoji_type: 'EYES' } },
+      data: { reaction_type: { emoji_type: 'THUMBSUP' } },
     })
   })
 
   it('addReaction validates inputs and propagates SDK failures', async () => {
     const noCreds = createLarkApiClient({ appId: '', appSecret: '', clientFactory: () => makeSdkClient() })
-    await expect(noCreds.addReaction({ messageId: 'om_user', emojiType: 'EYES' })).resolves.toEqual({ ok: false, reason: 'lark_credentials_missing' })
+    await expect(noCreds.addReaction({ messageId: 'om_user', emojiType: 'THUMBSUP' })).resolves.toEqual({ ok: false, reason: 'lark_credentials_missing' })
 
     const client = createLarkApiClient({ appId: 'cli_a123', appSecret: 'secret', clientFactory: () => makeSdkClient() })
-    await expect(client.addReaction({ emojiType: 'EYES' })).resolves.toEqual({ ok: false, reason: 'messageId_required' })
+    await expect(client.addReaction({ emojiType: 'THUMBSUP' })).resolves.toEqual({ ok: false, reason: 'messageId_required' })
     await expect(client.addReaction({ messageId: 'om_user' })).resolves.toEqual({ ok: false, reason: 'emojiType_required' })
 
     const failing = createLarkApiClient({
@@ -122,7 +122,7 @@ describe('lark-api-client', () => {
         },
       }),
     })
-    await expect(failing.addReaction({ messageId: 'om_user', emojiType: 'EYES' })).resolves.toEqual({ ok: false, reason: 'lark_reaction_failed', detail: 'reaction boom' })
+    await expect(failing.addReaction({ messageId: 'om_user', emojiType: 'THUMBSUP' })).resolves.toEqual({ ok: false, reason: 'lark_reaction_failed', detail: 'reaction boom' })
   })
 
   it('strips markdown syntax before sending to Feishu (which does not render text-msg markdown)', async () => {
