@@ -99,6 +99,7 @@ const DEFAULT_LARK_CONFIG = {
 	chatId: "",
 	requireThreadGroup: true,
 	eventSubscribeEnabled: true,
+	autoCreateTopic: true,
 	notificationCooldownMs: 600_000,
 };
 

@@ -808,6 +808,83 @@ export function createOpenClawWizard({
   }
 
   /**
+   * Lark 自动镜像：Web/CLI 起 PTY session 时，在 lark.chatId 群里发一条根消息作为 thread anchor。
+   * 后续 PTY 输出走 openclawBridge.postText → larkBot.replyInThread 进 thread。
+   * 对齐 ensureTopicForSession 的语义：already_bound / re-registered / created。
+   */
+  async function ensureLarkThreadForSession({ sessionId, todoId } = {}) {
+    if (!sessionId || !todoId) return { ok: false, reason: 'missing_args' }
+    if (!larkBot?.sendMessage) return { ok: false, reason: 'no_lark_bot' }
+
+    const existing = openclaw?.resolveRoute?.(sessionId)
+    if (existing?.channel === 'lark' && existing?.rootMessageId) {
+      return { ok: true, action: 'already_bound' }
+    }
+
+    const todo = db.getTodo(todoId)
+    if (!todo) return { ok: false, reason: 'todo_not_found' }
+    const aiSess = (todo.aiSessions || []).find((s) => s.sessionId === sessionId)
+    if (aiSess?.larkRoute?.rootMessageId) {
+      openclaw?.registerSessionRoute?.(sessionId, aiSess.larkRoute)
+      return { ok: true, action: 're-registered', rootMessageId: aiSess.larkRoute.rootMessageId }
+    }
+
+    const cfg = getConfig?.() || {}
+    const lark = cfg.lark || {}
+    const chatId = lark.chatId || ''
+    if (!chatId) return { ok: false, reason: 'no_lark_chat_id' }
+
+    const shortCode = String(todoId).replace(/[^a-zA-Z0-9]/g, '').slice(-4).toLowerCase() || 'auto'
+    const title = (todo.title || `todo-${shortCode}`).slice(0, 96)
+    const topicName = `#t${shortCode} ${title}`.slice(0, 128)
+    const intro = [
+      `${topicName}`,
+      `AI 已启动（自动镜像 from web/CLI），后续输出会回复在这条消息的 thread 里。`,
+      `直接在本 thread 里回复转发给 PTY stdin。`,
+    ].join('\n')
+
+    let payload = null
+    try {
+      const sent = await larkBot.sendMessage({ chatId: String(chatId), text: intro })
+      if (sent?.ok === false) {
+        logger.warn?.(`[wizard] auto-create lark thread failed: ${sent.reason || 'unknown'}`)
+        return { ok: false, reason: sent.reason || 'lark_send_failed', detail: sent.detail }
+      }
+      payload = sent?.payload || sent || {}
+    } catch (e) {
+      logger.warn?.(`[wizard] auto-create lark thread threw: ${e.message}`)
+      return { ok: false, reason: 'lark_send_failed', detail: e.message }
+    }
+
+    const rootMessageId = payload?.message_id != null ? String(payload.message_id) : null
+    if (!rootMessageId) return { ok: false, reason: 'no_root_message_id' }
+
+    const route = {
+      targetUserId: String(chatId),
+      rootMessageId,
+      threadId: payload?.thread_id != null ? String(payload.thread_id) : null,
+      topicName,
+      messageAppLink: payload?.message_app_link != null ? String(payload.message_app_link) : null,
+      channel: 'lark',
+    }
+    openclaw?.registerSessionRoute?.(sessionId, route)
+    loadingTracker?.start?.({ sessionId })?.catch?.((e) => logger.warn?.(`[wizard] loading-status start failed: ${e.message}`))
+
+    try {
+      const tnow = db.getTodo(todoId)
+      const updatedSessions = (tnow?.aiSessions || []).map((s) =>
+        s.sessionId === sessionId ? { ...s, larkRoute: route } : s,
+      )
+      if (updatedSessions.length) db.updateTodo(todoId, { aiSessions: updatedSessions })
+    } catch (e) {
+      logger.warn?.(`[wizard] persist lark auto-route failed: ${e.message}`)
+    }
+
+    logger.info?.(`[wizard] auto-bound session ${sessionId} → lark thread root=${rootMessageId} (todo ${todoId})`)
+    return { ok: true, action: 'created', rootMessageId }
+  }
+
+  /**
    * 通过 telegramRoute.threadId 反查 todo + aiSession。
    * 优先 DB 持久化路由；缺失时用 bridge in-memory 路由 + aiTerminal.sessions 兜底
    * （防老 session 没持久化 telegramRoute 但仍在内存里活着的情况）。
@@ -2050,6 +2127,7 @@ export function createOpenClawWizard({
     handleSlashCommand,
     handleTopicEvent,
     ensureTopicForSession,
+    ensureLarkThreadForSession,
     abortWizard,
     registerForceReplyContext,
     describe,

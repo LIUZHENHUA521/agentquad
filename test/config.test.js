@@ -258,6 +258,7 @@ describe('lark defaults', () => {
 				chatId: '',
 				requireThreadGroup: true,
 				eventSubscribeEnabled: true,
+				autoCreateTopic: true,
 				notificationCooldownMs: 600000,
 			});
 		} finally {
@@ -277,6 +278,7 @@ describe('lark defaults', () => {
 					chatId: '  oc_abc  ',
 					requireThreadGroup: false,
 					eventSubscribeEnabled: false,
+					autoCreateTopic: false,
 					notificationCooldownMs: 0,
 				},
 			}));
@@ -288,6 +290,7 @@ describe('lark defaults', () => {
 				chatId: 'oc_abc',
 				requireThreadGroup: false,
 				eventSubscribeEnabled: false,
+				autoCreateTopic: false,
 				notificationCooldownMs: 0,
 			});
 		} finally {

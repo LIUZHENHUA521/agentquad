@@ -1249,15 +1249,25 @@ export function createServer(opts = {}) {
 			.catch((e) => console.warn(`[server] topic_gone handler failed: ${e.message}`))
 	})
 
-	// ─── Telegram 自动 topic 镜像（B 方案）─────────────────────────
-	// 默认开；config.telegram.autoCreateTopic = false 可关。这里必须读实时配置，
-	// 因为设置页会热启用 Telegram，不应要求重启 quadtodo 才生效。
+	// ─── Telegram / Lark 自动 topic 镜像（B 方案）─────────────────
+	// 默认开；config.{telegram,lark}.autoCreateTopic = false 可关。这里必须读实时配置，
+	// 因为设置页会热启用 Telegram/Lark，不应要求重启 quadtodo 才生效。
 	aiSessionHooks.onSessionSpawned = ({ sessionId, todoId }) => {
-		const telegramConfig = loadConfig({ rootDir: configRootDir }).telegram || {}
-		const autoCreateEnabled = telegramConfig.enabled && telegramConfig.autoCreateTopic !== false
-		if (!autoCreateEnabled) return null
-		return openclawWizard.ensureTopicForSession({ sessionId, todoId })
-			.catch((e) => console.warn(`[server] ensureTopicForSession failed: ${e.message}`))
+		const cfg = loadConfig({ rootDir: configRootDir })
+		const telegramConfig = cfg.telegram || {}
+		const larkConfig = cfg.lark || {}
+		const tgEnabled = telegramConfig.enabled && telegramConfig.autoCreateTopic !== false
+		const larkEnabled = larkConfig.enabled && larkConfig.autoCreateTopic !== false
+		const tasks = []
+		if (tgEnabled) {
+			tasks.push(openclawWizard.ensureTopicForSession({ sessionId, todoId })
+				.catch((e) => console.warn(`[server] ensureTopicForSession failed: ${e.message}`)))
+		}
+		if (larkEnabled) {
+			tasks.push(openclawWizard.ensureLarkThreadForSession({ sessionId, todoId })
+				.catch((e) => console.warn(`[server] ensureLarkThreadForSession failed: ${e.message}`)))
+		}
+		return tasks.length ? Promise.all(tasks) : null
 	}
 	aiSessionHooks.onSessionEnded = ({ sessionId, exitCode, startedAt, completedAt }) => {
 		// 安全门槛：只对干净退出 (exitCode=0) 且寿命 ≥ 30s 的走自动关 topic。
@@ -1278,20 +1288,34 @@ export function createServer(opts = {}) {
 	}
 
 	// 启动期 sweep：恢复后的 running PTY session 若没绑 topic（手动 web/CLI 起的）→ 补建
-	const sweepTelegramConfig = loadConfig({ rootDir: configRootDir }).telegram || {}
-	const sweepAutoCreateEnabled = sweepTelegramConfig.enabled && sweepTelegramConfig.autoCreateTopic !== false
-	if (sweepAutoCreateEnabled) {
-		let swept = 0
-		for (const [sid, sess] of ait.sessions) {
-			if (sess.status !== 'running' && sess.status !== 'pending_confirm') continue
-			const r = openclawBridge.resolveRoute?.(sid)
-			if (r?.threadId) continue   // 已经有
-			openclawWizard.ensureTopicForSession({ sessionId: sid, todoId: sess.todoId })
-				.then((res) => res?.action === 'created' && console.log(`[server] sweep auto-bound ${sid} → thread ${res.threadId}`))
-				.catch((e) => console.warn(`[server] sweep ensureTopic failed for ${sid}: ${e.message}`))
-			swept++
+	{
+		const cfg = loadConfig({ rootDir: configRootDir })
+		const sweepTg = cfg.telegram || {}
+		const sweepLark = cfg.lark || {}
+		const tgSweep = sweepTg.enabled && sweepTg.autoCreateTopic !== false
+		const larkSweep = sweepLark.enabled && sweepLark.autoCreateTopic !== false
+		if (tgSweep || larkSweep) {
+			let sweptTg = 0
+			let sweptLark = 0
+			for (const [sid, sess] of ait.sessions) {
+				if (sess.status !== 'running' && sess.status !== 'pending_confirm') continue
+				const r = openclawBridge.resolveRoute?.(sid)
+				if (tgSweep && !r?.threadId) {
+					openclawWizard.ensureTopicForSession({ sessionId: sid, todoId: sess.todoId })
+						.then((res) => res?.action === 'created' && console.log(`[server] sweep auto-bound ${sid} → telegram thread ${res.threadId}`))
+						.catch((e) => console.warn(`[server] sweep ensureTopic failed for ${sid}: ${e.message}`))
+					sweptTg++
+				}
+				if (larkSweep && !(r?.channel === 'lark' && r?.rootMessageId)) {
+					openclawWizard.ensureLarkThreadForSession({ sessionId: sid, todoId: sess.todoId })
+						.then((res) => res?.action === 'created' && console.log(`[server] sweep auto-bound ${sid} → lark root ${res.rootMessageId}`))
+						.catch((e) => console.warn(`[server] sweep ensureLarkThread failed for ${sid}: ${e.message}`))
+					sweptLark++
+				}
+			}
+			if (sweptTg > 0) console.log(`[server] sweep: queued ${sweptTg} session(s) for telegram auto-bind`)
+			if (sweptLark > 0) console.log(`[server] sweep: queued ${sweptLark} session(s) for lark auto-bind`)
 		}
-		if (swept > 0) console.log(`[server] sweep: queued ${swept} session(s) for auto-bind`)
 	}
 
 	// ─── 重启后路由 rehydration ───────────────────────────────────

@@ -172,6 +172,7 @@ export default function SettingsDrawer({ open, onClose }: Props) {
           larkChatId: result.config.lark?.chatId || '',
           larkRequireThreadGroup: result.config.lark?.requireThreadGroup !== false,
           larkEventSubscribeEnabled: result.config.lark?.eventSubscribeEnabled !== false,
+          larkAutoCreateTopic: result.config.lark?.autoCreateTopic !== false,
           larkNotificationCooldownMs: result.config.lark?.notificationCooldownMs ?? 600000,
           pricingCnyRate: result.config.pricing.cnyRate,
           pricingDefault: { ...result.config.pricing.default },
@@ -227,6 +228,7 @@ export default function SettingsDrawer({ open, onClose }: Props) {
           chatId: String(values.larkChatId || '').trim(),
           requireThreadGroup: values.larkRequireThreadGroup !== false,
           eventSubscribeEnabled: values.larkEventSubscribeEnabled !== false,
+          autoCreateTopic: values.larkAutoCreateTopic !== false,
           notificationCooldownMs: Number(values.larkNotificationCooldownMs) || 0,
         },
         pricing: {
@@ -757,6 +759,15 @@ export default function SettingsDrawer({ open, onClose }: Props) {
                     label="启用事件订阅，用于双向消息"
                     valuePropName="checked"
                     extra="关闭后只能从 quadtodo 推送到 Lark，Lark 里的回复不会回到本地会话。"
+                  >
+                    <Switch />
+                  </Form.Item>
+
+                  <Form.Item
+                    name="larkAutoCreateTopic"
+                    label="Web/CLI 起 session 自动镜像到 Lark thread"
+                    valuePropName="checked"
+                    extra="开启后：在 Web 起 AI session 时自动在话题群里发一条根消息作为 thread anchor，PTY 输出回复到该 thread。关闭则只能从飞书 @bot 起 session。"
                   >
                     <Switch />
                   </Form.Item>

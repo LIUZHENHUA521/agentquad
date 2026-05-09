@@ -153,6 +153,7 @@ export interface AppConfig {
     chatId?: string
     requireThreadGroup?: boolean
     eventSubscribeEnabled?: boolean
+    autoCreateTopic?: boolean
     notificationCooldownMs?: number
     [key: string]: unknown
   }

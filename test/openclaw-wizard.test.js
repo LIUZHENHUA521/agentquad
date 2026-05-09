@@ -929,6 +929,113 @@ describe('openclaw-wizard state machine', () => {
     expect(fakeTelegramBot.createForumTopic).not.toHaveBeenCalled()
   })
 
+  it('ensureLarkThreadForSession: creates root + registers route + persists when none exists', async () => {
+    const todo = db.createTodo({ title: 'lark-mirror', quadrant: 2, workDir: '/tmp' })
+    db.updateTodo(todo.id, {
+      aiSessions: [{ sessionId: 'sid-lark-auto', tool: 'claude', status: 'running', startedAt: Date.now() }],
+    })
+    const fakeLarkBot = {
+      sendMessage: vi.fn(async () => ({ ok: true, payload: { message_id: 'om_root_auto', thread_id: 'omt_auto', message_app_link: 'https://example.test/msg' } })),
+      replyInThread: vi.fn(),
+    }
+    const loadingTracker = { start: vi.fn(async () => {}) }
+    bridge.resolveRoute = (sid) => bridge.routes.get(sid) || null
+    const w2 = createOpenClawWizard({
+      db, aiTerminal: ai, openclaw: bridge, pending,
+      larkBot: fakeLarkBot,
+      loadingTracker,
+      getConfig: () => ({
+        defaultCwd: '/tmp', port: 5677, defaultTool: 'claude',
+        lark: { enabled: true, chatId: 'oc_chat_auto', autoCreateTopic: true },
+      }),
+    })
+    const r = await w2.ensureLarkThreadForSession({ sessionId: 'sid-lark-auto', todoId: todo.id })
+    expect(r.ok).toBe(true)
+    expect(r.action).toBe('created')
+    expect(r.rootMessageId).toBe('om_root_auto')
+    expect(fakeLarkBot.sendMessage).toHaveBeenCalledWith(expect.objectContaining({ chatId: 'oc_chat_auto' }))
+    expect(bridge.routes.get('sid-lark-auto')).toMatchObject({
+      targetUserId: 'oc_chat_auto',
+      rootMessageId: 'om_root_auto',
+      threadId: 'omt_auto',
+      channel: 'lark',
+    })
+    expect(loadingTracker.start).toHaveBeenCalledWith({ sessionId: 'sid-lark-auto' })
+    const persisted = db.getTodo(todo.id).aiSessions.find((s) => s.sessionId === 'sid-lark-auto')
+    expect(persisted.larkRoute.rootMessageId).toBe('om_root_auto')
+    expect(persisted.larkRoute.channel).toBe('lark')
+  })
+
+  it('ensureLarkThreadForSession: idempotent — already-bound bridge route returns no-op', async () => {
+    const todo = db.createTodo({ title: 'lark-idem', quadrant: 2, workDir: '/tmp' })
+    db.updateTodo(todo.id, {
+      aiSessions: [{ sessionId: 'sid-lark-idem', tool: 'claude', status: 'running', startedAt: Date.now() }],
+    })
+    bridge.routes.set('sid-lark-idem', { targetUserId: 'oc_chat', rootMessageId: 'om_existing', channel: 'lark' })
+    bridge.resolveRoute = (sid) => bridge.routes.get(sid) || null
+    const fakeLarkBot = { sendMessage: vi.fn(), replyInThread: vi.fn() }
+    const w2 = createOpenClawWizard({
+      db, aiTerminal: ai, openclaw: bridge, pending,
+      larkBot: fakeLarkBot,
+      getConfig: () => ({ lark: { enabled: true, chatId: 'oc_chat' } }),
+    })
+    const r = await w2.ensureLarkThreadForSession({ sessionId: 'sid-lark-idem', todoId: todo.id })
+    expect(r.action).toBe('already_bound')
+    expect(fakeLarkBot.sendMessage).not.toHaveBeenCalled()
+  })
+
+  it('ensureLarkThreadForSession: re-registers from DB when bridge route lost (post-restart)', async () => {
+    const todo = db.createTodo({ title: 'lark-rehyd', quadrant: 2, workDir: '/tmp' })
+    db.updateTodo(todo.id, {
+      aiSessions: [{
+        sessionId: 'sid-lark-rehyd', tool: 'claude', status: 'running', startedAt: Date.now(),
+        larkRoute: { targetUserId: 'oc_chat', rootMessageId: 'om_persisted', channel: 'lark' },
+      }],
+    })
+    bridge.resolveRoute = (sid) => bridge.routes.get(sid) || null
+    const fakeLarkBot = { sendMessage: vi.fn(), replyInThread: vi.fn() }
+    const w2 = createOpenClawWizard({
+      db, aiTerminal: ai, openclaw: bridge, pending,
+      larkBot: fakeLarkBot,
+      getConfig: () => ({ lark: { enabled: true, chatId: 'oc_chat' } }),
+    })
+    const r = await w2.ensureLarkThreadForSession({ sessionId: 'sid-lark-rehyd', todoId: todo.id })
+    expect(r.action).toBe('re-registered')
+    expect(bridge.routes.get('sid-lark-rehyd')).toMatchObject({ rootMessageId: 'om_persisted' })
+    expect(fakeLarkBot.sendMessage).not.toHaveBeenCalled()
+  })
+
+  it('ensureLarkThreadForSession: missing lark.chatId → returns no_lark_chat_id', async () => {
+    const todo = db.createTodo({ title: 'lark-no-chat', quadrant: 2, workDir: '/tmp' })
+    db.updateTodo(todo.id, {
+      aiSessions: [{ sessionId: 'sid-lark-x', tool: 'claude', status: 'running' }],
+    })
+    bridge.resolveRoute = () => null
+    const w2 = createOpenClawWizard({
+      db, aiTerminal: ai, openclaw: bridge, pending,
+      larkBot: { sendMessage: vi.fn(), replyInThread: vi.fn() },
+      getConfig: () => ({ lark: { enabled: true, chatId: '' } }),
+    })
+    const r = await w2.ensureLarkThreadForSession({ sessionId: 'sid-lark-x', todoId: todo.id })
+    expect(r.ok).toBe(false)
+    expect(r.reason).toBe('no_lark_chat_id')
+  })
+
+  it('ensureLarkThreadForSession: missing larkBot → returns no_lark_bot', async () => {
+    const todo = db.createTodo({ title: 'lark-no-bot', quadrant: 2, workDir: '/tmp' })
+    db.updateTodo(todo.id, {
+      aiSessions: [{ sessionId: 'sid-lark-no-bot', tool: 'claude', status: 'running' }],
+    })
+    bridge.resolveRoute = () => null
+    const w2 = createOpenClawWizard({
+      db, aiTerminal: ai, openclaw: bridge, pending,
+      getConfig: () => ({ lark: { enabled: true, chatId: 'oc_chat' } }),
+    })
+    const r = await w2.ensureLarkThreadForSession({ sessionId: 'sid-lark-no-bot', todoId: todo.id })
+    expect(r.ok).toBe(false)
+    expect(r.reason).toBe('no_lark_bot')
+  })
+
   it('ensureTopicForSession: missing chatId → returns no_default_chat_id', async () => {
     const todo = db.createTodo({ title: 'no-chat', quadrant: 2, workDir: '/tmp' })
     db.updateTodo(todo.id, {
