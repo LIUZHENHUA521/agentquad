@@ -1,4 +1,5 @@
 import * as Lark from '@larksuiteoapi/node-sdk'
+import { toLarkText } from './lark-markdown.js'
 
 function isBlank(value) {
   return value == null || String(value) === ''
@@ -43,7 +44,7 @@ export function createLarkApiClient({ appId, appSecret, clientFactory = defaultC
         data: {
           receive_id: String(chatId),
           msg_type: 'text',
-          content: JSON.stringify({ text: String(text) }),
+          content: JSON.stringify({ text: toLarkText(String(text)) }),
         },
       })
       return { ok: true, payload: normalizePayload(response) }
@@ -63,7 +64,7 @@ export function createLarkApiClient({ appId, appSecret, clientFactory = defaultC
         path: { message_id: String(rootMessageId) },
         data: {
           msg_type: 'text',
-          content: JSON.stringify({ text: String(text) }),
+          content: JSON.stringify({ text: toLarkText(String(text)) }),
           reply_in_thread: true,
         },
       })

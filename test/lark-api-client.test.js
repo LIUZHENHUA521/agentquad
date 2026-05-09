@@ -125,6 +125,31 @@ describe('lark-api-client', () => {
     await expect(failing.addReaction({ messageId: 'om_user', emojiType: 'EYES' })).resolves.toEqual({ ok: false, reason: 'lark_reaction_failed', detail: 'reaction boom' })
   })
 
+  it('strips markdown syntax before sending to Feishu (which does not render text-msg markdown)', async () => {
+    const sdkClient = makeSdkClient()
+    const client = createLarkApiClient({ appId: 'cli_a123', appSecret: 'secret', clientFactory: () => sdkClient })
+
+    await client.sendMessage({ chatId: 'oc_123', text: '## 报告\n**OK** [link](https://x.com)' })
+    expect(sdkClient.im.message.create).toHaveBeenCalledWith({
+      params: { receive_id_type: 'chat_id' },
+      data: {
+        receive_id: 'oc_123',
+        msg_type: 'text',
+        content: JSON.stringify({ text: '报告\nOK link (https://x.com)' }),
+      },
+    })
+
+    await client.replyInThread({ rootMessageId: 'om_root', text: '**done** ~~old~~' })
+    expect(sdkClient.im.message.reply).toHaveBeenCalledWith({
+      path: { message_id: 'om_root' },
+      data: {
+        msg_type: 'text',
+        content: JSON.stringify({ text: 'done old' }),
+        reply_in_thread: true,
+      },
+    })
+  })
+
   it('tests credentials without sending a chat message', async () => {
     const sdkClient = makeSdkClient()
     const client = createLarkApiClient({ appId: 'cli_a123', appSecret: 'secret', clientFactory: () => sdkClient })
