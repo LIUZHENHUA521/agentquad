@@ -554,7 +554,10 @@ describe('openclaw-wizard state machine', () => {
     // 用户在自己新建的话题里 @bot 起 wizard，wizard 完成时应该把 intro 当成 thread reply
     // 发进同一话题，并把 lark route 锚到用户那条消息上 —— 不再创建第二个根消息开新话题。
     const fakeLarkBot = {
-      replyInThread: vi.fn(async () => ({ ok: true, payload: { message_id: 'om_intro_in_thread', thread_id: 'omt_user_topic', message_app_link: 'https://example.test/thread' } })),
+      // 飞书 reply API 响应在 thread 里 reply 时，data 带 root_id（thread 真正 root，
+      // 即第一次 reply 创建 thread 时的 message_id）。这里 'om_thread_root' 就是飞书
+      // 后续在这个 thread 里所有事件 ev.root_id 都会等于的值。
+      replyInThread: vi.fn(async () => ({ ok: true, payload: { message_id: 'om_intro_in_thread', root_id: 'om_thread_root', thread_id: 'omt_user_topic', message_app_link: 'https://example.test/thread' } })),
       sendMessage: vi.fn(),  // 不应被调用
     }
     const aiWithDb = {
@@ -597,11 +600,80 @@ describe('openclaw-wizard state machine', () => {
       channel: 'lark',
       targetUserId: 'oc_1',
       threadId: 'omt_user_topic',
-      // 飞书 reply_in_thread=true 后，thread 后续消息事件的 root_id 指向 *quadtodo
-      // 这条 reply* 的 message_id（不是用户原消息）。lark route 必须锚到 reply 返回的
-      // message_id，否则用户继续对话时 findSessionByRoute 匹配不到。
-      rootMessageId: 'om_intro_in_thread',
+      // 优先用飞书 reply 响应里的 root_id（thread 真正 root，跟后续事件 ev.root_id
+      // 一致），不用 reply 自己的 message_id。
+      rootMessageId: 'om_thread_root',
     }))
+  })
+
+  it('Lark: second-turn message in same thread routes to the bound PTY (regression for routing bug)', async () => {
+    // 复现用户场景：wizard finalize 完成后，用户在同一 thread 里继续发消息，
+    // 事件 ev.root_id 等于飞书第一次 reply 时返回的 root_id。lark route 锚到这个
+    // root_id 后，findSessionByRoute 应该命中 → wizard 走 stdin proxy 而不是
+    // "没有找到对应运行中的任务"。
+    const fakeLarkBot = {
+      replyInThread: vi.fn(async () => ({ ok: true, payload: { message_id: 'om_reply', root_id: 'om_thread_root', thread_id: 'omt_user' } })),
+      sendMessage: vi.fn(),
+    }
+    const writes = []
+    const fakePty = {
+      has: vi.fn(() => true),
+      write: vi.fn((sid, data) => writes.push({ sid, data })),
+    }
+    const aiWithDb = {
+      sessions: new Map(),
+      spawnSession({ sessionId, todoId, tool }) {
+        this.sessions.set(sessionId, { sessionId, todoId, tool, status: 'running', startedAt: Date.now() })
+        const t = db.getTodo(todoId)
+        if (t) {
+          db.updateTodo(todoId, {
+            aiSessions: [{ sessionId, tool, status: 'running', startedAt: Date.now() }, ...(t.aiSessions || [])],
+          })
+        }
+        return { sessionId, reused: false }
+      },
+    }
+    bridge.findSessionByRoute = ({ chatId, threadId, rootMessageId }) => {
+      for (const [sid, info] of bridge.routes) {
+        if (String(info?.targetUserId) !== String(chatId)) continue
+        if (rootMessageId) {
+          if (info?.rootMessageId === rootMessageId) return sid
+          continue
+        }
+        if ((info?.threadId || null) !== (threadId || null)) continue
+        return sid
+      }
+      return null
+    }
+    const w2 = createOpenClawWizard({
+      db, aiTerminal: aiWithDb, openclaw: bridge, pending,
+      larkBot: fakeLarkBot, pty: fakePty,
+      getConfig: () => ({ defaultCwd: '/tmp', port: 5677, defaultTool: 'claude' }),
+    })
+
+    // 第 1 步：起 wizard 直到 finalize
+    await w2.handleInbound({
+      channel: 'lark',
+      chatId: 'oc_1',
+      threadId: 'omt_user',
+      messageId: 'om_user_first',
+      text: '帮我做 routing 回归，目录 /tmp/foo, 象限 2, Bug 修复 模板',
+    })
+
+    // 第 2 步：用户在同一 thread 里发"hello"。事件 ev.root_id = om_thread_root（飞书
+    // 给 thread 锁定的真正 root，跟我们 finalize 时存在 route 的 rootMessageId 一致）
+    const r = await w2.handleInbound({
+      channel: 'lark',
+      chatId: 'oc_1',
+      threadId: 'omt_user',
+      rootMessageId: 'om_thread_root',
+      messageId: 'om_user_second',
+      text: 'hello',
+    })
+
+    expect(r.action).toBe('stdin_proxy')
+    expect(r.sessionId).toBeTruthy()
+    expect(writes.some((w) => w.data === 'hello')).toBe(true)
   })
 
   it('Lark: finalizeWizard falls back to creating new root if replyInThread fails', async () => {

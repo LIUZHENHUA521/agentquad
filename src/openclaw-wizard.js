@@ -590,12 +590,13 @@ export function createOpenClawWizard({
             const sent = await larkBot.replyInThread({ rootMessageId: reuseThreadAnchor, text: intro })
             if (sent?.ok !== false) {
               const payload = sent?.payload || sent || {}
-              // 飞书 reply_in_thread=true 后，thread 后续消息事件的 root_id 字段
-              // 指向的是 *这条 quadtodo reply* 的 message_id（不是用户原消息 id）。
-              // 所以 lark route 必须锚到 reply 返回的 payload.message_id，否则
-              // findSessionByRoute({rootMessageId: ev.root_id}) 在用户继续对话时匹配不到。
+              // 飞书 reply API 响应 data 里带 root_id（该消息所在 thread 的真正 root）。
+              // 用它当 lark route 的 anchor —— 跟 thread 里所有后续事件的 ev.root_id
+              // 永远一致。如果飞书没返回 root_id（罕见），退到 reply 自己的 message_id，
+              // 再退到用户消息（reuseThreadAnchor）。
+              const replyRootId = payload.root_id != null ? String(payload.root_id) : null
               const replyMessageId = payload.message_id != null ? String(payload.message_id) : null
-              larkRootMessageId = replyMessageId || reuseThreadAnchor
+              larkRootMessageId = replyRootId || replyMessageId || reuseThreadAnchor
               larkThreadId = w.threadId || (payload.thread_id != null ? String(payload.thread_id) : null)
               larkMessageAppLink = payload.message_app_link != null ? String(payload.message_app_link) : null
             } else {
@@ -894,7 +895,11 @@ export function createOpenClawWizard({
       return { ok: false, reason: 'lark_send_failed', detail: e.message }
     }
 
-    const rootMessageId = payload?.message_id != null ? String(payload.message_id) : null
+    // 飞书响应 data 里如果带 root_id 就用它（thread 真正 root）；否则这条 sendMessage
+    // 自己就是 root，用它的 message_id（用户在它上面回复时事件 ev.root_id 就是这个）。
+    const replyRootId = payload?.root_id != null ? String(payload.root_id) : null
+    const replyMessageId = payload?.message_id != null ? String(payload.message_id) : null
+    const rootMessageId = replyRootId || replyMessageId
     if (!rootMessageId) return { ok: false, reason: 'no_root_message_id' }
 
     const route = {
