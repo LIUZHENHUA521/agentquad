@@ -624,6 +624,20 @@ export function createServer(opts = {}) {
 		}
 	});
 
+	app.get("/api/config/lark/status", (_req, res) => {
+		try {
+			const bot = larkBotHolder.current
+			if (!bot) {
+				res.json({ ok: true, status: { running: false, reason: 'lark_bot_not_running' } })
+				return
+			}
+			const status = bot.describe?.() || null
+			res.json({ ok: true, status })
+		} catch (e) {
+			res.status(500).json({ ok: false, error: e.message })
+		}
+	});
+
 	app.post("/api/config/lark/test", async (req, res) => {
 		try {
 			const current = loadConfig({ rootDir: configRootDir });

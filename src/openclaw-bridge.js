@@ -260,6 +260,16 @@ export function createOpenClawBridge({
         if (sessionId && rawTarget) lastPushByPeer.set(String(rawTarget), { sessionId, sentAt: Date.now() })
         return { ok: true, payload: r.payload, fast: true }
       }
+      // thread root 被撤回 / 飞书 5xx → 改发到 chat 主消息流，避免完全沉默
+      if (rawTarget && larkBot?.sendMessage && r.reason === 'lark_reply_failed') {
+        logger.warn?.(`[openclaw-bridge] lark reply failed (${r.detail || 'unknown'}); fallback to chat sendMessage`)
+        const fb = await larkBot.sendMessage({ chatId: String(rawTarget), text: message })
+        if (fb.ok) {
+          recordSend()
+          if (sessionId && rawTarget) lastPushByPeer.set(String(rawTarget), { sessionId, sentAt: Date.now() })
+          return { ok: true, payload: fb.payload, fast: true, replyFallback: true }
+        }
+      }
       return { ok: false, reason: r.reason || 'lark_send_failed', detail: r.detail || r.stderr }
     }
 
