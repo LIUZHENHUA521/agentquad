@@ -1603,12 +1603,21 @@ export default function TodoManage() {
       return
     }
     try {
-      await openNativeAiResume({
+      const result = await openNativeAiResume({
         cwd: cwd || '',
         tool: session.tool,
         nativeSessionId,
+        todoId: todo.id,
+        sessionId: session.sessionId,
       })
-      message.success('已在本地 Terminal 中继续当前会话')
+      const warnings = result.warnings || []
+      if (warnings.includes('telegram_route_missing')) {
+        message.warning('已在本地 Terminal 中继续；当前会话没有 Telegram topic 路由，不会推送到 Telegram')
+      } else if (warnings.includes('hooks_not_installed') || warnings.includes('hook_script_missing')) {
+        message.warning('已在本地 Terminal 中继续；Claude Code hooks 未安装或脚本缺失，Telegram 推送可能不可用')
+      } else {
+        message.success('已在本地 Terminal 中继续当前会话，Telegram 将接收后续回复')
+      }
     } catch (e: any) {
       message.error(e?.message || '本地继续失败')
     }

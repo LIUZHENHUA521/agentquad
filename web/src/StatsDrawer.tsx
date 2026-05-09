@@ -36,6 +36,7 @@ function rangeToMs(r: Range, custom?: [Dayjs, Dayjs]): [number, number] {
 }
 
 const fmtHours = (ms: number) => (ms / 3600_000).toFixed(1) + 'h'
+const fmtChartHours = (hours: number) => `${hours.toFixed(1)}h`
 const fmtTok = (n: number) => n >= 1e6 ? (n/1e6).toFixed(1)+'M' : n >= 1e3 ? (n/1e3).toFixed(1)+'K' : String(n)
 const fmtCost = (c: Cost) => `$${c.usd.toFixed(2)} / ¥${c.cny.toFixed(1)}`
 
@@ -122,7 +123,7 @@ function ReportBody({ report }: { report: Report }) {
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 12, margin: '16px 0' }}>
-        <Card size="small" title="时长趋势"><Line data={lineData} xField="date" yField="value" seriesField="type" height={220} /></Card>
+        <Card size="small" title="时长趋势"><Line data={lineData} xField="date" yField="value" seriesField="type" height={220} axis={{ y: { labelFormatter: fmtChartHours } }} tooltip={{ items: [{ channel: 'y', valueFormatter: fmtChartHours }] }} /></Card>
         <Card size="small" title="象限占比（活跃时长）"><Pie data={pieData} angleField="value" colorField="type" height={220} /></Card>
       </div>
 

@@ -12,4 +12,10 @@ describe('StatsDrawer layout regression', () => {
     expect(source).toContain("scroll={{ x: 'max-content' }}")
     expect(source).toContain('ellipsis: true')
   })
+
+  it('formats duration chart values as hours in tooltip and y axis', () => {
+    expect(source).toContain("const fmtChartHours = (hours: number) => `${hours.toFixed(1)}h`")
+    expect(source).toContain("axis={{ y: { labelFormatter: fmtChartHours } }}")
+    expect(source).toContain("tooltip={{ items: [{ channel: 'y', valueFormatter: fmtChartHours }] }}")
+  })
 })

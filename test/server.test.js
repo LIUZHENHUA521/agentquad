@@ -49,12 +49,14 @@ describe("server", () => {
 	let workRootDir;
 	let pickDirectoryCalls;
 	let nativeTerminalCalls;
+	let hookStatus;
 	beforeEach(() => {
 		const logDir = mkdtempSync(join(tmpdir(), "quadtodo-srv-"));
 		configRootDir = mkdtempSync(join(tmpdir(), "quadtodo-cfg-"));
 		workRootDir = mkdtempSync(join(tmpdir(), "quadtodo-work-"));
 		pickDirectoryCalls = [];
 		nativeTerminalCalls = [];
+		hookStatus = { installed: false, scriptExists: false };
 		mkdirSync(join(workRootDir, "client"));
 		mkdirSync(join(workRootDir, "server"));
 		loadConfig({ rootDir: configRootDir });
@@ -72,6 +74,7 @@ describe("server", () => {
 				nativeTerminalCalls.push(input);
 				return { cwd: input.cwd };
 			},
+			inspectHooks: () => hookStatus,
 		});
 	});
 	afterEach(() => {
@@ -240,6 +243,161 @@ describe("server", () => {
 		expect(nativeTerminalCalls[0].command).toContain("--resume");
 		expect(nativeTerminalCalls[0].command).toContain("native-123");
 		expect(srv.pty.started.length).toBe(before);
+	});
+
+	it("POST /api/system/open-native-ai-resume injects quadtodo hook env for Claude sessions", async () => {
+		const todo = srv.db.createTodo({ title: "Telegram task", quadrant: 1, workDir: join(workRootDir, "client") });
+		srv.db.updateTodo(todo.id, {
+			aiSessions: [{
+				sessionId: "ai-route-1",
+				tool: "claude",
+				nativeSessionId: "native-telegram-1",
+				cwd: join(workRootDir, "client"),
+				status: "done",
+				startedAt: 1,
+				completedAt: 2,
+				prompt: "p",
+				telegramRoute: {
+					targetUserId: "-100123",
+					threadId: 42,
+					topicName: "#t1 Telegram task",
+					channel: "telegram",
+				},
+			}],
+		});
+
+		const r = await request(srv.app)
+			.post("/api/system/open-native-ai-resume")
+			.send({
+				cwd: join(workRootDir, "client"),
+				tool: "claude",
+				nativeSessionId: "native-telegram-1",
+				todoId: todo.id,
+				sessionId: "ai-route-1",
+			});
+
+		expect(r.status).toBe(200);
+		expect(r.body.warnings).toEqual(expect.arrayContaining(["hooks_not_installed", "hook_script_missing"]));
+		expect(nativeTerminalCalls[0].command).toContain("export QUADTODO_SESSION_ID='ai-route-1';");
+		expect(nativeTerminalCalls[0].command).toContain(`export QUADTODO_TODO_ID='${todo.id}';`);
+		expect(nativeTerminalCalls[0].command).toContain("export QUADTODO_TODO_TITLE='Telegram task';");
+		expect(nativeTerminalCalls[0].command).toContain("export QUADTODO_TARGET_USER='-100123';");
+		expect(nativeTerminalCalls[0].command).toContain("'--resume' 'native-telegram-1'");
+		expect(srv.openclawBridge.resolveRoute("ai-route-1")).toMatchObject({
+			targetUserId: "-100123",
+			threadId: 42,
+			channel: "telegram",
+		});
+	});
+
+	it("POST /api/system/open-native-ai-resume warns when Claude session has no telegram route", async () => {
+		const todo = srv.db.createTodo({ title: "No route task", quadrant: 1, workDir: join(workRootDir, "client") });
+		srv.db.updateTodo(todo.id, {
+			aiSessions: [{
+				sessionId: "ai-no-route",
+				tool: "claude",
+				nativeSessionId: "native-no-route",
+				cwd: join(workRootDir, "client"),
+				status: "done",
+				startedAt: 1,
+				completedAt: 2,
+				prompt: "p",
+			}],
+		});
+
+		const r = await request(srv.app)
+			.post("/api/system/open-native-ai-resume")
+			.send({
+				cwd: join(workRootDir, "client"),
+				tool: "claude",
+				nativeSessionId: "native-no-route",
+				todoId: todo.id,
+				sessionId: "ai-no-route",
+			});
+
+		expect(r.status).toBe(200);
+		expect(r.body.warnings).toContain("telegram_route_missing");
+		expect(nativeTerminalCalls[0].command).not.toContain("QUADTODO_SESSION_ID");
+		expect(nativeTerminalCalls[0].command).not.toContain("QUADTODO_TARGET_USER");
+	});
+
+	it("POST /api/system/open-native-ai-resume does not register incomplete telegram topic routes", async () => {
+		const todo = srv.db.createTodo({ title: "Partial route task", quadrant: 1, workDir: join(workRootDir, "client") });
+		srv.db.updateTodo(todo.id, {
+			aiSessions: [{
+				sessionId: "ai-partial-route",
+				tool: "claude",
+				nativeSessionId: "native-partial-route",
+				cwd: join(workRootDir, "client"),
+				status: "done",
+				startedAt: 1,
+				completedAt: 2,
+				prompt: "p",
+				telegramRoute: {
+					targetUserId: "-100123",
+					channel: "telegram",
+				},
+			}],
+		});
+
+		const r = await request(srv.app)
+			.post("/api/system/open-native-ai-resume")
+			.send({
+				cwd: join(workRootDir, "client"),
+				tool: "claude",
+				nativeSessionId: "native-partial-route",
+				todoId: todo.id,
+				sessionId: "ai-partial-route",
+			});
+
+		expect(r.status).toBe(200);
+		expect(r.body.warnings).toContain("telegram_route_missing");
+		expect(nativeTerminalCalls[0].command).not.toContain("QUADTODO_TARGET_USER");
+		expect(srv.openclawBridge.hasExplicitRoute("ai-partial-route")).toBe(false);
+	});
+
+	it("POST /api/system/open-native-ai-resume ignores mismatched session context", async () => {
+		const todo = srv.db.createTodo({ title: "Mismatch task", quadrant: 1, workDir: join(workRootDir, "client") });
+		srv.db.updateTodo(todo.id, {
+			aiSessions: [{
+				sessionId: "ai-route-a",
+				tool: "claude",
+				nativeSessionId: "native-a",
+				cwd: join(workRootDir, "client"),
+				status: "done",
+				startedAt: 1,
+				completedAt: 2,
+				prompt: "p",
+				telegramRoute: {
+					targetUserId: "-100123",
+					threadId: 42,
+					channel: "telegram",
+				},
+			}, {
+				sessionId: "ai-route-b",
+				tool: "claude",
+				nativeSessionId: "native-b",
+				cwd: join(workRootDir, "client"),
+				status: "done",
+				startedAt: 1,
+				completedAt: 2,
+				prompt: "p",
+			}],
+		});
+
+		const r = await request(srv.app)
+			.post("/api/system/open-native-ai-resume")
+			.send({
+				cwd: join(workRootDir, "client"),
+				tool: "claude",
+				nativeSessionId: "native-b",
+				todoId: todo.id,
+				sessionId: "ai-route-a",
+			});
+
+		expect(r.status).toBe(200);
+		expect(nativeTerminalCalls[0].command).not.toContain("QUADTODO_SESSION_ID");
+		expect(srv.openclawBridge.hasExplicitRoute("ai-route-a")).toBe(false);
 	});
 
 	it("buildNativeResumeMarker produces a stable per-session string", () => {

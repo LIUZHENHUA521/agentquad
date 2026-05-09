@@ -42,6 +42,7 @@ import { createTelegramBot, readBotTokenWithSource } from "./telegram-bot.js";
 import { createLoadingTracker } from "./telegram-loading-status.js";
 import { buildTelegramCommands } from "./telegram-commands.js";
 import { createProbeRegistry, isMaskedToken, maskBotToken } from "./telegram-config-service.js";
+import { inspectHooks as inspectClaudeHooks } from "./openclaw-hook-installer.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -115,6 +116,56 @@ function pickDirectoryNative({ defaultPath, prompt = "选择目录" } = {}) {
 
 function shellEscape(arg) {
 	return `'${String(arg).replace(/'/g, `'\\''`)}'`;
+}
+
+function buildShellExports(env = {}) {
+	const entries = Object.entries(env).filter(([, value]) => value != null && value !== "");
+	if (entries.length === 0) return "";
+	return `${entries.map(([key, value]) => `export ${key}=${shellEscape(value)}`).join("; ")}; `;
+}
+
+function findNativeResumeContext({ db, todoId, sessionId, nativeSessionId, tool } = {}) {
+	if (!todoId) return { todo: null, aiSession: null };
+	const todo = db.getTodo(todoId);
+	if (!todo) return { todo: null, aiSession: null };
+	const sessions = Array.isArray(todo.aiSessions) ? todo.aiSessions : [];
+	const aiSession = sessions.find((item) => {
+		if (!item) return false;
+		if (sessionId && item.sessionId !== sessionId) return false;
+		if (nativeSessionId && item.nativeSessionId !== nativeSessionId) return false;
+		if (tool && item.tool !== tool) return false;
+		return true;
+	}) || null;
+	return { todo, aiSession };
+}
+
+function isCompleteTelegramRoute(route) {
+	return Boolean(route?.targetUserId && route?.threadId);
+}
+
+function buildNativeResumeHookEnv({ tool, todo, aiSession, runtimeConfig, inspectHooks = inspectClaudeHooks } = {}) {
+	if (tool !== "claude" || !todo || !aiSession) return { env: {}, warnings: [] };
+	const warnings = [];
+	const route = aiSession.telegramRoute || null;
+	if (!isCompleteTelegramRoute(route)) warnings.push("telegram_route_missing");
+	let hookStatus = null;
+	try {
+		hookStatus = inspectHooks();
+	} catch {
+		hookStatus = null;
+	}
+	if (!hookStatus?.scriptExists) warnings.push("hook_script_missing");
+	if (!hookStatus?.installed) warnings.push("hooks_not_installed");
+	if (!isCompleteTelegramRoute(route)) return { env: {}, warnings };
+	const port = runtimeConfig?.port || 5677;
+	const env = {
+		QUADTODO_SESSION_ID: aiSession.sessionId,
+		QUADTODO_TODO_ID: todo.id,
+		QUADTODO_TODO_TITLE: todo.title || aiSession.prompt || "",
+		QUADTODO_URL: `http://127.0.0.1:${port}`,
+		QUADTODO_TARGET_USER: String(route.targetUserId),
+	};
+	return { env, warnings };
 }
 
 function buildNativeResumeTitle(tool, nativeSessionId) {
@@ -374,6 +425,7 @@ export function createServer(opts = {}) {
 		webDist,
 		pickDirectory = pickDirectoryNative,
 		openNativeTerminal = openNativeTerminalNative,
+		inspectHooks = inspectClaudeHooks,
 	} = opts;
 
 	const db = openDb(dbFile);
@@ -702,11 +754,23 @@ export function createServer(opts = {}) {
 			const tool = req.body?.tool;
 			const nativeSessionId = req.body?.nativeSessionId;
 			const title = buildNativeResumeTitle(tool, nativeSessionId);
-			const command = buildNativeResumeCommand(
+			const baseCommand = buildNativeResumeCommand(
 				tool,
 				nativeSessionId,
 				runtimeConfig.tools,
 			);
+			const { todo, aiSession } = findNativeResumeContext({
+				db,
+				todoId: req.body?.todoId,
+				sessionId: req.body?.sessionId,
+				nativeSessionId,
+				tool,
+			});
+			const hook = buildNativeResumeHookEnv({ tool, todo, aiSession, runtimeConfig, inspectHooks });
+			if (isCompleteTelegramRoute(aiSession?.telegramRoute)) {
+				openclawBridge.registerSessionRoute(aiSession.sessionId, aiSession.telegramRoute);
+			}
+			const command = `${buildShellExports(hook.env)}${baseCommand}`;
 			const result = await openNativeTerminal({ cwd, command, title });
 			res.json({
 				ok: true,
@@ -714,6 +778,7 @@ export function createServer(opts = {}) {
 				title: result?.title || title,
 				command: result?.command || command,
 				action: result?.action || "created",
+				warnings: hook.warnings,
 			});
 		} catch (e) {
 			const status = [
@@ -1122,7 +1187,7 @@ export function createServer(opts = {}) {
 				const todo = db.getTodo(sess.todoId)
 				if (!todo) continue
 				const aiSess = (todo.aiSessions || []).find((s) => s.sessionId === sid)
-				if (aiSess?.telegramRoute) {
+				if (isCompleteTelegramRoute(aiSess?.telegramRoute)) {
 					openclawBridge.registerSessionRoute(sid, aiSess.telegramRoute)
 					rehydrated++
 				}

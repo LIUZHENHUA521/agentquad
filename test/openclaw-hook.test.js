@@ -578,6 +578,56 @@ describe('openclaw-hook usage footer integration', () => {
     expect(msg).not.toContain('turn:')
   })
 
+  it('stop event can read native Terminal transcript from hook payload path without aiTerminal session', async () => {
+    mkJsonl({ multipleAssistants: true })
+    const handler = createOpenClawHookHandler({
+      db, openclaw: bridge,
+      cooldownMs: 0,
+      pty: { findClaudeSession: () => null },
+      getConfig: () => ({ telegram: {} }),
+      logger: { warn() {}, info() {} },
+    })
+    const r = await handler.handle({
+      event: 'stop',
+      sessionId: 'external-local-terminal',
+      todoId: 't1',
+      todoTitle: 'A',
+      hookPayload: {
+        session_id: 'native-uuid-1',
+        transcript_path: jsonlPath,
+        last_assistant_message: 'hook fallback text',
+      },
+    })
+    expect(r.action).toBe('sent')
+    const msg = bridge.sent[0].message
+    expect(msg).toContain('又改了一行')
+    expect(msg).toContain('💸')
+  })
+
+  it('stop event ignores hook transcript path when it does not match hook session id', async () => {
+    mkJsonl({ multipleAssistants: true })
+    const handler = createOpenClawHookHandler({
+      db, openclaw: bridge,
+      cooldownMs: 0,
+      pty: { findClaudeSession: () => null },
+      getConfig: () => ({ telegram: {} }),
+      logger: { warn() {}, info() {} },
+    })
+    const r = await handler.handle({
+      event: 'stop',
+      sessionId: 'external-local-terminal',
+      todoId: 't1',
+      todoTitle: 'A',
+      hookPayload: {
+        session_id: 'different-native-id',
+        transcript_path: jsonlPath,
+      },
+    })
+    expect(r.action).toBe('sent')
+    expect(bridge.sent[0].message).not.toContain('又改了一行')
+    expect(bridge.sent[0].message).not.toContain('💸')
+  })
+
   it('jsonl missing: silently skips footer, message still sent', async () => {
     // 不调 mkJsonl → jsonlPath 文件不存在
     const handler = mkHandler()

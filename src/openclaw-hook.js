@@ -49,6 +49,12 @@ function writeTranscriptTmp(content, sessionId, kind) {
   }
 }
 
+function hookTranscriptMatchesSession(transcriptPath, nativeId) {
+  if (!transcriptPath || !nativeId) return false
+  const fileName = String(transcriptPath).split(/[\\/]/).pop()
+  return fileName === `${nativeId}.jsonl`
+}
+
 // 把 todoId 字符串收成 3 字符短码（去除连字符后取末 3 位，转小写）
 function shortTodoId(todoId) {
   if (!todoId) return null
@@ -378,14 +384,26 @@ export function createOpenClawHookHandler({
         if (Array.isArray(sess.outputHistory)) historicalRaw = sess.outputHistory.join('')
       }
     }
+    if (!nativeId && hookPayload && typeof hookPayload === 'object') {
+      nativeId = hookPayload.session_id || hookPayload.sessionId || null
+    }
 
     // 3b. 从 jsonl 取 latest assistant turn（这是首选源）
     let turnText = null
     let turnRaw = null            // 给 footer 算本轮 usage 用
     let jsonlPath = null          // 给 footer 算 session 累计用
-    if (nativeId && pty?.findClaudeSession) {
+    const rawHookTranscriptPath = hookPayload && typeof hookPayload === 'object' && typeof hookPayload.transcript_path === 'string'
+      ? hookPayload.transcript_path
+      : null
+    const hookTranscriptPath = hookTranscriptMatchesSession(rawHookTranscriptPath, nativeId)
+      ? rawHookTranscriptPath
+      : null
+    if (rawHookTranscriptPath && !hookTranscriptPath) {
+      logger.warn?.(`[openclaw-hook] ignoring transcript path that does not match native session id: nativeId=${nativeId || 'null'} path=${rawHookTranscriptPath}`)
+    }
+    if (hookTranscriptPath || (nativeId && pty?.findClaudeSession)) {
       try {
-        const loc = pty.findClaudeSession(nativeId)
+        const loc = hookTranscriptPath ? { filePath: hookTranscriptPath } : pty.findClaudeSession(nativeId)
         if (loc?.filePath) {
           jsonlPath = loc.filePath
           // **关键**：用 Fresh 版，等 jsonl 写完最新 turn 再读
@@ -397,7 +415,7 @@ export function createOpenClawHookHandler({
             turnText = turn.text
             turnRaw = turn.raw
             if (turn.fresh === false) {
-              logger.warn?.(`[openclaw-hook] jsonl still stale after retries for ${nativeId} (event=${evt}); using stale content as fallback`)
+              logger.warn?.(`[openclaw-hook] jsonl still stale after retries for ${nativeId || 'hook-payload'} (event=${evt}); using stale content as fallback`)
             }
           }
           // SessionEnd 时额外做 full transcript 附件
@@ -417,7 +435,7 @@ export function createOpenClawHookHandler({
         logger.warn?.(`[openclaw-hook] read transcript failed: ${e.message}`)
       }
     } else if (sessionId) {
-      logger.warn?.(`[openclaw-hook] cannot resolve nativeId for sessionId=${sessionId} (nativeId=${nativeId} pty.findClaudeSession=${!!pty?.findClaudeSession}); falling back to PTY snippet`)
+      logger.warn?.(`[openclaw-hook] cannot resolve transcript for sessionId=${sessionId} (nativeId=${nativeId} transcript_path=${hookTranscriptPath || 'null'} pty.findClaudeSession=${!!pty?.findClaudeSession}); falling back to PTY snippet`)
     }
 
     // 3c. 决定 cleanContent（jsonl 命中时优先；长内容截短）

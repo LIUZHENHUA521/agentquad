@@ -17,6 +17,12 @@ export interface AiSession {
   completedAt: number | null
   prompt: string
   label?: string
+  telegramRoute?: {
+    targetUserId?: string | number | null
+    threadId?: string | number | null
+    topicName?: string | null
+    channel?: string | null
+  } | null
 }
 
 export interface Todo {
@@ -517,12 +523,20 @@ export async function openTerminal(cwd: string): Promise<{ sessionId: string }> 
   return { sessionId: body.sessionId }
 }
 
-export async function openNativeAiResume(input: { cwd: string; tool: AiTool; nativeSessionId: string }): Promise<{ cwd: string; command: string }> {
-  const body = await jsonFetch<{ ok: true; cwd: string; command: string }>('/api/system/open-native-ai-resume', {
+export type NativeResumeWarning = 'telegram_route_missing' | 'hook_script_missing' | 'hooks_not_installed'
+
+export async function openNativeAiResume(input: {
+  cwd: string
+  tool: AiTool
+  nativeSessionId: string
+  todoId?: string
+  sessionId?: string
+}): Promise<{ cwd: string; command: string; warnings: NativeResumeWarning[] }> {
+  const body = await jsonFetch<{ ok: true; cwd: string; command: string; warnings?: NativeResumeWarning[] }>('/api/system/open-native-ai-resume', {
     method: 'POST',
     body: JSON.stringify(input),
   })
-  return { cwd: body.cwd, command: body.command }
+  return { cwd: body.cwd, command: body.command, warnings: body.warnings || [] }
 }
 
 /** 浏览器 WS 地址：开发时走 vite proxy，生产同源 */
