@@ -183,9 +183,19 @@ export function createLarkBot({
     }
 
     const configuredChatId = getConfig()?.lark?.chatId
-    if (configuredChatId && ev.chatId !== String(configuredChatId)) return { ok: true, action: 'ignored_chat' }
-    if (ev.senderType === 'app' || ev.senderType === 'bot') return { ok: true, action: 'ignored_self' }
-    if (isBlank(ev.text)) return { ok: true, action: 'ignored_empty' }
+    if (configuredChatId && ev.chatId !== String(configuredChatId)) {
+      logger.warn?.(`[lark-bot] ignored_chat: event chatId=${ev.chatId} != configured ${configuredChatId} (eventId=${ev.eventId})`)
+      return { ok: true, action: 'ignored_chat' }
+    }
+    if (ev.senderType === 'app' || ev.senderType === 'bot') {
+      logger.info?.(`[lark-bot] ignored_self: senderType=${ev.senderType} (eventId=${ev.eventId})`)
+      return { ok: true, action: 'ignored_self' }
+    }
+    if (isBlank(ev.text)) {
+      logger.info?.(`[lark-bot] ignored_empty: no text (eventId=${ev.eventId})`)
+      return { ok: true, action: 'ignored_empty' }
+    }
+    logger.info?.(`[lark-bot] dispatching to wizard: chatId=${ev.chatId} thread=${ev.threadId || '-'} root=${ev.rootMessageId || '-'} text="${(ev.text || '').slice(0, 80)}"`)
 
     let result
     try {
