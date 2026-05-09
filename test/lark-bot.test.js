@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { createLarkBot } from '../src/lark-bot.js'
+import { createLarkBot, BUSY_REACTION_EMOJIS, pickBusyReactionEmoji } from '../src/lark-bot.js'
 
 function makeApiClient(overrides = {}) {
   return {
@@ -81,7 +81,7 @@ describe('lark-bot outbound SDK facade', () => {
 })
 
 describe('lark-bot busy reaction', () => {
-  it('adds 👍 (THUMBSUP) reaction to user message before dispatching to wizard', async () => {
+  it('adds a random reaction from the BUSY_REACTION_EMOJIS list to user message before dispatching to wizard', async () => {
     const wizard = { handleInbound: vi.fn().mockResolvedValue({ reply: 'wizard up', action: 'wizard_started' }) }
     const { bot, apiClient } = makeBot({ wizard })
 
@@ -97,8 +97,18 @@ describe('lark-bot busy reaction', () => {
       },
     })
 
-    expect(apiClient.addReaction).toHaveBeenCalledWith({ messageId: 'om_user_input', emojiType: 'THUMBSUP' })
+    expect(apiClient.addReaction).toHaveBeenCalledTimes(1)
+    const call = apiClient.addReaction.mock.calls[0][0]
+    expect(call.messageId).toBe('om_user_input')
+    expect(BUSY_REACTION_EMOJIS).toContain(call.emojiType)
     expect(wizard.handleInbound).toHaveBeenCalledTimes(1)
+  })
+
+  it('pickBusyReactionEmoji returns each entry of the whitelist over the deterministic range', () => {
+    BUSY_REACTION_EMOJIS.forEach((expected, i) => {
+      const fakeRng = () => i / BUSY_REACTION_EMOJIS.length
+      expect(pickBusyReactionEmoji(fakeRng)).toBe(expected)
+    })
   })
 
   it('does not add reaction when message is filtered (ignored_chat / ignored_self / ignored_empty)', async () => {

@@ -1,6 +1,27 @@
 import { createLarkApiClient } from './lark-api-client.js'
 import { createLarkEventClient } from './lark-event-client.js'
 
+// 飞书内置 emoji_type 枚举里挑出一组"看到/已收到/在干活"语义合理的值。
+// 飞书的 emoji_type 是固定枚举（不是任意 unicode），EYES 等不在内 —— 这里只放
+// 已经踩坑确认或在常见 reaction picker 里出现的合法值。
+const BUSY_REACTION_EMOJIS = [
+  'OK',          // 👌
+  'THUMBSUP',    // 👍
+  'HEART',       // ❤️
+  'LAUGH',       // 😆
+  'BLUSH',       // 😊
+  'WINK',        // 😉
+  'WOW',         // 😯
+  'WHIMPER',     // 🥺
+  'WOWFACE',     // 🤩
+  'CLAP',        // 👏
+]
+
+function pickBusyReactionEmoji(rng = Math.random) {
+  const i = Math.floor(rng() * BUSY_REACTION_EMOJIS.length)
+  return BUSY_REACTION_EMOJIS[Math.min(i, BUSY_REACTION_EMOJIS.length - 1)]
+}
+
 function isBlank(value) {
   return value == null || String(value) === ''
 }
@@ -232,10 +253,10 @@ export function createLarkBot({
     }
     logger.info?.(`[lark-bot] dispatching to wizard: chatId=${ev.chatId} thread=${ev.threadId || '-'} root=${ev.rootMessageId || '-'} text="${(ev.text || '').slice(0, 80)}"`)
 
-    // 立即加 reaction 让用户知道 bot 看到了 / 在干活；不 await，避免拖慢 wizard
-    // emoji_type 是飞书内置枚举（不是任意 unicode）：THUMBSUP / OK / HEART / LAUGH / ...
+    // 立即加 reaction 让用户知道 bot 看到了 / 在干活；不 await，避免拖慢 wizard。
+    // 从合法 emoji_type 白名单里随机选一个，每条消息长得不一样更有趣。
     if (ev.messageId && hasCredentials()) {
-      getApiClient().addReaction({ messageId: ev.messageId, emojiType: 'THUMBSUP' })
+      getApiClient().addReaction({ messageId: ev.messageId, emojiType: pickBusyReactionEmoji() })
         .catch((e) => logger.warn?.(`[lark-bot] reaction failed: ${e.message}`))
     }
 
@@ -320,3 +341,5 @@ export function createLarkBot({
 
   return { start, stop, sendMessage, replyInThread, handleEvent, describe, __test__: { normalizeEvent } }
 }
+
+export { BUSY_REACTION_EMOJIS, pickBusyReactionEmoji }
