@@ -64,6 +64,17 @@ function telegramPermissionMode(cfg = {}) {
   return ['default', 'acceptEdits', 'bypass'].includes(mode) ? mode : 'bypass'
 }
 
+function larkPermissionMode(cfg = {}) {
+  const mode = cfg.lark?.defaultPermissionMode
+  return ['default', 'acceptEdits', 'bypass'].includes(mode) ? mode : 'bypass'
+}
+
+// 按 channel 选权限模式：lark 用自己的配置，telegram/openclaw/其他都走 telegram 配置（保持旧行为）。
+function permissionModeForChannel(channel, cfg = {}) {
+  if (channel === 'lark') return larkPermissionMode(cfg)
+  return telegramPermissionMode(cfg)
+}
+
 function defaultRecentWorkDirs(db, limit = 5) {
   try {
     const rows = db.raw.prepare(`
@@ -616,7 +627,7 @@ export function createOpenClawWizard({
         const cfg = getConfig?.() || {}
         const tool = cfg.defaultTool || 'claude'
         const port = cfg.port || 5677
-        const permissionMode = telegramPermissionMode(cfg)
+        const permissionMode = permissionModeForChannel(channel, cfg)
         const sessionId = `ai-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
 
         let prompt

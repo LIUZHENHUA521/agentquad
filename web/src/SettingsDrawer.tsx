@@ -173,6 +173,7 @@ export default function SettingsDrawer({ open, onClose }: Props) {
           larkRequireThreadGroup: result.config.lark?.requireThreadGroup !== false,
           larkEventSubscribeEnabled: result.config.lark?.eventSubscribeEnabled !== false,
           larkAutoCreateTopic: result.config.lark?.autoCreateTopic !== false,
+          larkDefaultPermissionMode: result.config.lark?.defaultPermissionMode || 'bypass',
           larkNotificationCooldownMs: result.config.lark?.notificationCooldownMs ?? 600000,
           pricingCnyRate: result.config.pricing.cnyRate,
           pricingDefault: { ...result.config.pricing.default },
@@ -229,6 +230,7 @@ export default function SettingsDrawer({ open, onClose }: Props) {
           requireThreadGroup: values.larkRequireThreadGroup !== false,
           eventSubscribeEnabled: values.larkEventSubscribeEnabled !== false,
           autoCreateTopic: values.larkAutoCreateTopic !== false,
+          defaultPermissionMode: values.larkDefaultPermissionMode || 'bypass',
           notificationCooldownMs: Number(values.larkNotificationCooldownMs) || 0,
         },
         pricing: {
@@ -770,6 +772,18 @@ export default function SettingsDrawer({ open, onClose }: Props) {
                     extra="开启后：在 Web 起 AI session 时自动在话题群里发一条根消息作为 thread anchor，PTY 输出回复到该 thread。关闭则只能从飞书 @bot 起 session。"
                   >
                     <Switch />
+                  </Form.Item>
+
+                  <Form.Item
+                    name="larkDefaultPermissionMode"
+                    label="Lark 默认权限模式"
+                    extra="新建/恢复 Lark 任务时使用。默认 = 每次写操作都要授权；半托管 = 自动批文件编辑；完全托管（bypass）= 全自动跑。Lark 远程驱动时建议 bypass，否则等待授权时只能干等。"
+                  >
+                    <Radio.Group>
+                      <Radio.Button value="default">默认（需确认）</Radio.Button>
+                      <Radio.Button value="acceptEdits">半托管</Radio.Button>
+                      <Radio.Button value="bypass">完全托管</Radio.Button>
+                    </Radio.Group>
                   </Form.Item>
 
                   <Form.Item

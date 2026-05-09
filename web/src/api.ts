@@ -154,6 +154,7 @@ export interface AppConfig {
     requireThreadGroup?: boolean
     eventSubscribeEnabled?: boolean
     autoCreateTopic?: boolean
+    defaultPermissionMode?: 'default' | 'acceptEdits' | 'bypass'
     notificationCooldownMs?: number
     [key: string]: unknown
   }

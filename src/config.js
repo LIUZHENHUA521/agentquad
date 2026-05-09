@@ -100,6 +100,7 @@ const DEFAULT_LARK_CONFIG = {
 	requireThreadGroup: true,
 	eventSubscribeEnabled: true,
 	autoCreateTopic: true,
+	defaultPermissionMode: "bypass",
 	notificationCooldownMs: 600_000,
 };
 
@@ -372,6 +373,7 @@ function normalizeConfig(cfg = {}) {
 			chatId: typeof cfg.lark?.chatId === "string"
 				? cfg.lark.chatId.trim()
 				: DEFAULT_LARK_CONFIG.chatId,
+			defaultPermissionMode: normalizePermissionMode(cfg.lark?.defaultPermissionMode),
 		},
 		// Note on models merge precedence: user entries with the SAME key as a
 		// default (e.g. 'claude-opus-4-*') override the default. To override

@@ -245,6 +245,20 @@ describe('telegram defaults: pollRetryDelayMs / minRenameIntervalMs', () => {
 	});
 });
 
+describe('lark defaultPermissionMode normalization', () => {
+	it('falls back to bypass when value is invalid', async () => {
+		const { loadConfig } = await import('../src/config.js');
+		const tmp = mkdtempSync(join(tmpdir(), 'qt-lark-perm-'));
+		try {
+			writeFileSync(join(tmp, 'config.json'), JSON.stringify({ lark: { defaultPermissionMode: 'yolo' } }));
+			const cfg = loadConfig({ rootDir: tmp });
+			expect(cfg.lark.defaultPermissionMode).toBe('bypass');
+		} finally {
+			rmSync(tmp, { recursive: true, force: true });
+		}
+	});
+});
+
 describe('lark defaults', () => {
 	it('adds lark defaults when config file omits lark section', async () => {
 		const { loadConfig } = await import('../src/config.js');
@@ -259,6 +273,7 @@ describe('lark defaults', () => {
 				requireThreadGroup: true,
 				eventSubscribeEnabled: true,
 				autoCreateTopic: true,
+				defaultPermissionMode: 'bypass',
 				notificationCooldownMs: 600000,
 			});
 		} finally {
@@ -279,6 +294,7 @@ describe('lark defaults', () => {
 					requireThreadGroup: false,
 					eventSubscribeEnabled: false,
 					autoCreateTopic: false,
+					defaultPermissionMode: 'acceptEdits',
 					notificationCooldownMs: 0,
 				},
 			}));
@@ -291,6 +307,7 @@ describe('lark defaults', () => {
 				requireThreadGroup: false,
 				eventSubscribeEnabled: false,
 				autoCreateTopic: false,
+				defaultPermissionMode: 'acceptEdits',
 				notificationCooldownMs: 0,
 			});
 		} finally {
