@@ -12,7 +12,7 @@ import {
   DownOutlined, RightOutlined,
   DashboardOutlined, FileTextOutlined, ExportOutlined,
   BookOutlined, LineChartOutlined, TrophyOutlined, BranchesOutlined,
-  MenuOutlined, BellOutlined,
+  MenuOutlined,
 } from '@ant-design/icons'
 import { useIsMobile } from './hooks/useIsMobile'
 import CmdPalette from './CmdPalette'
@@ -62,6 +62,7 @@ import {
 import { getTranscriptStats, listPipelineTemplates, listPipelineRunsForTodo, startPipelineRun, PipelineTemplate, PipelineRun } from './api'
 import PipelineRunDrawer from './pipeline/PipelineRunDrawer'
 import TerminalDock from './dock/TerminalDock'
+import AttentionRail from './dock/AttentionRail'
 import { useTerminalDockStore } from './store/terminalDockStore'
 import './TodoManage.css'
 
@@ -1587,6 +1588,13 @@ export default function TodoManage() {
 
   return (
     <div className="todo-manage-shell">
+      <AttentionRail
+        items={attentionItems}
+        counts={attentionCounts}
+        hasNew={hasNewAttention}
+        onActivate={handleOpenAttentionItem}
+        onOpenDashboard={() => setDashboardOpen(true)}
+      />
       <div className="todo-manage__main" style={{ padding: 16 }}>
       <div className="todo-sticky-header">
       {/* 工具栏 */}
@@ -2308,22 +2316,6 @@ export default function TodoManage() {
         onClose={() => setTemplateDrawerOpen(false)}
         onChanged={refreshTemplates}
       />
-      {attentionCounts.total > 0 && (
-        <button
-          type="button"
-          className={`todo-attention-fab ${hasNewAttention ? 'alerting' : ''}`}
-          onClick={() => setDashboardOpen(true)}
-          title={hasNewAttention ? '有新的待处理 AI 会话' : '打开待处理 AI 会话'}
-          aria-live="polite"
-        >
-          <span className="todo-attention-fab-icon"><BellOutlined /></span>
-          <span className="todo-attention-fab-text">
-            <strong>待处理回复</strong>
-            <small>{attentionCounts.interaction} 待交互 · {attentionCounts.awaitingReply} 待回复 · {attentionCounts.review} 待验收</small>
-          </span>
-          <span className="todo-attention-fab-badge">{attentionCounts.total}</span>
-        </button>
-      )}
       <DashboardDrawer
         open={dashboardOpen}
         onClose={() => setDashboardOpen(false)}
