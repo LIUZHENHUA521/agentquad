@@ -160,6 +160,11 @@ export default function SettingsDrawer({ open, onClose }: Props) {
           telegramLongPollTimeoutSec: result.config.telegram?.longPollTimeoutSec ?? 30,
           telegramPollRetryDelayMs: result.config.telegram?.pollRetryDelayMs ?? 5000,
           telegramMinRenameIntervalMs: result.config.telegram?.minRenameIntervalMs ?? 30000,
+          larkEnabled: result.config.lark?.enabled ?? false,
+          larkChatId: result.config.lark?.chatId || '',
+          larkRequireThreadGroup: result.config.lark?.requireThreadGroup !== false,
+          larkEventSubscribeEnabled: result.config.lark?.eventSubscribeEnabled !== false,
+          larkNotificationCooldownMs: result.config.lark?.notificationCooldownMs ?? 600000,
           pricingCnyRate: result.config.pricing.cnyRate,
           pricingDefault: { ...result.config.pricing.default },
           pricingModels: Object.entries(result.config.pricing.models).map(([pattern, rate]) => ({
@@ -217,6 +222,13 @@ export default function SettingsDrawer({ open, onClose }: Props) {
           longPollTimeoutSec: Number(values.telegramLongPollTimeoutSec) || 30,
           pollRetryDelayMs: Number(values.telegramPollRetryDelayMs) || 5000,
           minRenameIntervalMs: Number(values.telegramMinRenameIntervalMs) || 30000,
+        },
+        lark: {
+          enabled: Boolean(values.larkEnabled),
+          chatId: String(values.larkChatId || '').trim(),
+          requireThreadGroup: values.larkRequireThreadGroup !== false,
+          eventSubscribeEnabled: values.larkEventSubscribeEnabled !== false,
+          notificationCooldownMs: Number(values.larkNotificationCooldownMs) || 0,
         },
         pricing: {
           cnyRate: Number(values.pricingCnyRate) || 7.2,
