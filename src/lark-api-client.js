@@ -145,6 +145,29 @@ export function createLarkApiClient({ appId, appSecret, clientFactory = defaultC
     }
   }
 
+  async function getMessageResource({ messageId, fileKey, type = 'image' } = {}) {
+    if (!hasCredentials()) return { ok: false, reason: 'lark_credentials_missing' }
+    if (isBlank(messageId)) return { ok: false, reason: 'messageId_required' }
+    if (isBlank(fileKey)) return { ok: false, reason: 'fileKey_required' }
+    try {
+      const result = await getClient().im.messageResource.get({
+        path: { message_id: String(messageId), file_key: String(fileKey) },
+        params: { type: String(type) },
+      })
+      // SDK 返回 { writeFile(path), getReadableStream(), headers } —— 直接透传
+      return {
+        ok: true,
+        writeFile: result.writeFile,
+        getReadableStream: result.getReadableStream,
+        headers: result.headers,
+      }
+    } catch (e) {
+      const detail = normalizeError(e)
+      logger.warn?.(`[lark-api] getMessageResource failed: ${detail}`)
+      return { ok: false, reason: 'lark_resource_failed', detail }
+    }
+  }
+
   async function deleteReaction({ messageId, reactionId } = {}) {
     if (!hasCredentials()) return { ok: false, reason: 'lark_credentials_missing' }
     if (isBlank(messageId)) return { ok: false, reason: 'messageId_required' }
@@ -178,5 +201,5 @@ export function createLarkApiClient({ appId, appSecret, clientFactory = defaultC
     }
   }
 
-  return { sendMessage, replyInThread, sendCard, replyWithCard, addReaction, deleteReaction, testConnection }
+  return { sendMessage, replyInThread, sendCard, replyWithCard, addReaction, deleteReaction, getMessageResource, testConnection }
 }

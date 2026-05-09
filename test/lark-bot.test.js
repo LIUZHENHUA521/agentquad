@@ -9,6 +9,11 @@ function makeApiClient(overrides = {}) {
     replyWithCard: vi.fn().mockResolvedValue({ ok: true, payload: { message_id: 'om_card_reply' } }),
     addReaction: vi.fn().mockResolvedValue({ ok: true, payload: { reaction_id: 'rid' } }),
     deleteReaction: vi.fn().mockResolvedValue({ ok: true }),
+    getMessageResource: vi.fn().mockResolvedValue({
+      ok: true,
+      headers: { 'content-type': 'image/png' },
+      writeFile: async (p) => p,
+    }),
     ...overrides,
   }
 }
@@ -240,6 +245,128 @@ describe('lark-bot busy reaction', () => {
     expect(r).toMatchObject({ ok: true, action: 'wizard_started' })
     expect(wizard.handleInbound).toHaveBeenCalledTimes(1)
     expect(apiClient.replyInThread).toHaveBeenCalledWith({ rootMessageId: 'om_x', text: 'wizard up' })
+  })
+})
+
+describe('lark-bot inbound images', () => {
+  it('downloads images for plain image messages and forwards local paths to wizard.imagePaths', async () => {
+    const wizard = { handleInbound: vi.fn().mockResolvedValue({ reply: 'got it', action: 'wizard_started' }) }
+    const apiClient = makeApiClient()
+    const { bot } = makeBot({ wizard, apiClient })
+
+    await bot.handleEvent({
+      event_id: 'evt_img',
+      event: {
+        message: {
+          chat_id: 'oc_default',
+          message_id: 'om_with_img',
+          msg_type: 'image',
+          content: '{"image_key":"img_abcdef"}',
+        },
+        sender: { sender_id: { open_id: 'ou_user' }, sender_type: 'user' },
+      },
+    })
+
+    expect(apiClient.getMessageResource).toHaveBeenCalledWith({
+      messageId: 'om_with_img',
+      fileKey: 'img_abcdef',
+      type: 'image',
+    })
+    expect(wizard.handleInbound).toHaveBeenCalledTimes(1)
+    const passed = wizard.handleInbound.mock.calls[0][0]
+    expect(passed.imagePaths).toBeDefined()
+    expect(passed.imagePaths).toHaveLength(1)
+    expect(passed.imagePaths[0]).toMatch(/\.png$/)
+  })
+
+  it('extracts img tags from post messages alongside the body text', async () => {
+    const wizard = { handleInbound: vi.fn().mockResolvedValue({ reply: 'ok' }) }
+    const apiClient = makeApiClient()
+    const { bot } = makeBot({ wizard, apiClient })
+
+    await bot.handleEvent({
+      event_id: 'evt_post_img',
+      event: {
+        message: {
+          chat_id: 'oc_default',
+          message_id: 'om_post_img',
+          msg_type: 'post',
+          content: JSON.stringify({
+            content: [[
+              { tag: 'at', user_id: '@_user_1', user_name: 'bot' },
+              { tag: 'text', text: ' 看这个截图 ' },
+              { tag: 'img', image_key: 'img_one' },
+              { tag: 'img', image_key: 'img_two' },
+            ]],
+          }),
+          mentions: [{ key: '@_user_1', id: { open_id: 'ou_bot' } }],
+        },
+        sender: { sender_id: { open_id: 'ou_user' }, sender_type: 'user' },
+      },
+    })
+
+    expect(apiClient.getMessageResource).toHaveBeenCalledTimes(2)
+    const passed = wizard.handleInbound.mock.calls[0][0]
+    expect(passed.text).toBe('看这个截图')
+    expect(passed.imagePaths).toHaveLength(2)
+  })
+
+  it('still dispatches an image-only message (no text) to wizard via imagePaths', async () => {
+    const wizard = { handleInbound: vi.fn().mockResolvedValue({ reply: '' }) }
+    const apiClient = makeApiClient()
+    const { bot } = makeBot({ wizard, apiClient })
+
+    const r = await bot.handleEvent({
+      event_id: 'evt_img_only',
+      event: {
+        message: {
+          chat_id: 'oc_default',
+          message_id: 'om_img_only',
+          msg_type: 'image',
+          content: '{"image_key":"img_lonely"}',
+        },
+        sender: { sender_id: { open_id: 'ou_user' }, sender_type: 'user' },
+      },
+    })
+
+    expect(r.action).not.toBe('ignored_empty')
+    expect(wizard.handleInbound).toHaveBeenCalledTimes(1)
+    const passed = wizard.handleInbound.mock.calls[0][0]
+    expect(passed.text).toBe('')
+    expect(passed.imagePaths).toHaveLength(1)
+  })
+
+  it('continues with whatever images downloaded successfully when one fails', async () => {
+    const wizard = { handleInbound: vi.fn().mockResolvedValue({ reply: 'ok' }) }
+    const apiClient = makeApiClient({
+      getMessageResource: vi.fn()
+        .mockResolvedValueOnce({ ok: true, headers: { 'content-type': 'image/png' }, writeFile: async (p) => p })
+        .mockResolvedValueOnce({ ok: false, reason: 'lark_resource_failed', detail: 'forbidden' }),
+    })
+    const { bot } = makeBot({ wizard, apiClient })
+
+    await bot.handleEvent({
+      event_id: 'evt_partial',
+      event: {
+        message: {
+          chat_id: 'oc_default',
+          message_id: 'om_partial',
+          msg_type: 'post',
+          content: JSON.stringify({
+            content: [[
+              { tag: 'text', text: '两张图：' },
+              { tag: 'img', image_key: 'img_ok' },
+              { tag: 'img', image_key: 'img_403' },
+            ]],
+          }),
+        },
+        sender: { sender_id: { open_id: 'ou_user' }, sender_type: 'user' },
+      },
+    })
+
+    expect(apiClient.getMessageResource).toHaveBeenCalledTimes(2)
+    const passed = wizard.handleInbound.mock.calls[0][0]
+    expect(passed.imagePaths).toHaveLength(1)  // 只成功一张
   })
 })
 

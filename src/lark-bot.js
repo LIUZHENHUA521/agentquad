@@ -1,5 +1,6 @@
 import { createLarkApiClient } from './lark-api-client.js'
 import { createLarkEventClient } from './lark-event-client.js'
+import { downloadLarkImage, extractImageKeys } from './lark-image.js'
 
 // 飞书内置 emoji_type 枚举里挑出一组"在思考 / 在干活"语义的值。
 // 飞书的 emoji_type 是固定枚举（不是任意 unicode），不少看着合理的值（EYES / CLOCK /
@@ -274,15 +275,42 @@ export function createLarkBot({
       logger.info?.(`[lark-bot] ignored_self: senderType=${ev.senderType} (eventId=${ev.eventId})`)
       return { ok: true, action: 'ignored_self' }
     }
-    if (isBlank(ev.text)) {
-      const rawMsg = raw?.event?.message || raw?.message || {}
+    // 提取消息里的 image_key（普通 image 消息 + post 富文本里的 img 节点都能识别）
+    const rawMsg = raw?.event?.message || raw?.message || {}
+    const imageKeys = extractImageKeys(rawMsg)
+
+    if (isBlank(ev.text) && imageKeys.length === 0) {
       const msgType = rawMsg.msg_type || rawMsg.message_type || '(unknown)'
       const contentRaw = typeof rawMsg.content === 'string' ? rawMsg.content : JSON.stringify(rawMsg.content || {})
       const mentions = JSON.stringify(rawMsg.mentions || [])
       logger.warn?.(`[lark-bot] ignored_empty: no text (eventId=${ev.eventId} msg_type=${msgType} content=${contentRaw.slice(0, 240)} mentions=${mentions.slice(0, 240)})`)
       return { ok: true, action: 'ignored_empty' }
     }
-    logger.info?.(`[lark-bot] dispatching to wizard: chatId=${ev.chatId} thread=${ev.threadId || '-'} root=${ev.rootMessageId || '-'} text="${(ev.text || '').slice(0, 80)}"`)
+    logger.info?.(`[lark-bot] dispatching to wizard: chatId=${ev.chatId} thread=${ev.threadId || '-'} root=${ev.rootMessageId || '-'} images=${imageKeys.length} text="${(ev.text || '').slice(0, 80)}"`)
+
+    // 下载图片（顺序，简单点；并发收益不大）。失败的跳过，不阻塞 wizard。
+    const imagePaths = []
+    if (imageKeys.length > 0 && ev.messageId && hasCredentials()) {
+      for (const key of imageKeys) {
+        try {
+          const dl = await downloadLarkImage({
+            apiClient: getApiClient(),
+            messageId: ev.messageId,
+            imageKey: key,
+          })
+          if (dl?.ok && dl.localPath) {
+            imagePaths.push(dl.localPath)
+          } else {
+            logger.warn?.(`[lark-bot] image download failed key=${key}: ${dl?.reason || 'unknown'} ${dl?.detail || ''}`)
+          }
+        } catch (e) {
+          logger.warn?.(`[lark-bot] image download threw key=${key}: ${e.message}`)
+        }
+      }
+      if (imagePaths.length > 0) {
+        logger.info?.(`[lark-bot] downloaded ${imagePaths.length}/${imageKeys.length} image(s) for eventId=${ev.eventId}`)
+      }
+    }
 
     // 立即加 "在思考/在干活" reaction 让用户知道 bot 收到了；不 await，避免拖慢 wizard。
     // 拿到 reaction_id 后跟 wizard 返回的 sessionId 配对，等到 PTY 完成一轮回复时清掉。
@@ -306,6 +334,7 @@ export function createLarkBot({
         messageId: ev.messageId,
         text: ev.text,
         fromUserId: ev.fromUserId,
+        imagePaths: imagePaths.length > 0 ? imagePaths : undefined,
       })
     } catch (e) {
       forgetEvent()
