@@ -9,7 +9,7 @@ import {
   ClockCircleOutlined, SearchOutlined,
   PlayCircleOutlined, SettingOutlined, CopyOutlined,
   CodeOutlined, DesktopOutlined, SendOutlined, EditOutlined,
-  DownOutlined, UpOutlined, CloseOutlined, RightOutlined,
+  DownOutlined, RightOutlined,
   DashboardOutlined, FileTextOutlined, ExportOutlined,
   BookOutlined, LineChartOutlined, TrophyOutlined, BranchesOutlined,
   MenuOutlined, BellOutlined,
@@ -85,11 +85,6 @@ function isOverdue(dueDate: number | null) {
   return dueDate ? dueDate < Date.now() : false
 }
 
-function shortSessionId(id?: string | null) {
-  if (!id) return ''
-  return id.length > 12 ? id.slice(0, 12) : id
-}
-
 function formatSessionTime(ts?: number | null) {
   if (!ts) return ''
   return dayjs(ts).format('MM/DD HH:mm')
@@ -100,12 +95,6 @@ function toolDisplayName(tool: AiTool) {
   if (tool === 'codex') return 'Codex'
   if (tool === 'cursor') return 'Cursor'
   return tool
-}
-
-function toolShortName(tool: AiTool | undefined | null) {
-  if (tool === 'codex') return 'Codex'
-  if (tool === 'cursor') return 'Cursor'
-  return 'Claude'
 }
 
 function buildTodoPrompt(todo: Todo, templates: PromptTemplate[] = []) {
@@ -182,11 +171,6 @@ function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo = false,
   const historySessions = todo.aiSessions || []
   const hasHistory = historySessions.length > 0
   const statusChip = currentStatusLabel(todo.status)
-  const selectedSession = sessionId
-    ? historySessions.find(item => item.sessionId === sessionId) || null
-    : todo.aiSession || historySessions[0] || null
-  const resumeTarget = (selectedSession?.nativeSessionId ? selectedSession : null)
-    || historySessions.find(item => item.nativeSessionId) || null
   const aiMenuItems = [
     { key: 'start:claude', label: '▶ 启动 Claude' },
     { key: 'start:codex', label: '▶ 启动 Codex' },
@@ -730,7 +714,7 @@ export default function TodoManage() {
   const [dashboardOpen, setDashboardOpen] = useState(false)
   const [transcriptDrawerOpen, setTranscriptDrawerOpen] = useState(false)
   const [reportOpen, setReportOpen] = useState(false)
-  const [unboundTranscripts, setUnboundTranscripts] = useState(0)
+  const [, setUnboundTranscripts] = useState(0)
   const isMobile = useIsMobile()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [cmdPaletteOpen, setCmdPaletteOpen] = useState(false)
