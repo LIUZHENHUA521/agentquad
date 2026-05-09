@@ -965,6 +965,16 @@ export default function TodoManage() {
     seenSessionIds: seenReplySessionIds,
   }), [todos, liveSessionsMap, seenReplySessionIds])
   const attentionCounts = useMemo(() => countAttentionItems(attentionItems), [attentionItems])
+  const [acknowledgedAttentionIds, setAcknowledgedAttentionIds] = useState<Set<string>>(new Set())
+  const hasNewAttention = useMemo(
+    () => attentionItems.some(item => !acknowledgedAttentionIds.has(item.id)),
+    [attentionItems, acknowledgedAttentionIds],
+  )
+
+  useEffect(() => {
+    if (!dashboardOpen) return
+    setAcknowledgedAttentionIds(new Set(attentionItems.map(i => i.id)))
+  }, [dashboardOpen, attentionItems])
 
   useEffect(() => {
     let cancelled = false
@@ -2511,9 +2521,10 @@ export default function TodoManage() {
       {attentionCounts.total > 0 && (
         <button
           type="button"
-          className="todo-attention-fab"
+          className={`todo-attention-fab ${hasNewAttention ? 'alerting' : ''}`}
           onClick={() => setDashboardOpen(true)}
-          title="打开待处理 AI 会话"
+          title={hasNewAttention ? '有新的待处理 AI 会话' : '打开待处理 AI 会话'}
+          aria-live="polite"
         >
           <span className="todo-attention-fab-icon"><BellOutlined /></span>
           <span className="todo-attention-fab-text">
