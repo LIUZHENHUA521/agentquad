@@ -219,7 +219,14 @@ export default function TerminalDock({
               type="text" size="small"
               icon={<ExportOutlined />}
               className="pc-only"
-              onClick={() => useTerminalDockStore.getState().popOut(activeTabId)}
+              onClick={() => {
+                const { poppedOutTabIds, popOut } = useTerminalDockStore.getState()
+                if (poppedOutTabIds.length >= 4) {
+                  message.warning('最多同时弹出 4 个浮层')
+                  return
+                }
+                popOut(activeTabId)
+              }}
             />
           </Tooltip>
         )}
