@@ -326,6 +326,22 @@ describe('routes/ai-terminal', () => {
     expect(session.outputHistory).toEqual(['chunk1', 'chunk2'])
   })
 
+  it('session stores effective permission mode and derives auto mode from it', async () => {
+    const defaultTodo = ctx.db.createTodo({ title: 'default mode', quadrant: 1 })
+    const defaultExec = await request(ctx.app).post('/api/ai-terminal/exec')
+      .send({ todoId: defaultTodo.id, prompt: 'hi', tool: 'claude' })
+    const defaultSession = ctx.ait.sessions.get(defaultExec.body.sessionId)
+    expect(defaultSession.permissionMode).toBe('default')
+    expect(defaultSession.autoMode).toBeNull()
+
+    const acceptTodo = ctx.db.createTodo({ title: 'accept mode', quadrant: 1 })
+    const acceptExec = await request(ctx.app).post('/api/ai-terminal/exec')
+      .send({ todoId: acceptTodo.id, prompt: 'hi', tool: 'claude', permissionMode: 'acceptEdits' })
+    const acceptSession = ctx.ait.sessions.get(acceptExec.body.sessionId)
+    expect(acceptSession.permissionMode).toBe('acceptEdits')
+    expect(acceptSession.autoMode).toBe('acceptEdits')
+  })
+
   it('done event with exitCode 0 marks todo ai_done and writes log', async () => {
     const todo = ctx.db.createTodo({ title: 'T', quadrant: 1 })
     const { body } = await request(ctx.app).post('/api/ai-terminal/exec')

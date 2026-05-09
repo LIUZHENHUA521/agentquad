@@ -222,6 +222,25 @@ describe('telegram defaults: pollRetryDelayMs / minRenameIntervalMs', () => {
 		const cfg = loadConfig({ rootDir: tmp });
 		expect(cfg.telegram.pollRetryDelayMs).toBe(5000);
 		expect(cfg.telegram.minRenameIntervalMs).toBe(30000);
+		expect(cfg.telegram.defaultPermissionMode).toBe('bypass');
+		rmSync(tmp, { recursive: true, force: true });
+	});
+
+	it('preserves a valid default permission mode', async () => {
+		const { loadConfig } = await import('../src/config.js');
+		const tmp = mkdtempSync(join(tmpdir(), 'qt-cfg-'));
+		writeFileSync(join(tmp, 'config.json'), JSON.stringify({ telegram: { defaultPermissionMode: 'acceptEdits' } }));
+		const cfg = loadConfig({ rootDir: tmp });
+		expect(cfg.telegram.defaultPermissionMode).toBe('acceptEdits');
+		rmSync(tmp, { recursive: true, force: true });
+	});
+
+	it('falls back to bypass for an invalid default permission mode', async () => {
+		const { loadConfig } = await import('../src/config.js');
+		const tmp = mkdtempSync(join(tmpdir(), 'qt-cfg-'));
+		writeFileSync(join(tmp, 'config.json'), JSON.stringify({ telegram: { defaultPermissionMode: 'yolo' } }));
+		const cfg = loadConfig({ rootDir: tmp });
+		expect(cfg.telegram.defaultPermissionMode).toBe('bypass');
 		rmSync(tmp, { recursive: true, force: true });
 	});
 });

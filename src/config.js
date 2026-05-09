@@ -42,6 +42,12 @@ const TOOL_INSTALL_HINTS = {
 
 export const SUPPORTED_TOOLS = ["claude", "codex", "cursor"];
 
+const PERMISSION_MODES = new Set(["default", "acceptEdits", "bypass"]);
+
+function normalizePermissionMode(value, fallback = "bypass") {
+	return PERMISSION_MODES.has(value) ? value : fallback;
+}
+
 const DEFAULT_WEBHOOK_CONFIG = {
 	enabled: false,
 	provider: "wecom",
@@ -78,6 +84,7 @@ const DEFAULT_TELEGRAM_CONFIG = {
 	topicNameDoneTemplate: "✅ {originalName}",
 	allowedChatIds: [],     // 空 = 拒所有，强制白名单
 	allowedFromUserIds: [],
+	defaultPermissionMode: "bypass",
 	notificationCooldownMs: 600_000,    // 同 session 内 ⚠️ idle 提醒最小间隔（默认 10 分钟，0 = 关闭去重）
 	suppressNotificationEvents: true,   // 默认丢弃 Claude Code 的 idle Notification（无信息量；设 false 可恢复旧 cooldown 行为）
 	autoCreateTopic: true,              // 非 wizard 起的 PTY session 自动镜像到 Telegram topic
@@ -339,6 +346,7 @@ function normalizeConfig(cfg = {}) {
 			allowedFromUserIds: Array.isArray(cfg.telegram?.allowedFromUserIds)
 				? cfg.telegram.allowedFromUserIds.map((x) => String(x).trim()).filter(Boolean)
 				: [...DEFAULT_TELEGRAM_CONFIG.allowedFromUserIds],
+			defaultPermissionMode: normalizePermissionMode(cfg.telegram?.defaultPermissionMode),
 		},
 		// Note on models merge precedence: user entries with the SAME key as a
 		// default (e.g. 'claude-opus-4-*') override the default. To override

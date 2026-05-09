@@ -7,11 +7,13 @@ import { openDb } from '../src/db.js'
 import { createOpenClawHookHandler, __test__ } from '../src/openclaw-hook.js'
 import { createOpenClawHookRouter } from '../src/routes/openclaw-hook.js'
 
-function makeFakeBridge({ sendOk = true, sendReason = null } = {}) {
+function makeFakeBridge({ sendOk = true, sendReason = null, route = null, explicitRoute = route != null } = {}) {
   const sent = []
   return {
     sent,
     isEnabled: () => true,
+    hasExplicitRoute: vi.fn(() => explicitRoute),
+    resolveRoute: vi.fn(() => route),
     postText: vi.fn(async ({ sessionId, message, replyMarkup }) => {
       sent.push({ sessionId, message, replyMarkup })
       if (sendOk) return { ok: true }
@@ -296,6 +298,194 @@ describe('openclaw-hook handler', () => {
       todoId: 't1',
       todoTitle: '强制登录',
     })
+
+    expect(r.ok).toBe(true)
+    expect(r.action).toBe('skipped')
+    expect(r.reason).toBe('notification_suppressed')
+    expect(bridge.postText).not.toHaveBeenCalled()
+  })
+
+  it('Notification: bypass Telegram session stays suppressed by default', async () => {
+    bridge = makeFakeBridge({ route: { channel: 'telegram', threadId: 123 } })
+    handler = createOpenClawHookHandler({
+      db, openclaw: bridge,
+      aiTerminal: {
+        sessions: new Map([['ai-session-bypass', {
+          permissionMode: 'bypass',
+          recentOutput: 'Do you want to allow this command?',
+          outputHistory: [],
+        }]]),
+      },
+    })
+
+    const r = await handler.handle({ event: 'notification', sessionId: 'ai-session-bypass', todoId: 't1' })
+
+    expect(r.ok).toBe(true)
+    expect(r.action).toBe('skipped')
+    expect(r.reason).toBe('notification_suppressed')
+    expect(bridge.postText).not.toHaveBeenCalled()
+  })
+
+  it('Notification: non-bypass Telegram session bypasses suppression with permission buttons', async () => {
+    const sessionId = 'ai-1777799249191-fwu8'
+    bridge = makeFakeBridge({ route: { channel: 'telegram', threadId: 123 } })
+    handler = createOpenClawHookHandler({
+      db, openclaw: bridge,
+      getConfig: () => ({ telegram: { suppressNotificationEvents: true, notificationCooldownMs: 0 } }),
+      aiTerminal: {
+        sessions: new Map([[sessionId, {
+          permissionMode: 'default',
+          recentOutput: 'Do you want to allow this command?',
+          outputHistory: [],
+        }]]),
+      },
+    })
+
+    const r = await handler.handle({ event: 'notification', sessionId, todoId: 't1' })
+
+    expect(r.action).toBe('sent')
+    expect(bridge.sent).toHaveLength(1)
+    expect(bridge.sent[0].message).toMatch(/^⚠️ Claude Code 正在等待授权确认。/)
+    expect(bridge.sent[0].message).toContain('Enter/Esc')
+    expect(bridge.sent[0].replyMarkup).toEqual({
+      inline_keyboard: [[
+        { text: '允许（Enter）', callback_data: 'qt:perm:fwu8:allow' },
+        { text: '拒绝/退出（Esc）', callback_data: 'qt:perm:fwu8:deny' },
+      ]],
+    })
+  })
+
+  it('Notification: non-bypass Telegram generic content stays suppressed by default', async () => {
+    const sessionId = 'ai-1777799249191-fwu8'
+    bridge = makeFakeBridge({ route: { channel: 'telegram', threadId: 123 } })
+    handler = createOpenClawHookHandler({
+      db, openclaw: bridge,
+      getConfig: () => ({ telegram: { suppressNotificationEvents: true, notificationCooldownMs: 0 } }),
+      aiTerminal: {
+        sessions: new Map([[sessionId, {
+          permissionMode: 'default',
+          recentOutput: 'still thinking',
+          outputHistory: [],
+        }]]),
+      },
+    })
+
+    const r = await handler.handle({ event: 'notification', sessionId, todoId: 't1' })
+
+    expect(r.ok).toBe(true)
+    expect(r.action).toBe('skipped')
+    expect(r.reason).toBe('notification_suppressed')
+    expect(bridge.postText).not.toHaveBeenCalled()
+  })
+
+  it('Notification: generic confirm/allow text does not trigger permission buttons', async () => {
+    const sessionId = 'ai-1777799249191-fwu8'
+    bridge = makeFakeBridge({ route: { channel: 'telegram', threadId: 123 } })
+    handler = createOpenClawHookHandler({
+      db, openclaw: bridge,
+      getConfig: () => ({ telegram: { suppressNotificationEvents: true, notificationCooldownMs: 0 } }),
+      aiTerminal: {
+        sessions: new Map([[sessionId, {
+          permissionMode: 'default',
+          recentOutput: 'Please confirm the requirements before continuing. This allows users to review scope.',
+          outputHistory: [],
+        }]]),
+      },
+    })
+
+    const r = await handler.handle({ event: 'notification', sessionId, todoId: 't1' })
+
+    expect(r.ok).toBe(true)
+    expect(r.action).toBe('skipped')
+    expect(r.reason).toBe('notification_suppressed')
+    expect(bridge.postText).not.toHaveBeenCalled()
+  })
+
+  it('Notification: fallback Telegram route without explicit session route stays suppressed', async () => {
+    const sessionId = 'ai-1777799249191-fwu8'
+    bridge = makeFakeBridge({ route: { channel: 'telegram', threadId: 123 }, explicitRoute: false })
+    handler = createOpenClawHookHandler({
+      db, openclaw: bridge,
+      getConfig: () => ({ telegram: { suppressNotificationEvents: true, notificationCooldownMs: 0 } }),
+      aiTerminal: {
+        sessions: new Map([[sessionId, {
+          permissionMode: 'default',
+          recentOutput: 'Do you want to allow this command?',
+          outputHistory: [],
+        }]]),
+      },
+      logger: { warn() {}, info() {} },
+    })
+
+    const r = await handler.handle({ event: 'notification', sessionId, todoId: 't1' })
+
+    expect(r.ok).toBe(true)
+    expect(r.action).toBe('skipped')
+    expect(r.reason).toBe('notification_suppressed')
+    expect(bridge.postText).not.toHaveBeenCalled()
+  })
+
+  it('Notification: non-bypass Telegram permission reminder still uses notification cooldown', async () => {
+    const sessionId = 'ai-1777799249191-fwu8'
+    bridge = makeFakeBridge({ route: { channel: 'telegram', threadId: 123 } })
+    handler = createOpenClawHookHandler({
+      db, openclaw: bridge,
+      getConfig: () => ({ telegram: { suppressNotificationEvents: true, notificationCooldownMs: 600000 } }),
+      aiTerminal: {
+        sessions: new Map([[sessionId, {
+          permissionMode: 'default',
+          recentOutput: 'Do you want to allow this command?',
+          outputHistory: [],
+        }]]),
+      },
+    })
+
+    const first = await handler.handle({ event: 'notification', sessionId, todoId: 't1' })
+    const second = await handler.handle({ event: 'notification', sessionId, todoId: 't1' })
+
+    expect(first.action).toBe('sent')
+    expect(second.action).toBe('skipped')
+    expect(second.reason).toBe('notification_cooldown')
+    expect(bridge.sent).toHaveLength(1)
+  })
+
+  it('Notification: non-bypass Telegram session respects suppressPermissionNotifications escape hatch', async () => {
+    bridge = makeFakeBridge({ route: { channel: 'telegram', threadId: 123 } })
+    handler = createOpenClawHookHandler({
+      db, openclaw: bridge,
+      getConfig: () => ({ telegram: { suppressNotificationEvents: true, suppressPermissionNotifications: true } }),
+      aiTerminal: {
+        sessions: new Map([['ai-session-default', {
+          permissionMode: 'default',
+          recentOutput: 'Do you want to allow this command?',
+          outputHistory: [],
+        }]]),
+      },
+    })
+
+    const r = await handler.handle({ event: 'notification', sessionId: 'ai-session-default', todoId: 't1' })
+
+    expect(r.ok).toBe(true)
+    expect(r.action).toBe('skipped')
+    expect(r.reason).toBe('notification_suppressed')
+    expect(bridge.postText).not.toHaveBeenCalled()
+  })
+
+  it('Notification: non-Telegram non-bypass session stays suppressed by default', async () => {
+    bridge = makeFakeBridge({ route: { channel: 'wechat' } })
+    handler = createOpenClawHookHandler({
+      db, openclaw: bridge,
+      getConfig: () => ({ telegram: { suppressNotificationEvents: true } }),
+      aiTerminal: {
+        sessions: new Map([['ai-session-default', {
+          permissionMode: 'default',
+          recentOutput: 'Do you want to allow this command?',
+          outputHistory: [],
+        }]]),
+      },
+    })
+
+    const r = await handler.handle({ event: 'notification', sessionId: 'ai-session-default', todoId: 't1' })
 
     expect(r.ok).toBe(true)
     expect(r.action).toBe('skipped')

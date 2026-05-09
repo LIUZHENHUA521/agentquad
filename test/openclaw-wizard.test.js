@@ -171,6 +171,34 @@ describe('openclaw-wizard state machine', () => {
     expect(ai.sessions[0].extraEnv.QUADTODO_TARGET_USER).toBe('u1')
   })
 
+  it('one-shot create uses configured default Telegram permission mode', async () => {
+    const w2 = createOpenClawWizard({
+      db, aiTerminal: ai, openclaw: bridge, pending,
+      getConfig: () => ({ defaultCwd: '/tmp', port: 5677, defaultTool: 'claude', telegram: { defaultPermissionMode: 'default' } }),
+    })
+    const r = await w2.handleInbound({
+      peer: 'u1',
+      text: '帮我做 修复 login，目录 /tmp/foo, 象限 1, Bug 修复 模板',
+    })
+    expect(r.action).toBe('wizard_done')
+    expect(ai.sessions).toHaveLength(1)
+    expect(ai.sessions[0].permissionMode).toBe('default')
+  })
+
+  it('one-shot create uses configured acceptEdits Telegram permission mode', async () => {
+    const w2 = createOpenClawWizard({
+      db, aiTerminal: ai, openclaw: bridge, pending,
+      getConfig: () => ({ defaultCwd: '/tmp', port: 5677, defaultTool: 'claude', telegram: { defaultPermissionMode: 'acceptEdits' } }),
+    })
+    const r = await w2.handleInbound({
+      peer: 'u1',
+      text: '帮我做 修复 login，目录 /tmp/foo, 象限 1, Bug 修复 模板',
+    })
+    expect(r.action).toBe('wizard_done')
+    expect(ai.sessions).toHaveLength(1)
+    expect(ai.sessions[0].permissionMode).toBe('acceptEdits')
+  })
+
   it('cancel mid-wizard aborts cleanly', async () => {
     await wizard.handleInbound({ peer: 'u1', text: '帮我做 X' })
     const r = await wizard.handleInbound({ peer: 'u1', text: '取消' })
@@ -663,6 +691,29 @@ describe('openclaw-wizard state machine', () => {
     // 话题改回 't-reopen'（剥掉 ✅）
     expect(edits[0].name).toBe('t-reopen')
     expect(sentMsgs[0].text).toContain('已恢复')
+  })
+
+  it('handleTopicEvent(reopened): uses configured Telegram permission mode', async () => {
+    const todo = db.createTodo({ title: 'reopen-default', quadrant: 2, workDir: '/tmp' })
+    db.updateTodo(todo.id, {
+      status: 'done',
+      aiSessions: [{
+        sessionId: 'sid-old-default',
+        tool: 'claude',
+        nativeSessionId: 'native-uuid-default',
+        status: 'done',
+        telegramRoute: { targetUserId: '-100', threadId: 199, topicName: '✅ reopen-default', channel: 'telegram' },
+      }],
+    })
+    const w2 = createOpenClawWizard({
+      db, aiTerminal: ai, openclaw: bridge, pending,
+      telegramBot: { editForumTopic: vi.fn(async () => ({})), sendMessage: vi.fn(async () => ({ message_id: 1 })) },
+      getConfig: () => ({ defaultCwd: '/tmp', port: 5677, defaultTool: 'claude', telegram: { defaultPermissionMode: 'default' } }),
+    })
+    const r = await w2.handleTopicEvent({ chatId: '-100', threadId: 199, type: 'reopened' })
+    expect(r.ok).toBe(true)
+    expect(r.action).toBe('reopened')
+    expect(ai.sessions[ai.sessions.length - 1].permissionMode).toBe('default')
   })
 
   it('handleTopicEvent(closed): sets userClosedReason on session so PTY done handler does not overwrite status', async () => {
@@ -1211,6 +1262,160 @@ describe('openclaw-wizard inline keyboard (callback_query)', () => {
     })
     expect(r.action).toBe('expired')
     expect(r.toast).toContain('超时')
+  })
+
+  it('permission allow callback sends Enter to same routed Telegram PTY session', async () => {
+    const writes = []
+    bridge.findSessionByShortId = vi.fn(() => 'sess-perm-allow')
+    bridge.resolveRoute = vi.fn(() => ({ targetUserId: '-100', threadId: 42, channel: 'telegram' }))
+    wizard = createOpenClawWizard({
+      db, aiTerminal: ai, openclaw: bridge, pending,
+      pty: {
+        has: vi.fn((sid) => sid === 'sess-perm-allow'),
+        write: vi.fn((sid, data) => writes.push({ sid, data })),
+      },
+      getConfig: () => ({ defaultCwd: '/tmp', port: 5677, defaultTool: 'claude' }),
+    })
+
+    const r = await wizard.handleCallback({
+      chatId: '-100', threadId: 42,
+      callbackData: 'qt:perm:a1b2:allow', callbackMessageId: 45,
+    })
+
+    expect(bridge.findSessionByShortId).toHaveBeenCalledWith('a1b2')
+    expect(writes).toEqual([{ sid: 'sess-perm-allow', data: '\r' }])
+    expect(r.action).toBe('permission_allow_sent')
+    expect(r.chosenLabel).toBe('允许（Enter）')
+    expect(r.editOriginal).toBe(true)
+  })
+
+  it('permission deny callback sends Esc to same routed Telegram PTY session', async () => {
+    const writes = []
+    bridge.findSessionByShortId = vi.fn(() => 'sess-perm-deny')
+    bridge.resolveRoute = vi.fn(() => ({ targetUserId: '-100', threadId: 42, channel: 'telegram' }))
+    wizard = createOpenClawWizard({
+      db, aiTerminal: ai, openclaw: bridge, pending,
+      pty: {
+        has: vi.fn((sid) => sid === 'sess-perm-deny'),
+        write: vi.fn((sid, data) => writes.push({ sid, data })),
+      },
+      getConfig: () => ({ defaultCwd: '/tmp', port: 5677, defaultTool: 'claude' }),
+    })
+
+    const r = await wizard.handleCallback({
+      chatId: '-100', threadId: 42,
+      callbackData: 'qt:perm:d3e4:deny', callbackMessageId: 46,
+    })
+
+    expect(bridge.findSessionByShortId).toHaveBeenCalledWith('d3e4')
+    expect(writes).toEqual([{ sid: 'sess-perm-deny', data: '\x1b' }])
+    expect(r.action).toBe('permission_deny_sent')
+    expect(r.chosenLabel).toBe('拒绝/退出（Esc）')
+    expect(r.editOriginal).toBe(true)
+  })
+
+  it('permission callback rejects wrong Telegram topic without writing to PTY', async () => {
+    const write = vi.fn()
+    bridge.findSessionByShortId = vi.fn(() => 'sess-perm-topic')
+    bridge.resolveRoute = vi.fn(() => ({ targetUserId: '-100', threadId: 42, channel: 'telegram' }))
+    wizard = createOpenClawWizard({
+      db, aiTerminal: ai, openclaw: bridge, pending,
+      pty: { has: vi.fn(() => true), write },
+      getConfig: () => ({ defaultCwd: '/tmp', port: 5677, defaultTool: 'claude' }),
+    })
+
+    const r = await wizard.handleCallback({
+      chatId: '-100', threadId: 99,
+      callbackData: 'qt:perm:abcd:allow', callbackMessageId: 47,
+    })
+
+    expect(write).not.toHaveBeenCalled()
+    expect(r.action).toBe('permission_session_stale')
+    expect(r.reply).toContain('会话已结束')
+  })
+
+  it('permission callback rejects wrong Telegram chat without writing to PTY', async () => {
+    const write = vi.fn()
+    bridge.findSessionByShortId = vi.fn(() => 'sess-perm-chat')
+    bridge.resolveRoute = vi.fn(() => ({ targetUserId: '-100', threadId: 42, channel: 'telegram' }))
+    wizard = createOpenClawWizard({
+      db, aiTerminal: ai, openclaw: bridge, pending,
+      pty: { has: vi.fn(() => true), write },
+      getConfig: () => ({ defaultCwd: '/tmp', port: 5677, defaultTool: 'claude' }),
+    })
+
+    const r = await wizard.handleCallback({
+      chatId: '-200', threadId: 42,
+      callbackData: 'qt:perm:abcd:allow', callbackMessageId: 48,
+    })
+
+    expect(write).not.toHaveBeenCalled()
+    expect(r.action).toBe('permission_session_stale')
+    expect(r.reply).toContain('会话已结束')
+  })
+
+  it('permission callback rejects malformed short ids without resolving session', async () => {
+    const write = vi.fn()
+    bridge.findSessionByShortId = vi.fn(() => 'sess-perm-short')
+    wizard = createOpenClawWizard({
+      db, aiTerminal: ai, openclaw: bridge, pending,
+      pty: { has: vi.fn(() => true), write },
+      getConfig: () => ({ defaultCwd: '/tmp', port: 5677, defaultTool: 'claude' }),
+    })
+
+    const r = await wizard.handleCallback({
+      chatId: '-100', threadId: 42,
+      callbackData: 'qt:perm:a:allow', callbackMessageId: 49,
+    })
+
+    expect(bridge.findSessionByShortId).not.toHaveBeenCalled()
+    expect(write).not.toHaveBeenCalled()
+    expect(r.action).toBe('invalid')
+  })
+
+  it('permission stale callback returns stale when session short id cannot be resolved', async () => {
+    const write = vi.fn()
+    bridge.findSessionByShortId = vi.fn(() => null)
+    wizard = createOpenClawWizard({
+      db, aiTerminal: ai, openclaw: bridge, pending,
+      pty: { has: vi.fn(() => false), write },
+      getConfig: () => ({ defaultCwd: '/tmp', port: 5677, defaultTool: 'claude' }),
+    })
+
+    const r = await wizard.handleCallback({
+      chatId: '-100', threadId: null,
+      callbackData: 'qt:perm:c0de:allow', callbackMessageId: 50,
+    })
+
+    expect(bridge.findSessionByShortId).toHaveBeenCalledWith('c0de')
+    expect(write).not.toHaveBeenCalled()
+    expect(r.action).toBe('permission_session_stale')
+    expect(r.reply).toContain('会话已结束')
+    expect(r.editOriginal).toBe(true)
+  })
+
+  it('permission callback returns stale when PTY write throws after session check', async () => {
+    bridge.findSessionByShortId = vi.fn(() => 'sess-perm-throw')
+    bridge.resolveRoute = vi.fn(() => ({ targetUserId: '-100', threadId: 42, channel: 'telegram' }))
+    const writeError = new Error('pty closed')
+    wizard = createOpenClawWizard({
+      db, aiTerminal: ai, openclaw: bridge, pending,
+      pty: {
+        has: vi.fn((sid) => sid === 'sess-perm-throw'),
+        write: vi.fn(() => { throw writeError }),
+      },
+      getConfig: () => ({ defaultCwd: '/tmp', port: 5677, defaultTool: 'claude' }),
+    })
+
+    const r = await wizard.handleCallback({
+      chatId: '-100', threadId: 42,
+      callbackData: 'qt:perm:dead:allow', callbackMessageId: 51,
+    })
+
+    expect(bridge.findSessionByShortId).toHaveBeenCalledWith('dead')
+    expect(r.action).toBe('permission_session_stale')
+    expect(r.reply).toContain('会话已结束')
+    expect(r.editOriginal).toBe(true)
   })
 
   it('callback with invalid index: returns toast, no state mutation', async () => {

@@ -145,6 +145,7 @@ export default function SettingsDrawer({ open, onClose }: Props) {
           telegramNotificationCooldownMs:
             (result.config.telegram?.notificationCooldownMs as number | undefined) ?? 600000,
           telegramSuppressNotificationEvents: result.config.telegram?.suppressNotificationEvents !== false,
+          telegramDefaultPermissionMode: result.config.telegram?.defaultPermissionMode || 'bypass',
           telegramLongPollTimeoutSec: result.config.telegram?.longPollTimeoutSec ?? 30,
           telegramPollRetryDelayMs: result.config.telegram?.pollRetryDelayMs ?? 5000,
           telegramMinRenameIntervalMs: result.config.telegram?.minRenameIntervalMs ?? 30000,
@@ -201,6 +202,7 @@ export default function SettingsDrawer({ open, onClose }: Props) {
           autoCreateTopic: values.telegramAutoCreateTopic !== false,
           notificationCooldownMs: Number(values.telegramNotificationCooldownMs) || 0,
           suppressNotificationEvents: values.telegramSuppressNotificationEvents !== false,
+          defaultPermissionMode: values.telegramDefaultPermissionMode || 'bypass',
           longPollTimeoutSec: Number(values.telegramLongPollTimeoutSec) || 30,
           pollRetryDelayMs: Number(values.telegramPollRetryDelayMs) || 5000,
           minRenameIntervalMs: Number(values.telegramMinRenameIntervalMs) || 30000,
@@ -636,6 +638,17 @@ export default function SettingsDrawer({ open, onClose }: Props) {
                   </Form.Item>
                   <Form.Item name="telegramSuppressNotificationEvents" label="丢弃 idle Notification 事件" valuePropName="checked">
                     <Switch />
+                  </Form.Item>
+                  <Form.Item
+                    name="telegramDefaultPermissionMode"
+                    label="Telegram 默认权限模式"
+                    extra="新建/恢复 Telegram 任务时使用。非 bypass 模式下，等待授权时会发 Telegram 按钮提醒。"
+                  >
+                    <Radio.Group>
+                      <Radio.Button value="default">默认（需确认）</Radio.Button>
+                      <Radio.Button value="acceptEdits">半托管</Radio.Button>
+                      <Radio.Button value="bypass">完全托管</Radio.Button>
+                    </Radio.Group>
                   </Form.Item>
                 </>
               ),
