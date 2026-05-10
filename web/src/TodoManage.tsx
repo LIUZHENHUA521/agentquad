@@ -12,7 +12,7 @@ import {
   DownOutlined, RightOutlined,
   DashboardOutlined, FileTextOutlined, ExportOutlined,
   BookOutlined, LineChartOutlined, TrophyOutlined, BranchesOutlined,
-  MenuOutlined,
+  MenuOutlined, MoreOutlined,
 } from '@ant-design/icons'
 import { useIsMobile } from './hooks/useIsMobile'
 import CmdPalette from './CmdPalette'
@@ -1631,43 +1631,61 @@ export default function TodoManage() {
               onClick={() => setDashboardOpen(true)}
               title="AI 工作面板"
             >AI 面板</Button>
-            <TelegramSyncButton />
-            <Button
-              icon={<SearchOutlined />}
-              size="small"
-              onClick={() => setTranscriptDrawerOpen(true)}
-              title="历史会话找回"
-            >找回</Button>
-            <Button
-              icon={<FileTextOutlined />}
-              size="small"
-              onClick={() => setTemplateDrawerOpen(true)}
-              title="Prompt 模板库"
-            >模板</Button>
             <Button
               icon={<SettingOutlined />}
               size="small"
               onClick={() => setSettingsOpen(true)}
               title="设置"
             >设置</Button>
-            <Button
-              size="small"
-              icon={<TrophyOutlined />}
-              onClick={() => setReportOpen(true)}
-              title="每日完成报表"
-            >报表</Button>
-            <Button
-              size="small"
-              icon={<BookOutlined />}
-              onClick={() => setWikiOpen(true)}
-              title="记忆"
-            >记忆</Button>
-            <Button
-              size="small"
-              icon={<LineChartOutlined />}
-              onClick={() => setStatsOpen(true)}
-              title="统计"
-            >统计</Button>
+            <Dropdown
+              menu={{
+                items: [
+                  {
+                    key: 'telegram',
+                    label: (
+                      <div onClick={(e) => e.stopPropagation()}>
+                        <TelegramSyncButton />
+                      </div>
+                    ),
+                  },
+                  { type: 'divider' as const },
+                  {
+                    key: 'transcript',
+                    icon: <SearchOutlined />,
+                    label: '找回',
+                    onClick: () => setTranscriptDrawerOpen(true),
+                  },
+                  {
+                    key: 'template',
+                    icon: <FileTextOutlined />,
+                    label: '模板',
+                    onClick: () => setTemplateDrawerOpen(true),
+                  },
+                  {
+                    key: 'report',
+                    icon: <TrophyOutlined />,
+                    label: '报表',
+                    onClick: () => setReportOpen(true),
+                  },
+                  {
+                    key: 'wiki',
+                    icon: <BookOutlined />,
+                    label: '记忆',
+                    onClick: () => setWikiOpen(true),
+                  },
+                  {
+                    key: 'stats',
+                    icon: <LineChartOutlined />,
+                    label: '统计',
+                    onClick: () => setStatsOpen(true),
+                  },
+                ],
+              }}
+              trigger={['click']}
+              placement="bottomRight"
+            >
+              <Button icon={<MoreOutlined />} size="small" title="更多">更多</Button>
+            </Dropdown>
           </>
         )}
       </div>
