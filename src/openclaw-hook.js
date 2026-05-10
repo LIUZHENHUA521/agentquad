@@ -24,9 +24,14 @@
 import { writeFileSync, mkdirSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { homedir } from 'node:os'
-import { readLatestAssistantTurn, readLatestAssistantTurnFresh, buildFullTranscript, readJsonlLines } from './claude-transcript.js'
-import { extractTurnUsage, extractSessionUsageFromLines, formatUsageFooter } from './usage-footer.js'
+import { readLatestAssistantTurn, readLatestAssistantTurnFresh, buildFullTranscript, readJsonlLines as defaultReadJsonlLines } from './claude-transcript.js'
+import { extractTurnUsage, extractSessionUsageFromLines as defaultExtractSessionUsageFromLines, formatUsageFooter } from './usage-footer.js'
 import { DEFAULT_PRICING } from './pricing.js'
+import {
+  readLatestCodexTurnFresh as defaultReadLatestCodexTurnFresh,
+  buildFullCodexTranscript as defaultBuildFullCodexTranscript,
+  extractCodexTurnUsageFromLines as defaultExtractCodexTurnUsageFromLines,
+} from './codex-transcript.js'
 
 const DEFAULT_COOLDOWN_MS = 30_000
 const TRANSCRIPT_TMP_DIR = join(homedir(), '.quadtodo', 'tmp')
@@ -220,14 +225,31 @@ function buildMessage({ event, todoId, todoTitle, cleanContent, snippet, histori
  *
  * 并发安全：所有状态都在单实例内部 Map 里；同进程多 hook 调用顺序处理。
  */
-export function createOpenClawHookHandler({
-  db, openclaw, aiTerminal = null,
-  pty = null, telegramBot = null, larkBot = null, loadingTracker = null,
-  reactionTracker = null,
-  cooldownMs = DEFAULT_COOLDOWN_MS,
-  getConfig = null,                  // () => app config（用于读 telegram.notificationCooldownMs）
-  logger = console,
-} = {}) {
+export function createOpenClawHookHandler(deps = {}) {
+  const {
+    db,
+    aiTerminal = null,
+    sidecar = null,
+    pty = null,
+    telegramBot = null,
+    larkBot = null,
+    loadingTracker = null,
+    reactionTracker = null,
+    cooldownMs = DEFAULT_COOLDOWN_MS,
+    getConfig = null,                  // () => app config（用于读 telegram.notificationCooldownMs）
+    logger = console,
+    // injectable transcript / usage helpers (codex branch testability)
+    readLatestCodexTurnFresh = defaultReadLatestCodexTurnFresh,
+    buildFullCodexTranscript = defaultBuildFullCodexTranscript,
+    extractCodexTurnUsageFromLines = defaultExtractCodexTurnUsageFromLines,
+    extractSessionUsageFromLines = defaultExtractSessionUsageFromLines,
+    readJsonlLines = defaultReadJsonlLines,
+  } = deps
+  // `openclaw` is the legacy bridge handle (used by the claude branch);
+  // `bridge` is the codex-branch alias accepted for clarity. Either one is fine.
+  const openclaw = deps.openclaw || deps.bridge
+  const codexBridge = deps.bridge || deps.openclaw
+
   if (!db) throw new Error('db_required')
   if (!openclaw) throw new Error('openclaw_required')
 
@@ -410,10 +432,128 @@ export function createOpenClawHookHandler({
   }
 
   /**
-   * 处理一条 hook 事件。
+   * 处理一条 hook 事件 —— 统一入口，按 source/path 分发。
+   *  - source=codex,path=jsonl    → handleCodexJsonl（Phase C）
+   *  - source=codex,path=detector → handleCodexDetector（Phase E 占位，目前直接拒绝）
+   *  - 其它（默认 claude）        → handleClaude（保留原逻辑，签名不变）
    * 返回 { ok, action: 'sent'|'skipped'|'failed', reason? }
    */
-  async function handle({ event, sessionId, todoId, todoTitle, hookPayload } = {}) {
+  async function handle(req = {}) {
+    const source = req?.source || 'claude'
+    if (source === 'codex' && req?.path === 'jsonl') return handleCodexJsonl(req)
+    if (source === 'codex' && req?.path === 'detector') return handleCodexDetector(req)
+    return handleClaude(req)
+  }
+
+  // ─── Codex 分支（Phase C）─────────────────────────────────────────────────────
+  async function handleCodexJsonl({ event, nativeId, transcript_path, raw_event_payload }) {
+    // 1) 解析 quadtodo sessionId
+    let quadtodoSessionId = null
+    let todoId = null
+    let cwd = null
+    const fromSidecar = sidecar?.lookup?.(nativeId)
+    if (fromSidecar) {
+      quadtodoSessionId = fromSidecar.quadtodoSessionId
+      todoId = fromSidecar.todoId
+      cwd = fromSidecar.cwd
+    } else if (aiTerminal?.sessions) {
+      for (const [sid, sess] of aiTerminal.sessions) {
+        if (sess?.nativeSessionId === nativeId) {
+          quadtodoSessionId = sid
+          todoId = sess.todoId || null
+          cwd = sess.cwd || null
+          break
+        }
+      }
+    }
+    if (!quadtodoSessionId) {
+      logger.warn?.(`[codex-hook] no quadtodo session for nativeId=${nativeId}`)
+      return { ok: false, reason: 'no_quadtodo_session' }
+    }
+
+    // 2) 定位 jsonl
+    const filePath = transcript_path || pty?.findCodexSession?.(nativeId)?.filePath || null
+    if (!filePath) return { ok: false, reason: 'no_transcript' }
+
+    // 3) 读最新一轮
+    let text = ''
+    if (event === 'Stop' || event === 'TurnAborted') {
+      try {
+        const turn = await readLatestCodexTurnFresh(filePath, null, { retries: 3, retryMs: 200 })
+        text = turn?.text || ''
+      } catch (e) {
+        logger.warn?.(`[codex-hook] read latest turn failed: ${e.message}`)
+      }
+    }
+
+    // 4) 拼 footer
+    let lines = []
+    try { lines = readJsonlLines(filePath) || [] } catch { lines = [] }
+    let turnUsage = null
+    let sessionUsage = null
+    try { turnUsage = extractCodexTurnUsageFromLines(lines) } catch {}
+    try { sessionUsage = extractSessionUsageFromLines(lines, 'codex') } catch {}
+    let footer = ''
+    try {
+      footer = formatUsageFooter({
+        turn: turnUsage ? { ...turnUsage, model: sessionUsage?.primaryModel } : null,
+        session: sessionUsage,
+      })
+    } catch (e) {
+      logger.warn?.(`[codex-hook] format usage footer failed: ${e.message}`)
+    }
+
+    // 5) 拼正文
+    let todoTitle = null
+    try { todoTitle = (await db.getTodo?.(todoId))?.title || null } catch { todoTitle = null }
+    todoTitle = todoTitle || todoId || ''
+    const idTail = todoId ? String(todoId).slice(-3) : '???'
+    const headLine = event === 'Stop'
+      ? `🤖 [#t${idTail}] 任务「${todoTitle}」AI 一轮结束`
+      : event === 'TurnAborted'
+        ? `🛑 [#t${idTail}] 任务「${todoTitle}」AI 一轮被中断`
+        : event === 'Error'
+          ? `❌ [#t${idTail}] 任务「${todoTitle}」Codex 报错：${raw_event_payload?.message || ''}`
+          : event === 'SessionEnd'
+            ? `✅ [#t${idTail}] 任务「${todoTitle}」AI 跑完了`
+            : `[codex] 未知事件 ${event}`
+    const fullText = text
+      ? `${headLine}\n\n${text}${footer ? `\n\n${footer}` : ''}`
+      : `${headLine}${footer ? `\n\n${footer}` : ''}`
+
+    // 6) 推送
+    try {
+      await codexBridge.postText({ sessionId: quadtodoSessionId, text: fullText })
+    } catch (e) {
+      logger.warn?.(`[codex-hook] postText failed: ${e.message}`)
+      return { ok: false, reason: 'post_failed', detail: e?.message }
+    }
+
+    // 7) SessionEnd → 附完整 transcript
+    if (event === 'SessionEnd') {
+      try {
+        const full = buildFullCodexTranscript(filePath)
+        if (full?.markdown) {
+          const tmpPath = writeTranscriptTmp(full.markdown, quadtodoSessionId, 'codex-full')
+          if (tmpPath && codexBridge?.sendDocument) {
+            await codexBridge.sendDocument({ sessionId: quadtodoSessionId, path: tmpPath })
+          }
+        }
+      } catch (e) {
+        logger.warn?.(`[codex-hook] attach full transcript failed: ${e.message}`)
+      }
+    }
+
+    return { ok: true, action: 'sent', source: 'codex', event }
+  }
+
+  async function handleCodexDetector(_req) {
+    // Phase E 将填充 detector 路径（解析 prompt 文本 / 模式匹配）。当前为占位。
+    return { ok: false, reason: 'not_implemented' }
+  }
+
+  // ─── Claude 分支（既有实现，原 handle() 主体不变）─────────────────────────────
+  async function handleClaude({ event, sessionId, todoId, todoTitle, hookPayload } = {}) {
     if (!event) return { ok: false, action: 'failed', reason: 'event_required' }
     const evt = String(event).toLowerCase()
 
