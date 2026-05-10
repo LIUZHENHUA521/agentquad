@@ -112,7 +112,9 @@
   background: #fafafa;
   overflow-x: auto;
   flex: 0 0 auto;
+  scrollbar-width: none;
 }
+.terminal-dock__tabs::-webkit-scrollbar { display: none; }
 .terminal-dock__tab {
   display: inline-flex;
   align-items: center;

@@ -286,7 +286,14 @@ export function createLarkBot({
       const msgType = rawMsg.msg_type || rawMsg.message_type || '(unknown)'
       const contentRaw = typeof rawMsg.content === 'string' ? rawMsg.content : JSON.stringify(rawMsg.content || {})
       const mentions = JSON.stringify(rawMsg.mentions || [])
-      logger.warn?.(`[lark-bot] ignored_empty: no text (eventId=${ev.eventId} msg_type=${msgType} content=${contentRaw.slice(0, 240)} mentions=${mentions.slice(0, 240)})`)
+      // 附件类（media/file/video/audio）一旦走到 ignored_empty 一定是 extract 漏了，
+      // 把完整 content dump 出来便于扩展 extractVideoFileKey 的识别规则
+      const isAttachmentLike = /^(media|file|video|audio)$/i.test(String(msgType))
+      if (isAttachmentLike) {
+        logger.warn?.(`[lark-bot] ignored_empty (ATTACHMENT NOT RECOGNIZED): eventId=${ev.eventId} msg_type=${msgType} FULL_content=${contentRaw} mentions=${mentions}`)
+      } else {
+        logger.warn?.(`[lark-bot] ignored_empty: no text (eventId=${ev.eventId} msg_type=${msgType} content=${contentRaw.slice(0, 240)} mentions=${mentions.slice(0, 240)})`)
+      }
       return { ok: true, action: 'ignored_empty' }
     }
     logger.info?.(`[lark-bot] dispatching to wizard: chatId=${ev.chatId} thread=${ev.threadId || '-'} root=${ev.rootMessageId || '-'} images=${imageKeys.length} video=${videoMeta ? '1' : '0'} text="${(ev.text || '').slice(0, 80)}"`)

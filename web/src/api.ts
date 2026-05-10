@@ -144,7 +144,7 @@ export interface AppConfig {
     minRenameIntervalMs?: number
     botToken?: string                                          // PUT only; GET 永远不返回明文
     botTokenMasked?: string | null                              // GET 时返回
-    botTokenSource?: 'quadtodo' | 'openclaw' | 'missing'        // GET 时返回
+    botTokenSource?: 'quadtodo' | 'missing'                     // GET 时返回
     defaultSupergroupId?: string                                // legacy
     [key: string]: unknown
   }
@@ -998,7 +998,7 @@ export interface TelegramTestResult {
   botId?: number
   botUsername?: string | null
   botFirstName?: string | null
-  source: 'quadtodo' | 'openclaw' | 'missing' | 'input'
+  source: 'quadtodo' | 'missing' | 'input'
   errorReason?: string
 }
 

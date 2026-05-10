@@ -370,6 +370,103 @@ describe('lark-bot inbound images', () => {
   })
 })
 
+describe('lark-bot inbound videos (msg_type=media)', () => {
+  it('downloads video from msg_type=media and forwards local path to wizard.imagePaths with caption tag', async () => {
+    const wizard = { handleInbound: vi.fn().mockResolvedValue({ reply: 'got it', action: 'wizard_started' }) }
+    const apiClient = makeApiClient({
+      getMessageResource: vi.fn().mockResolvedValue({
+        ok: true,
+        headers: { 'content-type': 'video/mp4' },
+        writeFile: async (p) => p,
+      }),
+    })
+    const { bot } = makeBot({ wizard, apiClient })
+
+    await bot.handleEvent({
+      event_id: 'evt_video',
+      event: {
+        message: {
+          chat_id: 'oc_default',
+          message_id: 'om_with_video',
+          msg_type: 'media',
+          content: '{"file_key":"media_v3_xxx","file_name":"demo.mp4","duration":12345}',
+        },
+        sender: { sender_id: { open_id: 'ou_user' }, sender_type: 'user' },
+      },
+    })
+
+    expect(apiClient.getMessageResource).toHaveBeenCalledWith({
+      messageId: 'om_with_video',
+      fileKey: 'media_v3_xxx',
+      type: 'file',
+    })
+    expect(wizard.handleInbound).toHaveBeenCalledTimes(1)
+    const passed = wizard.handleInbound.mock.calls[0][0]
+    expect(passed.imagePaths).toBeDefined()
+    expect(passed.imagePaths).toHaveLength(1)
+    expect(passed.imagePaths[0]).toMatch(/\.mp4$/)
+    expect(passed.text).toBe('[用户发了视频：demo.mp4]')
+  })
+
+  it('handles message_type alias (event field name)', async () => {
+    const wizard = { handleInbound: vi.fn().mockResolvedValue({ reply: 'ok' }) }
+    const apiClient = makeApiClient({
+      getMessageResource: vi.fn().mockResolvedValue({
+        ok: true,
+        headers: { 'content-type': 'video/mp4' },
+        writeFile: async (p) => p,
+      }),
+    })
+    const { bot } = makeBot({ wizard, apiClient })
+
+    const r = await bot.handleEvent({
+      event_id: 'evt_video_alias',
+      event: {
+        message: {
+          chat_id: 'oc_default',
+          message_id: 'om_alias',
+          message_type: 'media',  // alias 字段名
+          content: '{"file_key":"media_alias","file_name":"alias.mp4"}',
+        },
+        sender: { sender_id: { open_id: 'ou_user' }, sender_type: 'user' },
+      },
+    })
+
+    expect(r.action).not.toBe('ignored_empty')
+    expect(wizard.handleInbound).toHaveBeenCalledTimes(1)
+    const passed = wizard.handleInbound.mock.calls[0][0]
+    expect(passed.imagePaths).toHaveLength(1)
+  })
+
+  it('does not drop a video-only message with empty text', async () => {
+    const wizard = { handleInbound: vi.fn().mockResolvedValue({ reply: '' }) }
+    const apiClient = makeApiClient({
+      getMessageResource: vi.fn().mockResolvedValue({
+        ok: true,
+        headers: { 'content-type': 'video/mp4' },
+        writeFile: async (p) => p,
+      }),
+    })
+    const { bot } = makeBot({ wizard, apiClient })
+
+    const r = await bot.handleEvent({
+      event_id: 'evt_video_only',
+      event: {
+        message: {
+          chat_id: 'oc_default',
+          message_id: 'om_video_only',
+          msg_type: 'media',
+          content: '{"file_key":"mk","file_name":"clip.mp4"}',
+        },
+        sender: { sender_id: { open_id: 'ou_user' }, sender_type: 'user' },
+      },
+    })
+
+    expect(r.action).not.toBe('ignored_empty')
+    expect(wizard.handleInbound).toHaveBeenCalledTimes(1)
+  })
+})
+
 describe('lark-bot extractText post (富文本) parsing', () => {
   it('parses Lark post msg_type that wraps @bot mention + body text', async () => {
     const wizard = { handleInbound: vi.fn().mockResolvedValue({ reply: 'wizard up', action: 'wizard_started' }) }

@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { downloadLarkVideo, extractVideoFileKey, videoExtFromContentType } from '../src/lark-video.js'
 
 describe('extractVideoFileKey', () => {
-  it('returns null for non-media messages', () => {
+  it('returns null for clearly non-video messages', () => {
     expect(extractVideoFileKey({ msg_type: 'text', content: '{"text":"hi"}' })).toBe(null)
     expect(extractVideoFileKey({ msg_type: 'image', content: '{"image_key":"img"}' })).toBe(null)
     expect(extractVideoFileKey({ msg_type: 'post', content: '{}' })).toBe(null)
@@ -18,7 +18,7 @@ describe('extractVideoFileKey', () => {
       msg_type: 'media',
       content: '{"file_key":"media_v3_xxx","file_name":"a.mp4","duration":12345,"image_key":"img_cover"}',
     })
-    expect(r).toEqual({ fileKey: 'media_v3_xxx', fileName: 'a.mp4', duration: 12345 })
+    expect(r).toMatchObject({ fileKey: 'media_v3_xxx', fileName: 'a.mp4', duration: 12345 })
   })
 
   it('handles content as object (already parsed)', () => {
@@ -26,7 +26,7 @@ describe('extractVideoFileKey', () => {
       msg_type: 'media',
       content: { file_key: 'mk', file_name: null, duration: null },
     })
-    expect(r).toEqual({ fileKey: 'mk', fileName: null, duration: null })
+    expect(r).toMatchObject({ fileKey: 'mk', fileName: null, duration: null })
   })
 
   it('falls back to message_type alias', () => {
@@ -37,11 +37,69 @@ describe('extractVideoFileKey', () => {
     expect(r?.fileKey).toBe('k')
   })
 
-  it('returns null when media has no file_key', () => {
+  it('returns null when media has no file_key (only cover image_key)', () => {
     expect(extractVideoFileKey({
       msg_type: 'media',
       content: '{"image_key":"only_cover"}',
     })).toBe(null)
+  })
+
+  // ── 容错：不同 msg_type / 嵌套路径 / 文件名后缀兜底 ─────────────────
+  it('accepts msg_type=video as a video message', () => {
+    const r = extractVideoFileKey({
+      msg_type: 'video',
+      content: '{"file_key":"media_v","file_name":"x.mov"}',
+    })
+    expect(r?.fileKey).toBe('media_v')
+  })
+
+  it('accepts msg_type=file when file_name has a video extension', () => {
+    const r = extractVideoFileKey({
+      msg_type: 'file',
+      content: '{"file_key":"file_v","file_name":"clip.mp4"}',
+    })
+    expect(r?.fileKey).toBe('file_v')
+    expect(r?.fileName).toBe('clip.mp4')
+  })
+
+  it('rejects msg_type=file when file_name is non-video', () => {
+    expect(extractVideoFileKey({
+      msg_type: 'file',
+      content: '{"file_key":"file_pdf","file_name":"report.pdf"}',
+    })).toBe(null)
+  })
+
+  it('accepts unknown msg_type when file_name is a video and file_key present', () => {
+    const r = extractVideoFileKey({
+      msg_type: 'unknown_type',
+      content: '{"file_key":"any","file_name":"a.webm"}',
+    })
+    expect(r?.fileKey).toBe('any')
+  })
+
+  it('finds file_key under content.video.file_key fallback path', () => {
+    const r = extractVideoFileKey({
+      msg_type: 'media',
+      content: '{"video":{"file_key":"nested_key","file_name":"y.mp4"}}',
+    })
+    expect(r?.fileKey).toBe('nested_key')
+    expect(r?.fileName).toBe('y.mp4')
+  })
+
+  it('finds file_key under content.media.file_key fallback path', () => {
+    const r = extractVideoFileKey({
+      msg_type: 'media',
+      content: '{"media":{"file_key":"alt_key"}}',
+    })
+    expect(r?.fileKey).toBe('alt_key')
+  })
+
+  it('case-insensitive msg_type match', () => {
+    const r = extractVideoFileKey({
+      msg_type: 'Media',
+      content: '{"file_key":"k"}',
+    })
+    expect(r?.fileKey).toBe('k')
   })
 })
 

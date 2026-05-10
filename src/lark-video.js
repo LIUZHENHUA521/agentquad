@@ -35,16 +35,24 @@ export function videoExtFromContentType(headers) {
   return 'mp4'  // 飞书视频默认 mp4，未知 mime 兜底成 mp4 比 bin 更安全
 }
 
+// 视频类的 msg_type 枚举：飞书国际版 / 国内版 / 不同事件版本可能用不同枚举名，
+// 这里把已知的全列上，宽松识别。'file' 在 file_name 看起来是视频时也认。
+const VIDEO_MSG_TYPES = new Set(['media', 'video'])
+
+const VIDEO_FILE_NAME_RE = /\.(mp4|mov|m4v|webm|mkv|avi|3gp|mpeg|mpg|wmv|flv)$/i
+
 /**
- * 从飞书 message 提取视频 file_key。仅 msg_type === 'media' 才处理。
- * @returns {{ fileKey: string, fileName: string|null, duration: number|null } | null}
+ * 从飞书 message 提取视频 file_key。
+ * 容忍多种 shape：
+ *   - msg_type/message_type ∈ {media, video} → content.file_key 直接拿
+ *   - msg_type === 'file' 且 file_name 后缀是视频格式 → 也认
+ *   - content.file_key 不在顶层时，尝试 content.video.file_key / content.media.file_key
+ *
+ * @returns {{ fileKey: string, fileName: string|null, duration: number|null, msgType: string|null } | null}
  */
 export function extractVideoFileKey(message = {}) {
   if (!message || typeof message !== 'object') return null
-  // msg_type 在不同事件层级名字不同：直接 message 上是 message_type，
-  // 而 raw event message 上是 msg_type。两种都试。
-  const msgType = message.msg_type || message.message_type
-  if (msgType !== 'media') return null
+  const msgType = message.msg_type || message.message_type || null
 
   let content = message.content
   if (typeof content === 'string') {
@@ -52,13 +60,42 @@ export function extractVideoFileKey(message = {}) {
   }
   if (!content || typeof content !== 'object') return null
 
-  if (typeof content.file_key !== 'string' || !content.file_key) return null
+  // 多路径找 file_key
+  const fileKey = pickFirstString([
+    content.file_key,
+    content.video?.file_key,
+    content.media?.file_key,
+  ])
+  if (!fileKey) return null
 
-  return {
-    fileKey: content.file_key,
-    fileName: typeof content.file_name === 'string' ? content.file_name : null,
-    duration: typeof content.duration === 'number' ? content.duration : null,
+  const fileName = pickFirstString([
+    content.file_name,
+    content.video?.file_name,
+    content.media?.file_name,
+  ]) || null
+
+  // 决定要不要认领这条消息：
+  //   - 已知视频类 msg_type → 直接认
+  //   - 'file' 类型 + 视频后缀 → 认
+  //   - msg_type 为空/未知，但 content 里有 file_key + 视频后缀 → 也认（兜底）
+  let claim = false
+  if (msgType && VIDEO_MSG_TYPES.has(String(msgType).toLowerCase())) {
+    claim = true
+  } else if (fileName && VIDEO_FILE_NAME_RE.test(fileName)) {
+    claim = true
   }
+  if (!claim) return null
+
+  const duration = typeof content.duration === 'number' ? content.duration : null
+
+  return { fileKey, fileName, duration, msgType }
+}
+
+function pickFirstString(candidates) {
+  for (const c of candidates) {
+    if (typeof c === 'string' && c) return c
+  }
+  return null
 }
 
 /**

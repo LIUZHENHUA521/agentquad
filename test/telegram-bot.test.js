@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createTelegramBot, readBotTokenWithSource, __getProxyFetch, __resetProxyFetchCache } from '../src/telegram-bot.js'
@@ -639,18 +639,14 @@ describe('readBotTokenWithSource', () => {
     expect(r).toEqual({ token: 'XXX', source: 'quadtodo' })
   })
 
-  it('returns missing when no source available', () => {
-    const r = readBotTokenWithSource(() => ({ telegram: {} }), { fallbackPath: '/nonexistent/openclaw.json' })
+  it('returns missing when config has no botToken', () => {
+    const r = readBotTokenWithSource(() => ({ telegram: {} }))
     expect(r).toEqual({ token: null, source: 'missing' })
   })
 
-  it('returns openclaw source when fallback file has token', () => {
-    const tmp = mkdtempSync(join(tmpdir(), 'qt-fb-'))
-    const path = join(tmp, 'openclaw.json')
-    writeFileSync(path, JSON.stringify({ channels: { telegram: { botToken: 'YYY' } } }))
-    const r = readBotTokenWithSource(() => ({ telegram: {} }), { fallbackPath: path })
-    expect(r).toEqual({ token: 'YYY', source: 'openclaw' })
-    rmSync(tmp, { recursive: true, force: true })
+  it('returns missing when getConfig is missing or returns falsy', () => {
+    expect(readBotTokenWithSource()).toEqual({ token: null, source: 'missing' })
+    expect(readBotTokenWithSource(() => null)).toEqual({ token: null, source: 'missing' })
   })
 })
 

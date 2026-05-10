@@ -172,10 +172,12 @@ describe('openclaw-bridge.postText', () => {
 
   it('registerSessionRoute persists threadId + topicName (not dropped)', async () => {
     const bridge = createOpenClawBridge({
-      getConfig: () => ({ openclaw: { enabled: true, channel: 'telegram', targetUserId: '-1001' } }),
+      getConfig: () => ({
+        openclaw: { enabled: true, channel: 'telegram', targetUserId: '-1001' },
+        telegram: { botToken: 'TKN' },
+      }),
       spawnFn: spy({ stdout: '{}' }),
       logger: { warn() {}, info() {} },
-      loadTelegramToken: () => 'TKN',
       telegramSender: async (args) => ({ ok: true, payload: { messageId: '1' }, _capture: args }),
     })
     bridge.registerSessionRoute('sess-X', {
@@ -412,10 +414,12 @@ describe('openclaw-bridge.postText', () => {
   it('telegram fast-path: passes threadId from session route to sender', async () => {
     const captured = []
     const bridge = createOpenClawBridge({
-      getConfig: () => ({ openclaw: { enabled: true, channel: 'telegram' } }),
+      getConfig: () => ({
+        openclaw: { enabled: true, channel: 'telegram' },
+        telegram: { botToken: 'TKN' },
+      }),
       spawnFn: spy({ stdout: '{}' }),
       logger: { warn() {}, info() {} },
-      loadTelegramToken: () => 'TKN',
       telegramSender: async (args) => { captured.push(args); return { ok: true, payload: {} } },
     })
     bridge.registerSessionRoute('s-T', {
@@ -432,10 +436,12 @@ describe('openclaw-bridge.postText', () => {
   it('telegram fast-path: uses HTTPS Bot API instead of CLI when token available', async () => {
     const sentViaApi = []
     const bridge = createOpenClawBridge({
-      getConfig: () => ({ openclaw: { enabled: true, targetUserId: '1234567', channel: 'telegram' } }),
+      getConfig: () => ({
+        openclaw: { enabled: true, targetUserId: '1234567', channel: 'telegram' },
+        telegram: { botToken: 'FAKE_TOKEN' },
+      }),
       spawnFn: spy({ stdout: '{"ok":1}' }),
       logger: { warn() {}, info() {} },
-      loadTelegramToken: () => 'FAKE_TOKEN',
       telegramSender: async (args) => {
         sentViaApi.push(args)
         return { ok: true, payload: { messageId: 'tg-42' } }
@@ -453,7 +459,7 @@ describe('openclaw-bridge.postText', () => {
     expect(calls).toHaveLength(0)  // 没走 CLI
   })
 
-  it('telegram fast-path: uses quadtodo telegram.botToken before CLI fallback', async () => {
+  it('telegram fast-path: uses telegram.botToken from quadtodo config', async () => {
     const sentViaApi = []
     const bridge = createOpenClawBridge({
       getConfig: () => ({
@@ -462,7 +468,6 @@ describe('openclaw-bridge.postText', () => {
       }),
       spawnFn: spy({ stdout: '{}' }),
       logger: { warn() {}, info() {} },
-      loadTelegramToken: () => null,
       telegramSender: async (args) => {
         sentViaApi.push(args)
         return { ok: true, payload: { messageId: 'tg-99' } }
@@ -484,7 +489,6 @@ describe('openclaw-bridge.postText', () => {
       getConfig: () => ({ openclaw: { enabled: true, targetUserId: '1234567', channel: 'telegram' } }),
       spawnFn: spy({ stdout: '{}' }),
       logger: { warn() {}, info() {} },
-      loadTelegramToken: () => null,
       telegramSender: async () => ({ ok: false, reason: 'no_token' }),
     })
     const r = await bridge.postText({ message: 'hi' })
@@ -497,10 +501,12 @@ describe('openclaw-bridge.postText', () => {
 
   it('telegram fast-path: falls back to CLI when API call fails', async () => {
     const bridge = createOpenClawBridge({
-      getConfig: () => ({ openclaw: { enabled: true, targetUserId: '1234567', channel: 'telegram' } }),
+      getConfig: () => ({
+        openclaw: { enabled: true, targetUserId: '1234567', channel: 'telegram' },
+        telegram: { botToken: 'FAKE_TOKEN' },
+      }),
       spawnFn: spy({ stdout: '{}' }),
       logger: { warn() {}, info() {} },
-      loadTelegramToken: () => 'FAKE_TOKEN',
       telegramSender: async () => ({ ok: false, reason: 'telegram_api_error', detail: 'forbidden' }),
     })
     const r = await bridge.postText({ message: 'hi' })
@@ -512,10 +518,12 @@ describe('openclaw-bridge.postText', () => {
   it('telegram fast-path: refuses send when sessionId given but no registered route (would leak to General)', async () => {
     const sentViaApi = []
     const bridge = createOpenClawBridge({
-      getConfig: () => ({ openclaw: { enabled: true, targetUserId: '-1001999', channel: 'telegram' } }),
+      getConfig: () => ({
+        openclaw: { enabled: true, targetUserId: '-1001999', channel: 'telegram' },
+        telegram: { botToken: 'FAKE_TOKEN' },
+      }),
       spawnFn: spy({ stdout: '{}' }),
       logger: { warn() {}, info() {} },
-      loadTelegramToken: () => 'FAKE_TOKEN',
       telegramSender: async (args) => {
         sentViaApi.push(args)
         return { ok: true, payload: { messageId: 'leak-1' } }
@@ -532,10 +540,12 @@ describe('openclaw-bridge.postText', () => {
   it('telegram fast-path: NO sessionId case still works (broadcast to default chat)', async () => {
     const sentViaApi = []
     const bridge = createOpenClawBridge({
-      getConfig: () => ({ openclaw: { enabled: true, targetUserId: '-1001999', channel: 'telegram' } }),
+      getConfig: () => ({
+        openclaw: { enabled: true, targetUserId: '-1001999', channel: 'telegram' },
+        telegram: { botToken: 'FAKE_TOKEN' },
+      }),
       spawnFn: spy({ stdout: '{}' }),
       logger: { warn() {}, info() {} },
-      loadTelegramToken: () => 'FAKE_TOKEN',
       telegramSender: async (args) => {
         sentViaApi.push(args)
         return { ok: true, payload: {} }
@@ -551,10 +561,12 @@ describe('openclaw-bridge.postText', () => {
   it('telegram fast-path: registered route still works (正常路径不受新 guard 影响)', async () => {
     const sentViaApi = []
     const bridge = createOpenClawBridge({
-      getConfig: () => ({ openclaw: { enabled: true, channel: 'telegram' } }),
+      getConfig: () => ({
+        openclaw: { enabled: true, channel: 'telegram' },
+        telegram: { botToken: 'FAKE_TOKEN' },
+      }),
       spawnFn: spy({ stdout: '{}' }),
       logger: { warn() {}, info() {} },
-      loadTelegramToken: () => 'FAKE_TOKEN',
       telegramSender: async (args) => {
         sentViaApi.push(args)
         return { ok: true, payload: {} }
@@ -634,10 +646,12 @@ describe('openclaw-bridge.postText', () => {
     const apiCalls = []
     const cliCalls = []
     const bridge = createOpenClawBridge({
-      getConfig: () => ({ openclaw: { enabled: true, targetUserId: '-1001999', channel: 'telegram' } }),
+      getConfig: () => ({
+        openclaw: { enabled: true, targetUserId: '-1001999', channel: 'telegram' },
+        telegram: { botToken: 'FAKE_TOKEN' },
+      }),
       spawnFn: (...args) => { cliCalls.push(args); return spy({ stdout: '{}' })(...args) },
       logger: { warn() {}, info() {} },
-      loadTelegramToken: () => 'FAKE_TOKEN',
       telegramSender: async (args) => {
         apiCalls.push(args)
         return { ok: false, reason: 'fetch_error', detail: 'network down' }
@@ -655,10 +669,12 @@ describe('openclaw-bridge.postText', () => {
   it('telegram fast-path: retries once on fetch_error before giving up', async () => {
     let attempts = 0
     const bridge = createOpenClawBridge({
-      getConfig: () => ({ openclaw: { enabled: true, targetUserId: '-1001999', channel: 'telegram' } }),
+      getConfig: () => ({
+        openclaw: { enabled: true, targetUserId: '-1001999', channel: 'telegram' },
+        telegram: { botToken: 'FAKE_TOKEN' },
+      }),
       spawnFn: spy({ stdout: '{}' }),
       logger: { warn() {}, info() {} },
-      loadTelegramToken: () => 'FAKE_TOKEN',
       telegramSender: async () => {
         attempts++
         if (attempts === 1) return { ok: false, reason: 'fetch_error', detail: 'transient' }
@@ -674,10 +690,12 @@ describe('openclaw-bridge.postText', () => {
   it('telegram fast-path: telegram_api_error (non-transient) is NOT retried', async () => {
     let attempts = 0
     const bridge = createOpenClawBridge({
-      getConfig: () => ({ openclaw: { enabled: true, targetUserId: '-1001999', channel: 'telegram' } }),
+      getConfig: () => ({
+        openclaw: { enabled: true, targetUserId: '-1001999', channel: 'telegram' },
+        telegram: { botToken: 'FAKE_TOKEN' },
+      }),
       spawnFn: spy({ stdout: '{}' }),
       logger: { warn() {}, info() {} },
-      loadTelegramToken: () => 'FAKE_TOKEN',
       telegramSender: async () => {
         attempts++
         return { ok: false, reason: 'telegram_api_error', detail: 'forbidden' }

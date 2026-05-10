@@ -79,6 +79,61 @@ describe('openclaw-wizard dispatch resolution', () => {
     expect(ai.sessions[0].tool).toBe('codex')
   })
 
+  it('telegram peer-bound dispatcher gets echoTarget.messageId from inbound', async () => {
+    // 回归：曾经调用处用了未定义的 triggerMessageId，导致 dispatcher.send 整条挂掉
+    const sid = 'sid_tg_peer'
+    const inboundMessageId = 'tg_msg_42'
+    const peer = '999000111'
+
+    const dispatcher = {
+      send: vi.fn(async () => ({ action: 'sent' })),
+    }
+    // pty: 有 sid 就能 write
+    const pty = {
+      has: (s) => s === sid,
+      write: vi.fn(),
+    }
+    // openclaw: 已绑定 last-push session
+    const bridgeWithLastPush = {
+      ...bridge,
+      getLastPushedSession: () => sid,
+      // 让 announce-first-route 这条不带 todo 标题的逻辑稳走（不影响 dispatcher.send 调用断言）
+      shouldAnnounceFirstRoute: () => false,
+    }
+    // aiTerminal 暴露一个空 sessions Map 即可，wizard 在 fallback c) 之前就命中 b) lastPush
+    const aiWithSessions = {
+      ...ai,
+      sessions: new Map(),
+      markSessionAwaitingReply: vi.fn(),
+    }
+    // loadingTracker 占位
+    const loadingTracker = { markRunning: () => Promise.resolve() }
+
+    wizard = createOpenClawWizard({
+      db, aiTerminal: aiWithSessions, openclaw: bridgeWithLastPush, pending,
+      pty, sessionInputDispatcher: dispatcher, loadingTracker,
+      getConfig: () => ({ defaultCwd: '/tmp', port: 5677, defaultTool: 'claude' }),
+    })
+
+    const r = await wizard.handleInbound({
+      channel: 'telegram',
+      chatId: peer,
+      messageId: inboundMessageId,
+      text: '继续推进一下',
+    })
+
+    expect(dispatcher.send).toHaveBeenCalledTimes(1)
+    const arg = dispatcher.send.mock.calls[0][0]
+    expect(arg.sessionId).toBe(sid)
+    expect(arg.channel).toBe('telegram')
+    expect(arg.echoTarget).toMatchObject({
+      chatId: peer,
+      messageId: inboundMessageId,
+    })
+    // 不应该回 dispatcher_error（即不应再触发 ReferenceError）
+    expect(r.action).not.toBe('dispatcher_error')
+  })
+
   it('falls back to channel default when fromUserId not in perUser', async () => {
     const cfg = {
       defaultCwd: '/tmp',

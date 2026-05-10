@@ -285,6 +285,33 @@ describe('openclaw-hook handler', () => {
     })
   })
 
+  it('Stop marks awaitingReply=true + flushes dispatcher queue even when push fails', async () => {
+    // 回归：之前这两步被错误地包在 if (result.ok) 里。push 失败（route 缺失/限流/网络抖）
+    // 后 awaitingReply 永远是 false，dispatcher 把所有用户消息都回 "🔄 已排队"，永不恢复。
+    bridge = makeFakeBridge({ sendOk: false, sendReason: 'rate_limited' })
+    const markSessionAwaitingReply = vi.fn()
+    const onSessionIdle = vi.fn(async () => ({ flushed: 0 }))
+    handler = createOpenClawHookHandler({
+      db,
+      openclaw: bridge,
+      aiTerminal: { notifyTurnDone: vi.fn(), markSessionAwaitingReply },
+      sessionInputDispatcher: { onSessionIdle },
+    })
+
+    const r = await handler.handle({
+      event: 'stop',
+      sessionId: 's_push_fail',
+      todoId: 't1',
+      todoTitle: 'Task A',
+    })
+
+    expect(r.ok).toBe(false)
+    expect(r.reason).toBe('rate_limited')
+    // 关键：尽管 push 失败，idle 状态和队列 flush 必须照常发生
+    expect(markSessionAwaitingReply).toHaveBeenCalledWith('s_push_fail', true)
+    expect(onSessionIdle).toHaveBeenCalledWith('s_push_fail')
+  })
+
   it('does not let turn_done broadcast failures break Stop handling', async () => {
     const logger = { warn: vi.fn() }
     const notifyTurnDone = vi.fn(() => { throw new Error('ws failed') })

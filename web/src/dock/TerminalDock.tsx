@@ -39,6 +39,7 @@ function SortableDockTab({ tab, isActive }: { tab: DockTab; isActive: boolean })
       style={style}
       {...attributes}
       {...listeners}
+      data-tab-id={tab.id}
       className={`terminal-dock__tab ${isActive ? 'is-active' : ''}`}
       onClick={() => useTerminalDockStore.getState().setActive(tab.id)}
       onMouseDown={(e) => {
@@ -77,6 +78,17 @@ export default function TerminalDock({
   resolveTabContext, onSessionRecovered, onSessionSwitch, onDone, onFork,
 }: Props = {}) {
   const { widthPx, isCollapsed, openTabs, activeTabId, splitSecondaryTabId, poppedOutTabIds, toggleCollapsed, setWidth } = useTerminalDockStore()
+  const tabsRef = useRef<HTMLDivElement | null>(null)
+
+  // 激活态变化时把当前 tab 滚入可视区，避免被横向溢出隐藏。
+  useEffect(() => {
+    if (!activeTabId) return
+    const container = tabsRef.current
+    if (!container) return
+    const el = container.querySelector<HTMLElement>(`[data-tab-id="${window.CSS.escape(activeTabId)}"]`)
+    if (!el) return
+    el.scrollIntoView({ inline: 'nearest', block: 'nearest', behavior: 'smooth' })
+  }, [activeTabId, openTabs.length])
   const isMobile = useIsMobile()
   const dragStartRef = useRef<{ x: number; w: number } | null>(null)
   const moveHandlerRef = useRef<((ev: MouseEvent) => void) | null>(null)
@@ -242,7 +254,7 @@ export default function TerminalDock({
       {openTabs.length > 0 && (
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
           <SortableContext items={openTabs.map(t => t.id)} strategy={horizontalListSortingStrategy}>
-            <div className="terminal-dock__tabs">
+            <div className="terminal-dock__tabs" ref={tabsRef}>
               {openTabs.map(tab => (
                 <SortableDockTab key={tab.id} tab={tab} isActive={tab.id === activeTabId} />
               ))}

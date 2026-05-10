@@ -853,22 +853,14 @@ export function createTelegramBot({
 
 /**
  * 读 bot token，并返回来源标记。
- *  - source: "quadtodo" | "openclaw" | "missing"
- *  - fallbackPath 测试用：默认 ~/.openclaw/openclaw.json
+ *  - source: "quadtodo" | "missing"
  */
-export function readBotTokenWithSource(getConfig, { fallbackPath = join(homedir(), '.openclaw', 'openclaw.json') } = {}) {
+export function readBotTokenWithSource(getConfig) {
   const tg = getConfig?.()?.telegram || {}
   if (tg.botToken && typeof tg.botToken === 'string') {
     return { token: tg.botToken, source: 'quadtodo' }
   }
-  try {
-    if (!existsSync(fallbackPath)) return { token: null, source: 'missing' }
-    const cfg = JSON.parse(readFileSync(fallbackPath, 'utf8'))
-    const tok = cfg?.channels?.telegram?.botToken || null
-    return tok ? { token: tok, source: 'openclaw' } : { token: null, source: 'missing' }
-  } catch {
-    return { token: null, source: 'missing' }
-  }
+  return { token: null, source: 'missing' }
 }
 
 /** 兼容旧调用方：只返回 token 字符串。新代码请用 readBotTokenWithSource。 */

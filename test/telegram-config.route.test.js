@@ -1,25 +1,8 @@
-import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import express from 'express'
 import request from 'supertest'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import { createTelegramConfigRouter } from '../src/routes/telegram-config.js'
 import { createProbeRegistry } from '../src/telegram-config-service.js'
-
-// 隔离 HOME，避免 readBotTokenWithSource 读到本机 ~/.openclaw/openclaw.json 的真实 token
-let originalHome
-let tmpHome
-beforeAll(() => {
-  originalHome = process.env.HOME
-  tmpHome = mkdtempSync(join(tmpdir(), 'qt-tg-cfg-'))
-  process.env.HOME = tmpHome
-})
-afterAll(() => {
-  if (originalHome === undefined) delete process.env.HOME
-  else process.env.HOME = originalHome
-  try { rmSync(tmpHome, { recursive: true, force: true }) } catch {}
-})
 
 function makeApp({ getConfig, getTelegramBot, probeRegistry = null, fetchFn }) {
   const app = express()

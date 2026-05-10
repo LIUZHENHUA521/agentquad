@@ -6,13 +6,10 @@ import request from 'supertest'
 import { createServer } from '../src/server.js'
 
 describe('GET /api/config token mask', () => {
-  let tmp, srv, originalHome
+  let tmp, srv
 
   beforeEach(() => {
     tmp = mkdtempSync(join(tmpdir(), 'qt-cfg-mask-'))
-    // 隔离 ~/.openclaw/openclaw.json fallback
-    originalHome = process.env.HOME
-    process.env.HOME = tmp
   })
 
   afterEach(async () => {
@@ -20,7 +17,6 @@ describe('GET /api/config token mask', () => {
       try { await srv.close() } catch {}
       srv = null
     }
-    process.env.HOME = originalHome
     try { rmSync(tmp, { recursive: true, force: true }) } catch {}
   })
 
@@ -47,12 +43,10 @@ describe('GET /api/config token mask', () => {
 })
 
 describe('PUT /api/config token mask', () => {
-  let tmp, srv, originalHome
+  let tmp, srv
 
   beforeEach(() => {
     tmp = mkdtempSync(join(tmpdir(), 'qt-cfg-put-'))
-    originalHome = process.env.HOME
-    process.env.HOME = tmp
   })
 
   afterEach(async () => {
@@ -60,7 +54,6 @@ describe('PUT /api/config token mask', () => {
       try { await srv.close() } catch {}
       srv = null
     }
-    process.env.HOME = originalHome
     try { rmSync(tmp, { recursive: true, force: true }) } catch {}
   })
 

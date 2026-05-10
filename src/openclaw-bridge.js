@@ -11,9 +11,6 @@
  * - sessionId → targetUserId 的路由内存表，沿配置 fallback
  */
 import { spawn } from 'node:child_process'
-import { readFileSync, existsSync } from 'node:fs'
-import { join } from 'node:path'
-import { homedir } from 'node:os'
 import { toTelegramV2, toPlainText } from './telegram-markdown.js'
 import { hasPermissionButtons, buildPermissionCard } from './lark-card.js'
 
@@ -40,22 +37,6 @@ function normalizeTarget(target, channel) {
 }
 
 function nowMs() { return Date.now() }
-
-/**
- * 从 ~/.openclaw/openclaw.json 读 Telegram bot token。
- * Telegram 出站走 HTTPS Bot API 直连，比 shell out openclaw CLI 快 ~30s（避免 CLI 冷启动）
- * weixin 等其他 channel 没 public bot API，仍走 CLI 兜底。
- */
-function loadTelegramTokenFromOpenClaw() {
-  try {
-    const path = join(homedir(), '.openclaw', 'openclaw.json')
-    if (!existsSync(path)) return null
-    const cfg = JSON.parse(readFileSync(path, 'utf8'))
-    return cfg?.channels?.telegram?.botToken || null
-  } catch {
-    return null
-  }
-}
 
 function getTelegramTokenFromConfig(config) {
   const token = config?.telegram?.botToken
@@ -148,7 +129,6 @@ export function createOpenClawBridge({
   cliBin = DEFAULT_CLI_BIN,
   spawnFn = spawn,
   logger = console,
-  loadTelegramToken = loadTelegramTokenFromOpenClaw,  // 测试用：可 mock null
   telegramSender = sendViaTelegramAPI,                // 测试用：可 mock fake fetch
   telegramBot: initialTelegramBot = null,              // 可选：用于 sendDocument 附件
   larkBot: initialLarkBot = null,
@@ -285,7 +265,7 @@ export function createOpenClawBridge({
 
     // ─── Telegram 快路径：直接 HTTPS POST Bot API（~1-3s vs CLI 30+s 冷启动） ───
     if (effectiveChannel === 'telegram') {
-      const token = getTelegramTokenFromConfig(getConfig()) || loadTelegramToken()
+      const token = getTelegramTokenFromConfig(getConfig())
       if (token) {
         const threadIdForSend = route?.threadId || null
         // 防御兜底：sessionId-routed 但没拿到 thread → fallback 路径，不能静默落 General。

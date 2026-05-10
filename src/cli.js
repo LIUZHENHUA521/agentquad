@@ -296,14 +296,14 @@ export async function doctorReport({ rootDir = DEFAULT_ROOT_DIR } = {}) {
         : '空 = 拒所有：跑 `quadtodo config set telegram.allowedChatIds.0 <supergroup-id>`',
     })
 
-    // 7. token（从 OpenClaw config 读）
+    // 7. token（从 ~/.quadtodo/config.json 读）
     try {
       const { readBotToken } = await import('./telegram-bot.js')
       const tok = readBotToken(() => cfg)
       checks.push({
         name: 'telegram bot token',
         ok: Boolean(tok),
-        detail: tok ? '✓ found in ~/.openclaw/openclaw.json' : '缺失：先在 OpenClaw 注册 bot token（openclaw channels add --channel telegram --token ...）',
+        detail: tok ? '✓ token in ~/.quadtodo/config.json' : '缺失：在 Web Settings → Telegram 里填 Bot Token，或编辑 ~/.quadtodo/config.json 的 telegram.botToken',
       })
     } catch (e) {
       checks.push({ name: 'telegram bot token', ok: false, detail: e.message })

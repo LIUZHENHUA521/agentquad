@@ -69,10 +69,9 @@ function isMaskedToken(value: unknown): boolean {
   return typeof value === 'string' && value.startsWith('tg_***')
 }
 
-function telegramSourceLabel(source: 'quadtodo' | 'openclaw' | 'missing' | 'input'): string {
+function telegramSourceLabel(source: 'quadtodo' | 'missing' | 'input'): string {
   if (source === 'input') return '当前输入，保存后生效'
   if (source === 'quadtodo') return 'quadtodo'
-  if (source === 'openclaw') return 'openclaw'
   return 'missing'
 }
 
@@ -107,7 +106,7 @@ export default function SettingsDrawer({ open, onClose }: Props) {
     } catch { return 'trae-cn' }
   })
   const [probeOpen, setProbeOpen] = useState(false)
-  const [tokenSource, setTokenSource] = useState<'quadtodo' | 'openclaw' | 'missing'>('missing')
+  const [tokenSource, setTokenSource] = useState<'quadtodo' | 'missing'>('missing')
   const [tokenMasked, setTokenMasked] = useState<string>('')
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<string | null>(null)
@@ -206,7 +205,7 @@ export default function SettingsDrawer({ open, onClose }: Props) {
             ...rate,
           })),
         })
-        setTokenSource((result.config.telegram?.botTokenSource as 'quadtodo' | 'openclaw' | 'missing' | undefined) || 'missing')
+        setTokenSource((result.config.telegram?.botTokenSource as 'quadtodo' | 'missing' | undefined) || 'missing')
         setTokenMasked(result.config.telegram?.botTokenMasked || '')
         setLarkSecretSource((result.config.lark?.appSecretSource as 'quadtodo' | 'missing' | undefined) || 'missing')
         setViewingTool((result.config.defaultTool as ToolKey) || 'claude')
@@ -235,7 +234,11 @@ export default function SettingsDrawer({ open, onClose }: Props) {
 
   const handleSave = async () => {
     try {
-      const values = await form.validateFields()
+      await form.validateFields()
+      // Tabs unmount inactive panels, so validateFields() only returns values
+      // for the active tab's fields. Reading the full store keeps Telegram
+      // values intact when saving from the Lark tab (and vice versa).
+      const values = form.getFieldsValue(true)
       setSaving(true)
       const result = await updateConfig({
         port: Number(values.port),
@@ -318,7 +321,7 @@ export default function SettingsDrawer({ open, onClose }: Props) {
       })
       setConfig(result.config)
       setToolDiagnostics(result.toolDiagnostics)
-      setTokenSource((result.config.telegram?.botTokenSource as 'quadtodo' | 'openclaw' | 'missing' | undefined) || 'missing')
+      setTokenSource((result.config.telegram?.botTokenSource as 'quadtodo' | 'missing' | undefined) || 'missing')
       setTokenMasked(result.config.telegram?.botTokenMasked || '')
       setLarkSecretSource((result.config.lark?.appSecretSource as 'quadtodo' | 'missing' | undefined) || 'missing')
       form.setFieldsValue({
@@ -752,7 +755,7 @@ export default function SettingsDrawer({ open, onClose }: Props) {
               <Form.Item label="Bot Token" required>
                 <Space.Compact style={{ width: '100%' }}>
                   <Form.Item name="telegramBotToken" noStyle>
-                    <Input.Password placeholder="paste token here，留空 = 用兜底来源" autoComplete="new-password" />
+                    <Input.Password placeholder="paste token here，留空 = 不启用 Telegram" autoComplete="new-password" />
                   </Form.Item>
                   <Button
                     loading={testing}
@@ -779,9 +782,8 @@ export default function SettingsDrawer({ open, onClose }: Props) {
                   >测试</Button>
                 </Space.Compact>
                 <div style={{ marginTop: 4, fontSize: 12 }}>
-                  <Tag color={tokenSource === 'quadtodo' ? 'default' : tokenSource === 'openclaw' ? 'orange' : 'error'}>
+                  <Tag color={tokenSource === 'quadtodo' ? 'default' : 'error'}>
                     {tokenSource === 'quadtodo' && '来自 quadtodo 配置'}
-                    {tokenSource === 'openclaw' && '来自 ~/.openclaw/openclaw.json（兜底）'}
                     {tokenSource === 'missing' && '未配置'}
                   </Tag>
                   {testResult && <span style={{ marginLeft: 8 }}>{testResult}</span>}

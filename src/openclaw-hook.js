@@ -795,24 +795,28 @@ export function createOpenClawHookHandler(deps = {}) {
       }
     }
 
+    // Stop 事件 = Claude 完成一轮回复 → 必须无条件更新 idle 状态 + flush dispatcher 队列，
+    // 不能受 result.ok 左右。理由：
+    //   - awaitingReply 描述的是 Claude 自身状态（finished a turn），跟"我们有没有把回复
+    //     成功推到 telegram/lark"无关；
+    //   - 推送失败（route 缺失、TG 限流、网络错）一旦把这两步吞掉，dispatcher 就永远以为
+    //     busy，后续用户消息全部回 "🔄 已排队"，队列也不 flush，直到进程重启都不能恢复。
+    if (evt === 'stop' && sessionId && aiTerminal?.markSessionAwaitingReply) {
+      try { aiTerminal.markSessionAwaitingReply(sessionId, true) }
+      catch (e) { logger.warn?.(`[openclaw-hook] markSessionAwaitingReply failed: ${e.message}`) }
+    }
+    // 顺序：上面已 markSessionAwaitingReply(true) 让 dispatcher 看到 idle，再 flush
+    if (evt === 'stop' && sessionId && sessionInputDispatcher?.onSessionIdle) {
+      Promise.resolve(sessionInputDispatcher.onSessionIdle(sessionId))
+        .catch((e) => logger.warn?.(`[openclaw-hook] dispatcher.onSessionIdle failed: ${e.message}`))
+    }
+
     if (result.ok) {
       recordSent(sessionId, evt)
       // Stop 事件 = Claude 完成一轮回复 → 标题切到 💤（在 push 成功后才切，
       // 避免推送失败时标题先变 💤 但消息没到）
       if (evt === 'stop' && sessionId && loadingTracker?.markIdle) {
         loadingTracker.markIdle(sessionId).catch((e) => logger.warn?.(`[openclaw-hook] markIdle failed: ${e.message}`))
-      }
-      // Stop 事件 = Claude 完成一轮回复 → 在 ai-terminal 上标记 awaiting reply,
-      // 让 web reply hub 也能感知到（独立于 telegram/lark 路由是否存在）
-      if (evt === 'stop' && sessionId && aiTerminal?.markSessionAwaitingReply) {
-        try { aiTerminal.markSessionAwaitingReply(sessionId, true) }
-        catch (e) { logger.warn?.(`[openclaw-hook] markSessionAwaitingReply failed: ${e.message}`) }
-      }
-      // Stop = idle 时刻 → dispatcher flush 队列里在 busy 期间累积的用户输入
-      // 顺序：先 markSessionAwaitingReply(true) 让 dispatcher 看到 idle，再 flush
-      if (evt === 'stop' && sessionId && sessionInputDispatcher?.onSessionIdle) {
-        Promise.resolve(sessionInputDispatcher.onSessionIdle(sessionId))
-          .catch((e) => logger.warn?.(`[openclaw-hook] dispatcher.onSessionIdle failed: ${e.message}`))
       }
       // Stop / session-end → 清掉 lark "在思考" reaction（如果是 lark route）
       if ((evt === 'stop' || evt === 'session-end') && sessionId && larkBot?.clearReactionsForSession) {
