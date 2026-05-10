@@ -66,14 +66,29 @@ const CODEX_ROLLOUT_FILE_RE = /^rollout-.*-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-
 const MAX_LOG_BYTES = 512 * 1024
 const CODEX_SESSIONS_DIR = join(homedir(), '.codex', 'sessions')
 
-function codexTodayDir() {
-  const now = new Date()
+function codexDayDir(date) {
   return join(
     CODEX_SESSIONS_DIR,
-    String(now.getFullYear()),
-    String(now.getMonth() + 1).padStart(2, '0'),
-    String(now.getDate()).padStart(2, '0'),
+    String(date.getFullYear()),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0'),
   )
+}
+
+function codexTodayDir() {
+  return codexDayDir(new Date())
+}
+
+// quadtodo 进程时区可能跟 codex CLI 进程时区不一致（典型场景：quadtodo 没设 TZ + LANG=zh_CN
+// 让 Node 默认 CST，但 codex 用 macOS 系统 TZ 是 PDT，差 15h 直接跨日）；同时盯 today/
+// yesterday/tomorrow 三个目录，把 ±24h 时区漂移吃掉。
+function codexNearbyDayDirs() {
+  const now = Date.now()
+  return [
+    codexDayDir(new Date(now - 86400_000)),
+    codexDayDir(new Date(now)),
+    codexDayDir(new Date(now + 86400_000)),
+  ]
 }
 
 // codex 0.124.0 无 --session-id / --rollout-path 预置能力；首个可靠的 session id 来源是
@@ -81,48 +96,50 @@ function codexTodayDir() {
 // fs.watch 的事件延迟通常 <50ms，远优于 400ms 轮询；fs.watch 在部分 FS 不可靠，所以
 // 三路并行（fs.watch / 400ms 轮询 / stdout 正则），setNativeId 里处理去重与相互清理。
 function defaultCodexWatcherFactory(_spawnTime, onHit) {
-  const dayDir = codexTodayDir()
-  try { mkdirSync(dayDir, { recursive: true }) } catch { /* ignore */ }
-  try {
-    console.log(`[codex-detect] fs.watch armed on ${dayDir}`)
-    return fsWatch(dayDir, { persistent: false }, (eventType, filename) => {
-      if (!filename) return
-      const m = filename.match(CODEX_ROLLOUT_FILE_RE)
-      console.log(`[codex-detect] fs.watch event=${eventType} file=${filename} match=${!!m}`)
-      if (m) onHit(m[1])
-    })
-  } catch (e) {
-    console.warn(`[codex-detect] fs.watch FAILED:`, e?.message || e)
-    return null
+  const dirs = codexNearbyDayDirs()
+  const watchers = []
+  for (const dir of dirs) {
+    try { mkdirSync(dir, { recursive: true }) } catch { /* ignore */ }
+    try {
+      const w = fsWatch(dir, { persistent: false }, (eventType, filename) => {
+        if (!filename) return
+        const m = filename.match(CODEX_ROLLOUT_FILE_RE)
+        console.log(`[codex-detect] fs.watch event=${eventType} dir=${dir} file=${filename} match=${!!m}`)
+        if (m) onHit(m[1])
+      })
+      watchers.push(w)
+      console.log(`[codex-detect] fs.watch armed on ${dir}`)
+    } catch (e) {
+      console.warn(`[codex-detect] fs.watch FAILED on ${dir}:`, e?.message || e)
+    }
   }
+  if (!watchers.length) return null
+  // 返回个聚合 close 函数让上层照旧 .close()
+  return { close() { for (const w of watchers) { try { w.close() } catch { /* ignore */ } } } }
 }
 
 function detectCodexSessionFromFs(afterMs) {
-  const now = new Date()
-  const yy = now.getFullYear().toString()
-  const mm = String(now.getMonth() + 1).padStart(2, '0')
-  const dd = String(now.getDate()).padStart(2, '0')
-  const dayDir = join(CODEX_SESSIONS_DIR, yy, mm, dd)
-  if (!existsSync(dayDir)) return null
-  try {
-    let newest = null
-    let newestTime = 0
-    for (const file of readdirSync(dayDir)) {
-      if (!file.startsWith('rollout-') || !file.endsWith('.jsonl')) continue
-      const st = statSync(join(dayDir, file))
-      const t = st.birthtimeMs || st.ctimeMs
-      if (t > afterMs && t > newestTime) {
-        const uuidMatch = file.match(/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/)
-        if (uuidMatch) {
-          newest = uuidMatch[1]
-          newestTime = t
+  // 同时扫 today / yesterday / tomorrow，对抗 quadtodo / codex 进程间的 TZ 漂移
+  let newest = null
+  let newestTime = 0
+  for (const dayDir of codexNearbyDayDirs()) {
+    if (!existsSync(dayDir)) continue
+    try {
+      for (const file of readdirSync(dayDir)) {
+        if (!file.startsWith('rollout-') || !file.endsWith('.jsonl')) continue
+        const st = statSync(join(dayDir, file))
+        const t = st.birthtimeMs || st.ctimeMs
+        if (t > afterMs && t > newestTime) {
+          const uuidMatch = file.match(/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/)
+          if (uuidMatch) {
+            newest = uuidMatch[1]
+            newestTime = t
+          }
         }
       }
-    }
-    return newest
-  } catch {
-    return null
+    } catch { /* ignore one bad dir, keep scanning others */ }
   }
+  return newest
 }
 
 function tryReadCwdFromSessionMeta(filePath) {
