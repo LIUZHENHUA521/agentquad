@@ -391,6 +391,7 @@ program.command('start')
       defaultCwd,
       configRootDir: rootDir,
       webDist: resolvePath(__dirname, '../dist-web'),
+      strictWebDist: true,
     })
 
     try {
