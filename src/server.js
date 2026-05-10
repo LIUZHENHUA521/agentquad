@@ -36,6 +36,7 @@ import { createOpenClawHookHandler } from "./openclaw-hook.js";
 import { createTelegramSyncRouter } from "./routes/telegram-sync.js";
 import { createOpenClawHookRouter } from "./routes/openclaw-hook.js";
 import { createOpenClawWizard } from "./openclaw-wizard.js";
+import { createSessionInputDispatcher } from "./session-input-dispatcher.js";
 import { createOpenClawInboundRouter } from "./routes/openclaw-inbound.js";
 import { createTelegramConfigRouter } from "./routes/telegram-config.js";
 import { createTelegramBot, readBotTokenWithSource } from "./telegram-bot.js";
@@ -1243,6 +1244,23 @@ export function createServer(opts = {}) {
 	const loadingTrackerProxy = unwrapHolder(loadingTrackerHolder, 'loading_tracker')
 	const reactionTrackerProxy = unwrapHolder(reactionTrackerHolder, 'reaction_tracker')
 
+	// Session Input Dispatcher：所有 "把用户文本投递到一个 Claude Code session" 的路径都走它
+	// 三档语义：queue_or_send / soft_interrupt (`!`) / hard_cancel (`!!` or in-topic `/stop`)
+	// 回调暂用 stub，Task 15 填具体的 lark/telegram 路由实现
+	const sessionInputDispatcher = createSessionInputDispatcher({
+		pty,
+		aiTerminal: ait,
+		callbacks: {
+			onQueueFirstEnqueue: async (_ctx) => undefined,
+			onQueueAdditionalEnqueue: async (_ctx) => undefined,
+			onFlush: async (_ctx) => undefined,
+			onHardCancel: async (_ctx) => undefined,
+			onStale: async (_ctx) => undefined,
+			onSessionEnd: async (_ctx) => undefined,
+		},
+		logger: console,
+	})
+
 	const openclawHookHandler = createOpenClawHookHandler({
 		db,
 		openclaw: openclawBridge,
@@ -1252,6 +1270,7 @@ export function createServer(opts = {}) {
 		larkBot: larkBotProxy,                                // Stop hook → 清掉 lark "在思考" reaction
 		loadingTracker: loadingTrackerProxy,                  // Stop hook → 标题切 ✅/❌/⏹（终态）
 		reactionTracker: reactionTrackerProxy,                // Stop hook → 清 telegram "✍" reaction
+		sessionInputDispatcher,                               // Stop / session-end → 触发 dispatcher flush / cleanup
 		getConfig: () => loadConfig({ rootDir: configRootDir }),
 	});
 	app.use("/api/openclaw/hook", createOpenClawHookRouter({ hookHandler: openclawHookHandler }));
@@ -1266,6 +1285,7 @@ export function createServer(opts = {}) {
 		telegramBot: telegramBotProxy,
 		larkBot: larkBotProxy,
 		loadingTracker: loadingTrackerProxy,                  // wizard stdin proxy → 标题切回 🔄
+		sessionInputDispatcher,                               // wizard stdin proxy → 走 dispatcher 三档语义
 		getConfig: () => loadConfig({ rootDir: configRootDir }),
 	});
 	openclawWizardLazyRef.handleInbound = (...args) => openclawWizard.handleInbound(...args);
