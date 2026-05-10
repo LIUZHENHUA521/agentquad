@@ -506,11 +506,11 @@ reviewer 指出原顺序中 Phase B（turn-end 推送）会调到 footer 的 `ex
 
 ### 12.8 验收（追加到 §10）
 
-- [ ] 配置 `dispatch.lark.perUser['<my_open_id>'] = 'codex'` → 用我的 lark 账号发起任务，wizard 创建的 todo `tool === 'codex'`
-- [ ] 配置 `dispatch.telegram.default = 'codex'`，未配 perChat → 任意 telegram chat 发起任务都默认 codex
-- [ ] 配置中未声明 dispatch 段 → 行为完全等于今天的 `defaultTool` 单字段（向后兼容）
-- [ ] Web 创建 todo 时 `req.body.tool` 显式 override 优先于 `dispatch.web.default`
-- [ ] SettingsDrawer 编辑 perUser 表 → 保存后立即对下一条 IM 进来的任务生效（不需重启）
+- [x] 配置 `dispatch.lark.perUser['<my_open_id>'] = 'codex'` → 用我的 lark 账号发起任务，wizard 创建的 todo `tool === 'codex'`（自动覆盖：`test/openclaw-wizard.dispatch.test.js` "perUser hits"）
+- [x] 配置 `dispatch.telegram.default = 'codex'`，未配 perChat → 任意 telegram chat 发起任务都默认 codex（自动覆盖：`test/dispatch.test.js` "channel default" + wizard fallback test）
+- [x] 配置中未声明 dispatch 段 → 行为完全等于今天的 `defaultTool` 单字段（向后兼容）（自动覆盖：`test/dispatch.test.js` "back-compat: missing dispatch section → defaultTool"）
+- [ ] Web 创建 todo 时 `req.body.tool` 显式 override 优先于 `dispatch.web.default`（手动 e2e；server `/api/todos` POST 当前不读 defaultTool，前端在 `/api/ai-terminal/exec` 显式传 tool）
+- [ ] SettingsDrawer 编辑 perUser 表 → 保存后立即对下一条 IM 进来的任务生效（不需重启）（手动 UI 验证；wizard 通过 `getConfig()` 每次读最新配置，理论上立即生效）
 
 ### 12.9 实施顺序（追加到 §11）
 
