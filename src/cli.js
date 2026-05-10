@@ -133,6 +133,15 @@ export async function doctorReport({ rootDir = DEFAULT_ROOT_DIR } = {}) {
     ok: existsSync(rootDir) || (loadConfig({ rootDir }), true),
   })
 
+  {
+    const major = Number(process.version.slice(1).split('.')[0])
+    checks.push({
+      name: 'Node version',
+      ok: major >= 20,
+      detail: process.version + (major >= 20 ? '' : ' (please upgrade to Node 20+; e.g. `nvm install 20`)'),
+    })
+  }
+
   let cfg = null
   try {
     cfg = loadConfig({ rootDir })

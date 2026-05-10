@@ -162,6 +162,15 @@ describe('cli helpers', () => {
     })
   })
 
+  it('doctorReport includes a "Node version" check that passes on >=20', async () => {
+    const report = await doctorReport({ rootDir })
+    const check = report.checks.find(c => c.name === 'Node version')
+    expect(check).toBeTruthy()
+    // We are running on Node 20+; should pass.
+    expect(check.ok).toBe(true)
+    expect(check.detail).toMatch(/^v\d+/)
+  })
+
   it('buildDoctorChecks is pure and sync-returns a predictable set of names', () => {
     const names = buildDoctorChecks()
     expect(names).toEqual([
