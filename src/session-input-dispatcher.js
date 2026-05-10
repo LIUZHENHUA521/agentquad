@@ -41,6 +41,8 @@ export function createSessionInputDispatcher({ pty, aiTerminal, callbacks = {}, 
 
   // sessionId → QueueState { items, firstEchoMessageId, staleTimer }
   const queues = new Map()
+  // sessionId set: 软中断 250ms 窗口内
+  const softInterrupting = new Set()
 
   function getOrCreateQueue(sessionId) {
     let q = queues.get(sessionId)
@@ -89,8 +91,38 @@ export function createSessionInputDispatcher({ pty, aiTerminal, callbacks = {}, 
       return { action: 'queued', queueSize: size, sessionId }
     }
 
-    // soft_interrupt / hard_cancel busy 路径在后续 task 实现
+    if (mode === 'soft_interrupt') {
+      if (softInterrupting.has(sessionId)) {
+        // 250ms 窗口内的第 2 个 ! → 降级为入队
+        const size = await enqueue({ sessionId, stripped, imagePaths, channel, echoTarget })
+        return { action: 'queued', queueSize: size, reason: 'soft_interrupt_in_progress', sessionId }
+      }
+      return await performSoftInterrupt({ sessionId, stripped, imagePaths })
+    }
+
+    // hard_cancel busy 路径在后续 task 实现
     return { action: 'noop', reason: 'busy_not_implemented_yet', sessionId }
+  }
+
+  async function performSoftInterrupt({ sessionId, stripped, imagePaths }) {
+    // 丢弃旧队列
+    const q = queues.get(sessionId)
+    if (q) {
+      if (q.staleTimer) clearTimeout(q.staleTimer)
+      queues.delete(sessionId)
+    }
+    // 立刻发 Esc
+    pty.write(sessionId, '\x1b')
+    softInterrupting.add(sessionId)
+    // 等 TUI 回到 prompt
+    await new Promise((resolve) => setTimeout(resolve, SOFT_INTERRUPT_DELAY_MS))
+    softInterrupting.delete(sessionId)
+    // 投递新文本（如果有）
+    if (stripped || (imagePaths && imagePaths.length)) {
+      const payload = buildPayload(stripped, imagePaths)
+      writeToPty(pty, sessionId, payload, logger)
+    }
+    return { action: 'soft_interrupted', sessionId }
   }
 
   async function flushQueue(sessionId) {

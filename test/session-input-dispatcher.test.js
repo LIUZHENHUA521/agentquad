@@ -182,3 +182,51 @@ describe('onSessionIdle: flush queue', () => {
     expect(writes).toEqual([])
   })
 })
+
+describe('send: busy + soft_interrupt', () => {
+  it('busy + !xxx → 立刻发 Esc，250ms 后写 xxx + \\r，丢弃旧队列', async () => {
+    vi.useFakeTimers()
+    const { pty, aiTerminal, writes } = makeDeps({ awaitingReply: false })
+    const d = createSessionInputDispatcher({ pty, aiTerminal })
+    await d.send({ sessionId: 'sid1', text: 'old1' })
+    await d.send({ sessionId: 'sid1', text: 'old2' })
+    expect(d.describe().byId.sid1.queueSize).toBe(2)
+    const promise = d.send({ sessionId: 'sid1', text: '!new' })
+    expect(writes).toEqual([{ sid: 'sid1', data: '\x1b' }])
+    expect(d.describe().sessions).toBe(0)
+    await vi.advanceTimersByTimeAsync(260)
+    await vi.advanceTimersByTimeAsync(100)
+    const result = await promise
+    expect(result).toMatchObject({ action: 'soft_interrupted' })
+    expect(writes).toEqual([
+      { sid: 'sid1', data: '\x1b' },
+      { sid: 'sid1', data: 'new' },
+      { sid: 'sid1', data: '\r' },
+    ])
+    vi.useRealTimers()
+  })
+
+  it('250ms 窗口内第 2 个 ! → 降级为入队', async () => {
+    vi.useFakeTimers()
+    const { pty, aiTerminal, writes } = makeDeps({ awaitingReply: false })
+    const d = createSessionInputDispatcher({ pty, aiTerminal })
+    d.send({ sessionId: 'sid1', text: '!first' }).catch(() => {})
+    await vi.advanceTimersByTimeAsync(50)
+    const r2 = await d.send({ sessionId: 'sid1', text: '!second' })
+    expect(r2).toMatchObject({ action: 'queued' })
+    expect(writes.filter((w) => w.data === '\x1b')).toHaveLength(1)
+    vi.useRealTimers()
+  })
+
+  it('busy + ! 但 stripped 为空 → 仅 Esc，不投递文本', async () => {
+    vi.useFakeTimers()
+    const { pty, aiTerminal, writes } = makeDeps({ awaitingReply: false })
+    const d = createSessionInputDispatcher({ pty, aiTerminal })
+    const promise = d.send({ sessionId: 'sid1', text: '!' })
+    await vi.advanceTimersByTimeAsync(400)
+    const result = await promise
+    expect(result).toMatchObject({ action: 'soft_interrupted' })
+    expect(writes).toEqual([{ sid: 'sid1', data: '\x1b' }])
+    vi.useRealTimers()
+  })
+})
