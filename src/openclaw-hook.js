@@ -224,6 +224,7 @@ export function createOpenClawHookHandler({
   db, openclaw, aiTerminal = null,
   pty = null, telegramBot = null, larkBot = null, loadingTracker = null,
   reactionTracker = null,
+  sessionInputDispatcher = null,     // Stop / session-end → 触发 dispatcher flush / cleanup
   cooldownMs = DEFAULT_COOLDOWN_MS,
   getConfig = null,                  // () => app config（用于读 telegram.notificationCooldownMs）
   logger = console,
@@ -622,6 +623,10 @@ export function createOpenClawHookHandler({
       }
       openclaw.clearLastPushForSession?.(sessionId)
       openclaw.clearSessionRoute?.(sessionId, 'session-end')
+      if (sessionInputDispatcher?.onSessionEnd) {
+        Promise.resolve(sessionInputDispatcher.onSessionEnd(sessionId))
+          .catch((e) => logger.warn?.(`[openclaw-hook] dispatcher.onSessionEnd failed: ${e.message}`))
+      }
     }
 
     if (result.ok) {
@@ -636,6 +641,12 @@ export function createOpenClawHookHandler({
       if (evt === 'stop' && sessionId && aiTerminal?.markSessionAwaitingReply) {
         try { aiTerminal.markSessionAwaitingReply(sessionId, true) }
         catch (e) { logger.warn?.(`[openclaw-hook] markSessionAwaitingReply failed: ${e.message}`) }
+      }
+      // Stop = idle 时刻 → dispatcher flush 队列里在 busy 期间累积的用户输入
+      // 顺序：先 markSessionAwaitingReply(true) 让 dispatcher 看到 idle，再 flush
+      if (evt === 'stop' && sessionId && sessionInputDispatcher?.onSessionIdle) {
+        Promise.resolve(sessionInputDispatcher.onSessionIdle(sessionId))
+          .catch((e) => logger.warn?.(`[openclaw-hook] dispatcher.onSessionIdle failed: ${e.message}`))
       }
       // Stop / session-end → 清掉 lark "在思考" reaction（如果是 lark route）
       if ((evt === 'stop' || evt === 'session-end') && sessionId && larkBot?.clearReactionsForSession) {
