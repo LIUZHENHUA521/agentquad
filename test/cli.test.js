@@ -162,6 +162,23 @@ describe('cli helpers', () => {
     })
   })
 
+  it('doctorReport includes a "Node version" check that passes on >=20', async () => {
+    const report = await doctorReport({ rootDir })
+    const check = report.checks.find(c => c.name === 'Node version')
+    expect(check).toBeTruthy()
+    // We are running on Node 20+; should pass.
+    expect(check.ok).toBe(true)
+    expect(check.detail).toMatch(/^v\d+/)
+  })
+
+  it('doctorReport includes a "frontend assets" check naming dist-web/index.html', async () => {
+    const report = await doctorReport({ rootDir })
+    const check = report.checks.find(c => c.name === 'frontend assets')
+    expect(check).toBeTruthy()
+    expect(typeof check.ok).toBe('boolean')
+    expect(check.detail || '').toMatch(/dist-web\/index\.html/)
+  })
+
   it('buildDoctorChecks is pure and sync-returns a predictable set of names', () => {
     const names = buildDoctorChecks()
     expect(names).toEqual([
@@ -173,5 +190,30 @@ describe('cli helpers', () => {
       'codex binary',
       'cursor binary',
     ])
+  })
+})
+
+import { TOOL_PACKAGES, planInstallTools } from '../src/cli.js'
+
+describe('install-tools planning', () => {
+  it('TOOL_PACKAGES maps claude → @anthropic-ai/claude-code (bin: claude) and codex → @openai/codex (bin: codex)', () => {
+    expect(TOOL_PACKAGES.claude).toEqual({ pkg: '@anthropic-ai/claude-code', bin: 'claude' })
+    expect(TOOL_PACKAGES.codex).toEqual({ pkg: '@openai/codex', bin: 'codex' })
+  })
+
+  it('planInstallTools({ all: true }) returns both tools in declared order', () => {
+    expect(planInstallTools({ all: true })).toEqual(['claude', 'codex'])
+  })
+
+  it('planInstallTools({ claude: true }) returns only claude', () => {
+    expect(planInstallTools({ claude: true })).toEqual(['claude'])
+  })
+
+  it('planInstallTools({}) defaults to all', () => {
+    expect(planInstallTools({})).toEqual(['claude', 'codex'])
+  })
+
+  it('planInstallTools({ claude: true, codex: true }) returns both', () => {
+    expect(planInstallTools({ claude: true, codex: true })).toEqual(['claude', 'codex'])
   })
 })

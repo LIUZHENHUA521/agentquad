@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import express from 'express'
 import request from 'supertest'
 import { EventEmitter } from 'node:events'
@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { openDb } from '../src/db.js'
 import { createAiTerminal } from '../src/routes/ai-terminal.js'
+import { setConfigValue, loadConfig } from '../src/config.js'
 
 // 假 PtyManager：不 spawn 真进程，手动触发事件
 class FakePty extends EventEmitter {
@@ -38,6 +39,13 @@ function makeApp(opts = {}) {
   const db = openDb(':memory:')
   const pty = new FakePty()
   const logDir = mkdtempSync(join(tmpdir(), 'quadtodo-log-'))
+  const rootDir = opts.rootDir || mkdtempSync(join(tmpdir(), 'quadtodo-root-'))
+  // 让 spawnSession 内的 loadConfig({rootDir}) 真的能落盘 / 读到这个临时配置。
+  // 默认 tool bin 指向 /bin/sh（任何 POSIX 机器上一定存在），让 checkToolAvailable
+  // 不会误把测试机当成「工具缺失」。tool_missing 专项测试自己再 setConfigValue 覆盖即可。
+  loadConfig({ rootDir })
+  setConfigValue('tools.claude.bin', '/bin/sh', { rootDir })
+  setConfigValue('tools.codex.bin', '/bin/sh', { rootDir })
   const ait = createAiTerminal({
     db,
     pty,
@@ -46,16 +54,20 @@ function makeApp(opts = {}) {
     getWebhookConfig: opts.getWebhookConfig,
     onSessionEnded: opts.onSessionEnded,
     onSessionSpawned: opts.onSessionSpawned,
+    rootDir,
   })
   const app = express()
   app.use(express.json())
   app.use('/api/ai-terminal', ait.router)
-  return { app, db, pty, ait, logDir }
+  return { app, db, pty, ait, logDir, rootDir }
 }
 
 describe('routes/ai-terminal', () => {
   let ctx
   beforeEach(() => { ctx = makeApp() })
+  afterEach(() => {
+    if (ctx?.rootDir) rmSync(ctx.rootDir, { recursive: true, force: true })
+  })
 
   it('POST /exec requires todoId, prompt, tool', async () => {
     const r = await request(ctx.app).post('/api/ai-terminal/exec').send({})
@@ -67,6 +79,24 @@ describe('routes/ai-terminal', () => {
       .post('/api/ai-terminal/exec')
       .send({ todoId: 'nope', prompt: 'hi', tool: 'claude' })
     expect(r.status).toBe(404)
+  })
+
+  it('returns 424 with code "tool_missing" when the requested tool is not in PATH', async () => {
+    const todo = ctx.db.createTodo({ title: 'T', quadrant: 1 })
+    setConfigValue('tools.claude.bin', '/tmp/__definitely_not_a_real_bin_xyz', { rootDir: ctx.rootDir })
+
+    const res = await request(ctx.app)
+      .post('/api/ai-terminal/exec')
+      .send({ todoId: todo.id, prompt: 'hi', tool: 'claude' })
+
+    expect(res.status).toBe(424)
+    expect(res.body).toMatchObject({
+      code: 'tool_missing',
+      tool: 'claude',
+      fix: 'quadtodo install-tools --claude',
+    })
+    // 没有真的去 spawn pty
+    expect(ctx.pty.started).toHaveLength(0)
   })
 
   it('POST /exec starts a pty and updates todo', async () => {

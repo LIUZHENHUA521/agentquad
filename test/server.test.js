@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import request from "supertest";
@@ -947,5 +947,20 @@ describe("server", () => {
 		expect(r.status).toBe(200);
 		expect(r.text).toContain("<title>test</title>");
 		await srv2.close();
+	});
+
+	it("createServer rejects when webDist is provided but missing index.html (strictWebDist)", () => {
+		const tmp = mkdtempSync(join(tmpdir(), "qt-server-distmiss-"));
+		const fakeDist = join(tmp, "dist-web"); // does not exist
+		expect(() =>
+			createServer({
+				dbFile: ":memory:",
+				logDir: mkdtempSync(join(tmpdir(), "qt-srv-distmiss-log-")),
+				pty: new FakePty(),
+				webDist: fakeDist,
+				strictWebDist: true,
+			}),
+		).toThrow(/dist-web\/index\.html/);
+		rmSync(tmp, { recursive: true, force: true });
 	});
 });

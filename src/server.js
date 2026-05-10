@@ -448,11 +448,12 @@ function buildSafeLarkConfig(cfg) {
 }
 
 /**
- * @param opts.dbFile   SQLite file path (or ':memory:')
- * @param opts.logDir   directory for ai session logs
- * @param opts.tools    tools config { claude: { bin, args }, codex: { ... } }
- * @param opts.pty      (optional) injected PtyManager — for tests
- * @param opts.webDist  (optional) directory with built frontend assets
+ * @param opts.dbFile         SQLite file path (or ':memory:')
+ * @param opts.logDir         directory for ai session logs
+ * @param opts.tools          tools config { claude: { bin, args }, codex: { ... } }
+ * @param opts.pty            (optional) injected PtyManager — for tests
+ * @param opts.webDist        (optional) directory with built frontend assets
+ * @param opts.strictWebDist  (optional) when true, throw if webDist/index.html is missing
  */
 export function createServer(opts = {}) {
 	const {
@@ -463,10 +464,22 @@ export function createServer(opts = {}) {
 		configRootDir,
 		pty: injectedPty,
 		webDist,
+		strictWebDist = false,
 		pickDirectory = pickDirectoryNative,
 		openNativeTerminal = openNativeTerminalNative,
 		inspectHooks = inspectClaudeHooks,
 	} = opts;
+
+	if (strictWebDist) {
+		const indexPath = join(webDist || "", "index.html");
+		if (!webDist || !existsSync(indexPath)) {
+			throw new Error(
+				`frontend assets missing: ${indexPath}\n` +
+					`  - if you installed via npm: reinstall with \`npm i -g quadtodo\`\n` +
+					`  - if running from source: \`cd web && npm install && npm run build\``,
+			);
+		}
+	}
 
 	const db = openDb(dbFile);
 	const initialConfig = configRootDir

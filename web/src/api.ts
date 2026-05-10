@@ -201,13 +201,29 @@ export interface PickDirectoryResult {
   cancelled: boolean
 }
 
+// API 错误：保留 HTTP status 和原始响应 body，便于调用方按 code 走分支
+// （例如 424 tool_missing 渲染安装提示卡片，而不是单纯弹一条 toast）。
+export class ApiError extends Error {
+  status: number
+  body: any
+  constructor(message: string, status: number, body: any) {
+    super(message)
+    this.name = 'ApiError'
+    this.status = status
+    this.body = body
+  }
+}
+
 async function jsonFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const r = await fetch(BASE + path, {
     ...init,
     headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) },
   })
-  const body = await r.json()
-  if (!body.ok) throw new Error(body.error || `${r.status} ${path}`)
+  const body = await r.json().catch(() => null)
+  if (!body || !body.ok) {
+    const msg = (body && body.error) || `${r.status} ${path}`
+    throw new ApiError(msg, r.status, body)
+  }
   return body as T
 }
 

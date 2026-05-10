@@ -9,7 +9,7 @@ import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { CanvasAddon } from '@xterm/addon-canvas'
 import '@xterm/xterm/css/xterm.css'
-import { getTerminalWsUrl, startAiExec, stopAiExec, openTraeCN, TodoStatus, ResumeSessionInput, EditorKind } from './api'
+import { getTerminalWsUrl, startAiExec, stopAiExec, openTraeCN, TodoStatus, ResumeSessionInput, EditorKind, ApiError } from './api'
 import { useTerminalTheme } from './hooks/useTerminalTheme'
 import { PRESET_LABELS, PRESET_ORDER, TerminalPresetName, TERMINAL_PRESETS, deriveChrome } from './terminalThemes'
 import { useTerminalDockStore } from './store/terminalDockStore'
@@ -92,6 +92,9 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
   const [notificationPermission, setNotificationPermission] = useState<BrowserNotificationPermission>(() => getBrowserNotificationPermission())
   const [sessionExpired, setSessionExpired] = useState(false)
   const sessionExpiredRef = useRef(false)
+  // 后端在 claude/codex 二进制缺失时返回 HTTP 424 + code:'tool_missing'，
+  // 这里保存修复指引（quadtodo install-tools --xxx），用一张卡片代替难懂的 ENOENT toast
+  const [toolMissing, setToolMissing] = useState<null | { tool: string; bin: string; fix: string }>(null)
   const [height, setHeight] = useState(420)
   const [autoMode, setAutoMode] = useState<string | null>(() => {
     try { return localStorage.getItem('quadtodo.autoMode') || null } catch { return null }
@@ -157,6 +160,7 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
 
   useEffect(() => {
     setTurnDoneNotice(false)
+    setToolMissing(null)
     if (turnDoneNoticeTimerRef.current) {
       clearTimeout(turnDoneNoticeTimerRef.current)
       turnDoneNoticeTimerRef.current = null
@@ -203,10 +207,17 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
       })
       stopReconnectRef.current = true
       setSessionExpired(false)
+      setToolMissing(null)
       onSessionRecoveredRef.current?.(nextSessionId)
       return true
     } catch (error: any) {
-      termRef.current?.writeln(`\r\n\x1b[31m--- 自动恢复失败：${error?.message || 'unknown error'} ---\x1b[0m\r`)
+      // 后端在 CLI 二进制缺失时回 424 tool_missing → 弹出修复卡片，不再用 ENOENT toast 把人吓跑
+      if (error instanceof ApiError && error.status === 424 && error.body?.code === 'tool_missing') {
+        setToolMissing({ tool: error.body.tool, bin: error.body.bin, fix: error.body.fix })
+        termRef.current?.writeln(`\r\n\x1b[31m--- 自动恢复失败：${error.body.tool} 未安装 ---\x1b[0m\r`)
+      } else {
+        termRef.current?.writeln(`\r\n\x1b[31m--- 自动恢复失败：${error?.message || 'unknown error'} ---\x1b[0m\r`)
+      }
       return false
     } finally {
       recoveringRef.current = false
@@ -1279,6 +1290,47 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
           />
         </Tooltip>
       </div>
+      {/* tool_missing 修复卡片：424 时弹出，告诉用户跑哪条命令装回 claude/codex */}
+      {toolMissing && (
+        <div style={{
+          border: '1px solid #d9d9d9', borderRadius: 6, padding: 12, margin: 12,
+          background: '#fffbe6',
+        }}>
+          <div style={{ fontWeight: 600, marginBottom: 8 }}>
+            AI 工具 <code>{toolMissing.tool}</code> 未安装
+          </div>
+          <div style={{ marginBottom: 10, color: '#595959', fontSize: 12 }}>
+            在 PATH 中找不到二进制文件 <code>{toolMissing.bin}</code>。在终端运行下面这条命令安装：
+          </div>
+          <div style={{
+            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+            background: '#f5f5f5', padding: 8, borderRadius: 4, marginBottom: 10,
+            fontSize: 12, userSelect: 'all',
+          }}>
+            {toolMissing.fix}
+          </div>
+          <Button
+            size="small"
+            type="primary"
+            onClick={() => {
+              const fix = toolMissing.fix
+              navigator.clipboard?.writeText(fix).then(
+                () => message.success('已复制到剪贴板'),
+                () => message.warning('复制失败，请手动选中命令'),
+              )
+            }}
+          >
+            复制命令
+          </Button>
+          <Button
+            size="small"
+            style={{ marginLeft: 8 }}
+            onClick={() => setToolMissing(null)}
+          >
+            关闭
+          </Button>
+        </div>
+      )}
       {/* 终端 */}
       <div
         ref={containerRef}
