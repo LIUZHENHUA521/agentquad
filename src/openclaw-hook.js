@@ -527,10 +527,17 @@ export function createOpenClawHookHandler(deps = {}) {
       : `${headLine}${footer ? `\n\n${footer}` : ''}`
 
     // 6) 推送
+    // bridge.postText 的形参是 `message`，不是 `text`——早期实现写错字段名，
+    // 导致 bridge 收到 message=undefined 直接走 message_required 短路返回。
     try {
-      await codexBridge.postText({ sessionId: quadtodoSessionId, text: fullText })
+      const r = await codexBridge.postText({ sessionId: quadtodoSessionId, message: fullText })
+      if (!r?.ok) {
+        logger.warn?.(`[codex-hook] postText returned not-ok: reason=${r?.reason} detail=${r?.detail || ''}`)
+        return { ok: false, reason: 'post_failed', detail: r?.reason }
+      }
+      logger.info?.(`[codex-hook] postText OK sessionId=${quadtodoSessionId} event=${event} len=${fullText.length}`)
     } catch (e) {
-      logger.warn?.(`[codex-hook] postText failed: ${e.message}`)
+      logger.warn?.(`[codex-hook] postText threw: ${e.message}`)
       return { ok: false, reason: 'post_failed', detail: e?.message }
     }
 

@@ -34,7 +34,10 @@ describe('openclaw-hook codex branch', () => {
     expect(result.ok).toBe(true)
     expect(bridge.postText).toHaveBeenCalled()
     const sentArg = bridge.postText.mock.calls[0][0]
-    expect(sentArg.text).toContain('codex says hi')
+    // 必须用 `message`，不是 `text`——bridge.postText 形参名是 message，传错了 bridge
+    // 直接走 message_required 短路。这是 IM 推送实测不发的回归点。
+    expect(sentArg.message).toContain('codex says hi')
+    expect(sentArg.text).toBeUndefined()
   })
 
   it('falls back to aiTerminal.sessions scan via session.nativeId when sidecar misses', async () => {
@@ -63,7 +66,7 @@ describe('openclaw-hook codex branch', () => {
     expect(bridge.postText).toHaveBeenCalled()
     const sent = bridge.postText.mock.calls[0][0]
     expect(sent.sessionId).toBe('qs-from-scan')
-    expect(sent.text).toContain('fallback hi')
+    expect(sent.message).toContain('fallback hi')
   })
 
   it('handler returns error when nativeId not in sidecar nor sessions', async () => {
