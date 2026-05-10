@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import { readFileSync } from 'node:fs'
 import {
   formatTokenCount,
   formatCost,
@@ -145,6 +146,13 @@ describe('extractSessionUsageFromLines', () => {
     const s = extractSessionUsageFromLines(lines)
     expect(s.input).toBe(100)
     expect(s.turnCount).toBe(1)
+  })
+
+  it('extractSessionUsageFromLines(lines, "codex") routes to extractCodex', async () => {
+    const fixture = readFileSync(new URL('./fixtures/codex-real-token-count.jsonl', import.meta.url), 'utf8').split('\n')
+    const result = extractSessionUsageFromLines(fixture, 'codex')
+    expect(result.input).toBeGreaterThan(0)
+    expect(result.primaryModel).toMatch(/^gpt-/)
   })
 })
 
