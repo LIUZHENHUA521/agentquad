@@ -74,3 +74,15 @@ describe('lark-card.buildPermissionCard', () => {
     expect(div.text.content).toBe('（无内容）')
   })
 })
+
+describe('buildPermissionCard headerTitle', () => {
+  it('defaults to Claude header when not provided', () => {
+    const card = buildPermissionCard({ message: 'x', actionId: 'a' })
+    expect(JSON.stringify(card)).toContain('Claude Code 等待授权')
+  })
+  it('uses provided headerTitle', () => {
+    const card = buildPermissionCard({ message: 'x', actionId: 'a', headerTitle: '⚠️ Codex 等待授权' })
+    expect(JSON.stringify(card)).toContain('Codex 等待授权')
+    expect(JSON.stringify(card)).not.toContain('Claude Code')
+  })
+})

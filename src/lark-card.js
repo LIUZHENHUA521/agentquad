@@ -30,13 +30,32 @@ function pickButtonTone(callbackData) {
 }
 
 /**
+ * 把 actionId（例如 'codex:<sessionId>' 或 claude shortId）映射成 wizard 期望的
+ *   qt:perm:<short>:allow|deny callback_data。
+ * `short` 取 actionId 末尾 4 个字母数字字符（与 wizard 短码一致）。
+ */
+function buildReplyMarkupFromActionId(actionId) {
+  if (typeof actionId !== 'string' || !actionId) return null
+  const cleaned = actionId.replace(/[^a-z0-9]/gi, '')
+  const short = cleaned.slice(-4).toLowerCase()
+  if (!/^[a-z0-9]{4}$/.test(short)) return null
+  return {
+    inline_keyboard: [[
+      { text: '允许（Enter）', callback_data: `qt:perm:${short}:allow` },
+      { text: '拒绝/退出（Esc）', callback_data: `qt:perm:${short}:deny` },
+    ]],
+  }
+}
+
+/**
  * 构造飞书 interactive card：黄色 header + 文本 div + 按钮 action。
  * 输入参数 message / replyMarkup 来自 openclaw-bridge.postText 的现有形参，
- * 不需要 hook 改动。
+ * 不需要 hook 改动。codex detector 路径用 actionId 直接生成按钮（短码取 actionId 末 4 字符）。
  */
-export function buildPermissionCard({ message, replyMarkup, headerTitle = '⚠️ Claude Code 等待授权' } = {}) {
+export function buildPermissionCard({ message, replyMarkup, actionId, headerTitle = '⚠️ Claude Code 等待授权' } = {}) {
   const buttons = []
-  const rows = replyMarkup?.inline_keyboard || []
+  const effectiveMarkup = replyMarkup || buildReplyMarkupFromActionId(actionId)
+  const rows = effectiveMarkup?.inline_keyboard || []
   for (const row of rows) {
     if (!Array.isArray(row)) continue
     for (const btn of row) {
