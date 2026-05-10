@@ -192,3 +192,28 @@ describe('cli helpers', () => {
     ])
   })
 })
+
+import { TOOL_PACKAGES, planInstallTools } from '../src/cli.js'
+
+describe('install-tools planning', () => {
+  it('TOOL_PACKAGES maps claude → @anthropic-ai/claude-code (bin: claude) and codex → @openai/codex (bin: codex)', () => {
+    expect(TOOL_PACKAGES.claude).toEqual({ pkg: '@anthropic-ai/claude-code', bin: 'claude' })
+    expect(TOOL_PACKAGES.codex).toEqual({ pkg: '@openai/codex', bin: 'codex' })
+  })
+
+  it('planInstallTools({ all: true }) returns both tools in declared order', () => {
+    expect(planInstallTools({ all: true })).toEqual(['claude', 'codex'])
+  })
+
+  it('planInstallTools({ claude: true }) returns only claude', () => {
+    expect(planInstallTools({ claude: true })).toEqual(['claude'])
+  })
+
+  it('planInstallTools({}) defaults to all', () => {
+    expect(planInstallTools({})).toEqual(['claude', 'codex'])
+  })
+
+  it('planInstallTools({ claude: true, codex: true }) returns both', () => {
+    expect(planInstallTools({ claude: true, codex: true })).toEqual(['claude', 'codex'])
+  })
+})

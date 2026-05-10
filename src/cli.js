@@ -17,6 +17,21 @@ import {
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
 
+// Bin names verified via `npm view <pkg> bin`.
+export const TOOL_PACKAGES = {
+  claude: { pkg: '@anthropic-ai/claude-code', bin: 'claude' },
+  codex:  { pkg: '@openai/codex',             bin: 'codex'  },
+}
+
+export function planInstallTools(opts) {
+  const flags = opts || {}
+  const explicit = []
+  if (flags.claude) explicit.push('claude')
+  if (flags.codex)  explicit.push('codex')
+  if (flags.all || explicit.length === 0) return ['claude', 'codex']
+  return explicit
+}
+
 function loadPkgVersion() {
   try {
     const pkg = JSON.parse(readFileSync(resolvePath(__dirname, '../package.json'), 'utf8'))
@@ -507,6 +522,51 @@ program.command('doctor')
     process.exit(report.ok ? 0 : 1)
   })
 
+program.command('install-tools')
+  .description('Install missing AI CLIs (claude / codex) globally via npm')
+  .option('--claude', 'install only @anthropic-ai/claude-code')
+  .option('--codex',  'install only @openai/codex')
+  .option('--all',    'install both (default if no flag given)')
+  .option('-y, --yes', 'skip the y/N confirmation')
+  .action(async (opts) => {
+    const tools = planInstallTools(opts)
+    const items = tools.map((t) => ({ tool: t, ...TOOL_PACKAGES[t] }))
+
+    console.log('About to install:')
+    for (const it of items) console.log(`  - ${it.pkg}  (binary: ${it.bin})`)
+    console.log('Each one will be installed via:  npm install -g <pkg>')
+
+    if (!opts.yes && process.stdin.isTTY) {
+      const ok = await prompt('Continue? [y/N] ')
+      if (!/^y(es)?$/i.test(ok.trim())) {
+        console.log('Aborted.')
+        process.exit(0)
+      }
+    }
+
+    let allOk = true
+    for (const it of items) {
+      console.log(`\n>> npm install -g ${it.pkg}`)
+      const r = spawnSync('npm', ['install', '-g', it.pkg], { stdio: 'inherit' })
+      if (r.status !== 0) {
+        console.error(`\n✗ npm install -g ${it.pkg} exited ${r.status}`)
+        printInstallFailureFix(it)
+        allOk = false
+        break
+      }
+      const w = spawnSync('command', ['-v', it.bin], { encoding: 'utf8', shell: '/bin/sh' })
+      if (w.status !== 0 || !w.stdout.trim()) {
+        console.error(`\n✗ npm reported success but \`${it.bin}\` is not in PATH.`)
+        printInstallFailureFix(it)
+        allOk = false
+        break
+      }
+      console.log(`✓ ${it.bin} → ${w.stdout.trim()}`)
+    }
+
+    process.exit(allOk ? 0 : 1)
+  })
+
 // ─── quadtodo mcp install / status ─────────────────────────────
 
 export function defaultClaudeSettingsPath() {
@@ -784,4 +844,33 @@ const isMain = (() => {
 })()
 if (isMain) {
   program.parseAsync(process.argv)
+}
+
+function printInstallFailureFix(it) {
+  console.error(`
+Common fixes:
+  - Permissions: try \`sudo npm install -g ${it.pkg}\`,
+    or move npm prefix into your home dir:
+      \`npm config set prefix ~/.npm-global\`
+      and add \`~/.npm-global/bin\` to your PATH.
+  - If you use nvm: \`nvm use 20\` first, then retry.
+  - Network/registry: check \`npm config get registry\`.
+`)
+}
+
+function prompt(question) {
+  return new Promise((resolve) => {
+    process.stdout.write(question)
+    let buf = ''
+    process.stdin.setEncoding('utf8')
+    const onData = (chunk) => {
+      buf += chunk
+      const nl = buf.indexOf('\n')
+      if (nl >= 0) {
+        process.stdin.removeListener('data', onData)
+        resolve(buf.slice(0, nl))
+      }
+    }
+    process.stdin.on('data', onData)
+  })
 }
