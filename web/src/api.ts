@@ -163,6 +163,18 @@ export interface AppConfig {
     [key: string]: unknown
   }
   pricing: PricingConfig
+  dispatch?: {
+    lark?: DispatchChannelConfig
+    telegram?: DispatchChannelConfig
+    web?: DispatchChannelConfig
+    [key: string]: DispatchChannelConfig | undefined
+  }
+}
+
+export interface DispatchChannelConfig {
+  default?: 'claude' | 'codex'
+  perUser?: Record<string, 'claude' | 'codex'>
+  perChat?: Record<string, 'claude' | 'codex'>
 }
 
 export interface ToolDiagnostic {
