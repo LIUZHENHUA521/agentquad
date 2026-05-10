@@ -184,6 +184,28 @@ dispatcher.describe() 返回每个 sid 的 `{ queueSize, oldestEnqueuedAt }`，
 注入到 quadtodo slash command 现有 `/list` 输出（`openclaw-wizard.js:1339`
 附近的 quadtodoSlash 分支）。
 
+## `/stop` 的重新定义
+
+现有 `/stop`（`src/openclaw-wizard.js:2148-2200` 附近 `cmdStop`）做的是**杀整个
+PTY 进程**（`pty.stop(sid)`）+ 更新 `todo.aiSessions` 状态——既是用户日常用
+的"中断"又是 admin 的杀 session 工具。本设计把这两层职责拆开：
+
+| 触发位置 | 新语义 | 实现 |
+|----------|--------|------|
+| Lark thread reply / Telegram task topic 内（已绑定 sid 的上下文）`/stop` 或 `!!` | dispatcher hard_cancel：Ctrl+C 当前 turn，**保留 session** | dispatcher.send(mode='hard_cancel') |
+| Telegram supergroup General / 任何**未绑定** sid 的上下文 `/stop` / `/stop <短码>` / `/stop all` | 保留旧的杀 session 行为（admin 兜底） | 保留 `cmdStop` 不动 |
+
+判定规则：进入 `/stop` 处理时先看当前 routeKey 是否 resolve 出绑定的
+sessionId（`larkBoundThreadSid` / telegram peer-bound `lastPushedSession`）：
+
+- 有 sid → 走 dispatcher hard_cancel；不再调 `pty.stop`
+- 无 sid → 走旧 `cmdStop`（列表 / 短码 / all）
+
+这样：
+- 日常在 topic 里 `/stop` = "中断当前 turn 但保留 session"（更符合直觉）
+- 真正想杀 session 还可以从 General 用 `/stop <短码>` 或 `/stop all`
+- `!!` 等价于 in-topic `/stop`（hard_cancel）
+
 ## 边界与决策（已与用户确认）
 
 1. `!` 前缀的字面冲突：reserved prefix，不做转义。用户想发 `!important` 字面
@@ -239,7 +261,8 @@ dispatcher.describe() 返回每个 sid 的 `{ queueSize, oldestEnqueuedAt }`，
 - [ ] busy 时普通消息 → 入队 + reaction + 第 1 条带文字 reply
 - [ ] idle 时普通消息 → 直发，无 reaction、无 reply
 - [ ] busy 时 `!xxx` → Esc 写入 → 250ms 后写 xxx + `\r`，旧队列丢弃
-- [ ] busy 时 `!!` / `/stop` → Ctrl+C 写入，不投递文本，回 "⏹ 已中断"
+- [ ] busy 时 `!!` / in-topic `/stop` → Ctrl+C 写入，不投递文本，回 "⏹ 已中断"
+- [ ] General 里 `/stop <短码>` / `/stop all` 仍走旧的 `cmdStop`（杀整个 session），行为不变
 - [ ] Stop hook 触发后队列合并并投递（onSessionIdle 同步调用），reaction 清除
 - [ ] 队列满 20 → 第 21 条被拒，echo 提示
 - [ ] 5 分钟未 flush → echo 警告，队列保留
