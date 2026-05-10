@@ -493,6 +493,36 @@ describe('routes/ai-terminal', () => {
     expect(sent1.some(item => JSON.parse(item).type === 'auto_mode')).toBe(true)
   })
 
+  it('aggregated resize ignores tabs that unregister via cols=0/rows=0', async () => {
+    const todo = ctx.db.createTodo({ title: 'T', quadrant: 1 })
+    const { body } = await request(ctx.app).post('/api/ai-terminal/exec')
+      .send({ todoId: todo.id, prompt: 'hi', tool: 'claude' })
+    const sessionId = body.sessionId
+
+    const wsA = { readyState: 1, OPEN: 1, send: () => {} }
+    const wsB = { readyState: 1, OPEN: 1, send: () => {} }
+    ctx.ait.addBrowser(sessionId, wsA)
+    ctx.ait.addBrowser(sessionId, wsB)
+
+    // Both tabs report sizes — min wins.
+    ctx.ait.handleBrowserMessage(sessionId, { type: 'resize', cols: 200, rows: 50 }, wsA)
+    ctx.ait.handleBrowserMessage(sessionId, { type: 'resize', cols: 90, rows: 30 }, wsB)
+
+    // Last resize sent to PTY should be the min: cols=90, rows=30.
+    const afterBoth = ctx.pty.resizes[ctx.pty.resizes.length - 1]
+    expect(afterBoth).toMatchObject({ id: sessionId, cols: 90, rows: 30 })
+
+    // wsB unregisters (simulating tab going to background).
+    ctx.ait.handleBrowserMessage(sessionId, { type: 'resize', cols: 0, rows: 0 }, wsB)
+
+    // Aggregation should now use only wsA → cols=200, rows=50.
+    const afterUnreg = ctx.pty.resizes[ctx.pty.resizes.length - 1]
+    expect(afterUnreg).toMatchObject({ id: sessionId, cols: 200, rows: 50 })
+
+    // And the wsB internal size record must be gone, so future reattach starts clean.
+    expect(wsB.__quadtodoSize).toBeUndefined()
+  })
+
   it('notifyTurnDone broadcasts turn_done to attached browsers', async () => {
     const todo = ctx.db.createTodo({ title: 'T', quadrant: 1 })
     const { body } = await request(ctx.app)
