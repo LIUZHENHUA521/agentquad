@@ -2,7 +2,7 @@
 import React, { useCallback, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { Button, Dropdown, Tooltip, message } from 'antd'
-import { CloseOutlined, MenuFoldOutlined, ColumnWidthOutlined, MergeCellsOutlined, ExportOutlined } from '@ant-design/icons'
+import { CloseOutlined, MenuFoldOutlined, ColumnWidthOutlined, MergeCellsOutlined, ExportOutlined, CodeOutlined } from '@ant-design/icons'
 import {
   DndContext,
   closestCenter,
@@ -185,7 +185,6 @@ export default function TerminalDock({
     >
       {!isMobile && <div className="terminal-dock__divider" onMouseDown={onMouseDownDivider} />}
       <div className="terminal-dock__head">
-        <span className="terminal-dock__title">AI 终端 Dock</span>
         <span className="terminal-dock__count">{openTabs.length} 个会话</span>
         {activeTabId && openTabs.length >= 2 && !splitSecondaryTabId && (
           <Dropdown
@@ -253,7 +252,15 @@ export default function TerminalDock({
       )}
       <div className={`terminal-dock__body ${splitSecondaryTabId ? 'is-split' : ''}`}>
         {openTabs.length === 0 ? (
-          <div className="terminal-dock__empty">没有打开的会话</div>
+          <div className="terminal-dock__empty">
+            <div className="terminal-dock__empty-icon">
+              <CodeOutlined />
+            </div>
+            <div className="terminal-dock__empty-title">还没有打开的 AI 会话</div>
+            <div className="terminal-dock__empty-hint">
+              在左侧任务卡上点击 <span className="terminal-dock__empty-kbd">▶ AI 终端</span> 即可启动一个新会话
+            </div>
+          </div>
         ) : (
           openTabs.map(tab => {
             // Popped-out tabs are rendered via Portal in `poppedNodes` below.

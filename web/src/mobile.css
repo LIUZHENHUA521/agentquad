@@ -188,23 +188,7 @@
     max-width: 100%;
   }
 
-  /* ── 历史会话卡片（恢复/本地继续/Fork/删除） ── */
-  /* 桌面下是 horizontal flex + 右侧 margin-left:auto 动作栏。
-     窄屏下改为 body 在上、动作栏在下单独一行，且允许 session id / 命令换行 */
-  .todo-history-item {
-    flex-direction: column;
-    gap: 6px;
-    padding: 8px 10px;
-  }
-  .todo-history-actions {
-    margin-left: 0;
-    width: 100%;
-    flex-wrap: wrap;
-    justify-content: flex-end;
-    gap: 14px;
-    padding-top: 6px;
-    border-top: 1px dashed rgba(31, 42, 68, 0.08);
-  }
+  /* ── 历史会话卡片：触摸目标尺寸（布局已由 TodoManage.css 的 @container 处理） ── */
   .todo-history-link,
   .todo-history-delete {
     min-height: 32px;
@@ -212,24 +196,6 @@
     align-items: center;
     padding: 4px 6px;
     font-size: 13px;
-  }
-  .todo-history-native-id,
-  .todo-history-command {
-    white-space: normal;
-    word-break: break-all;
-    overflow: visible;
-    text-overflow: clip;
-    line-height: 1.45;
-  }
-  /* 桌面下 .todo-history-box 里标题固定 88px 宽；在手机上放行让它紧凑 */
-  .todo-history-box {
-    flex-direction: column;
-    gap: 6px;
-    padding: 8px;
-  }
-  .todo-history-title {
-    min-width: 0;
-    padding-top: 0;
   }
 }
 

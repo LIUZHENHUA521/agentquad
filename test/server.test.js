@@ -568,6 +568,22 @@ describe("server", () => {
 			.send({ defaultCwd: workRootDir });
 		expect(untouched.status).toBe(200);
 		expect(untouched.body.config.pricing.cnyRate).toBe(7.1);
+
+		// pricing.showInPush / showCnyInPush：可单独打开 / 关闭，partial patch 不互相清掉
+		const turnOn = await request(srv.app)
+			.put("/api/config")
+			.send({ pricing: { showInPush: true } });
+		expect(turnOn.status).toBe(200);
+		expect(turnOn.body.config.pricing.showInPush).toBe(true);
+		expect(turnOn.body.config.pricing.showCnyInPush).toBe(true); // 默认 true 保留
+		expect(turnOn.body.config.pricing.cnyRate).toBe(7.1);        // 不被清
+
+		const flipCny = await request(srv.app)
+			.put("/api/config")
+			.send({ pricing: { showCnyInPush: false } });
+		expect(flipCny.status).toBe(200);
+		expect(flipCny.body.config.pricing.showCnyInPush).toBe(false);
+		expect(flipCny.body.config.pricing.showInPush).toBe(true);   // 不被清
 	});
 
 	it("GET /api/config/workdirs returns default root and child directories", async () => {

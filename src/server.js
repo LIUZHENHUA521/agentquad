@@ -565,6 +565,14 @@ export function createServer(opts = {}) {
 						cnyRate: pricingPatch.cnyRate ?? current.pricing.cnyRate,
 						default: pricingPatch.default ?? current.pricing.default,
 						models: pricingPatch.models ?? current.pricing.models,
+						showInPush:
+							typeof pricingPatch.showInPush === 'boolean'
+								? pricingPatch.showInPush
+								: current.pricing.showInPush,
+						showCnyInPush:
+							typeof pricingPatch.showCnyInPush === 'boolean'
+								? pricingPatch.showCnyInPush
+								: current.pricing.showCnyInPush,
 					}
 					: current.pricing,
 			};
@@ -1394,10 +1402,14 @@ export function createServer(opts = {}) {
 		}
 	}
 
-	// 同步对账路由
-	app.use("/api/telegram-sync", createTelegramSyncRouter({
+	// 同步对账路由：覆盖 telegram + lark 两条 channel；老路径 /api/telegram-sync 保留兼容，
+	// 新路径 /api/sync 是推荐入口。两个 mount 共享同一个 router 实例。
+	const syncRouter = createTelegramSyncRouter({
 		db, aiTerminal: ait, openclaw: openclawBridge, wizard: openclawWizard,
-	}).router);
+		getConfig: () => loadConfig({ rootDir: configRootDir }),
+	}).router;
+	app.use("/api/telegram-sync", syncRouter);
+	app.use("/api/sync", syncRouter);
 
 	// MCP Streamable HTTP 端点：把 quadtodo 暴露给 Claude Code 等 MCP 客户端
 	try {

@@ -847,6 +847,21 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
     term.focus()
   }, [])
 
+  // 清空 xterm 显示 + 通知服务端丢弃 outputHistory：旧 session 在窄 cols 下产生的
+  // 硬折行 scrollback 在更宽的窗口里显示窄一截，清完后下次 Claude 输出按当前 cols 重绘。
+  const handleClearHistory = useCallback(() => {
+    if (!window.confirm('清空当前会话的历史输出？\n\n仅影响显示，不影响正在运行的 AI 任务。')) return
+    const term = termRef.current
+    if (term) {
+      try { term.clear() } catch { /* ignore */ }
+      try { term.reset() } catch { /* ignore */ }
+    }
+    const ws = wsRef.current
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'clear_history' }))
+    }
+  }, [])
+
   const handleOpenCustomModal = useCallback(() => {
     setSaveAsName('')
     setCustomModalOpen(true)
@@ -1098,6 +1113,13 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
           >
             {followTail ? <LockOutlined style={{ fontSize: 9 }} /> : <UnlockOutlined style={{ fontSize: 9 }} />} 跟随
           </Tag>
+        </Tooltip>
+        <Tooltip title="清空历史输出（仅显示，不影响任务）">
+          <Button type="text" size="small"
+            icon={<DeleteOutlined />}
+            style={{ color: '#888', fontSize: 12, width: 20, height: 20, minWidth: 20 }}
+            onClick={handleClearHistory}
+          />
         </Tooltip>
         <Tooltip title="滚动到底部（Ctrl+End）">
           <Button type="text" size="small"

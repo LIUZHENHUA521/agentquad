@@ -400,6 +400,9 @@ body {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  /* 让历史会话等子元素能基于卡片实际宽度响应（卡片在四象限里远比视口窄）*/
+  container-type: inline-size;
+  container-name: todo-card-shell;
 }
 
 .todo-card-head {
@@ -510,12 +513,15 @@ body {
 }
 
 .todo-history-item {
+  position: relative;
   display: flex;
   align-items: flex-start;
   gap: 10px;
+  /* flex-wrap 兜底：即使容器查询没触发，也允许 actions 在塞不下时换到下一行 */
+  flex-wrap: wrap;
   width: 100%;
   min-width: 0;
-  padding: 6px 8px;
+  padding: 6px 8px 6px 14px;
   border-radius: 10px;
   background: rgba(241, 236, 226, 0.72);
   transition: background 0.2s ease, box-shadow 0.2s ease;
@@ -524,9 +530,37 @@ body {
   cursor: pointer;
 }
 
-.todo-history-item.active {
+.todo-history-item.is-primary-session {
   background: rgba(220, 233, 255, 0.88);
   box-shadow: inset 0 0 0 1px rgba(31, 75, 154, 0.12);
+}
+
+.todo-history-dock-dot {
+  position: absolute;
+  top: 8px;
+  left: 5px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #bfbfbf;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.6);
+  pointer-events: auto;
+}
+
+.todo-history-dock-dot.is-active {
+  background: #52c41a;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.6), 0 0 0 4px rgba(82, 196, 26, 0.18);
+}
+
+.todo-history-dock-dot.is-background {
+  background: #1677ff;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.6), 0 0 0 4px rgba(22, 119, 255, 0.18);
+}
+
+.todo-history-dock-dot.is-popout {
+  background: rgba(255, 255, 255, 0.95);
+  border: 1.5px solid #722ed1;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.6), 0 0 0 4px rgba(114, 46, 209, 0.18);
 }
 
 .todo-history-body {
@@ -609,6 +643,49 @@ body {
 
 .todo-history-delete:hover {
   color: #8b2f25;
+}
+
+/* 卡片宽度 ≤ 720px 时折叠为竖向布局：title 顶部、actions 单独成行
+   响应的是卡片自身宽度（容器查询），不是视口——四象限里每张卡只有 ~330px。
+   阈值取 720px 是因为 actions 行包含「切到该 tab」时整体需要 ~230px，
+   加上 body 最小内容（Claude Code + 时间）≈155px、title 块 ≈100px、padding/gap ≈30px，
+   row 布局至少要 ~535px 才能不裁切；为容纳后续可能继续变宽的 actions 留充足余量 */
+@container todo-card-shell (max-width: 720px) {
+  .todo-history-box {
+    flex-direction: column;
+    /* 切换到 column 后，主轴变成纵向、cross-axis 变成横向；
+       基础规则的 align-items:flex-start 会让 title/list 只占自身内容宽度，
+       这里改成 stretch 让它们撑满父容器宽度 */
+    align-items: stretch;
+    gap: 6px;
+    padding: 8px;
+  }
+  .todo-history-title {
+    min-width: 0;
+    padding-top: 0;
+  }
+  .todo-history-item {
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px 10px 8px 18px;
+  }
+  .todo-history-actions {
+    margin-left: 0;
+    width: 100%;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 14px;
+    padding-top: 6px;
+    border-top: 1px dashed rgba(31, 42, 68, 0.08);
+  }
+  .todo-history-native-id,
+  .todo-history-command {
+    white-space: normal;
+    word-break: break-all;
+    overflow: visible;
+    text-overflow: clip;
+    line-height: 1.45;
+  }
 }
 
 .todo-primary-action {

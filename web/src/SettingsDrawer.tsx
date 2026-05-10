@@ -1,8 +1,12 @@
 import { Drawer, Descriptions, Alert, Typography, Form, Input, InputNumber, Button, Radio, Space, message, Tag, Switch, Collapse, Tabs, Segmented } from 'antd'
-import { MinusCircleOutlined, PlusOutlined } from '@ant-design/icons'
+import { MinusCircleOutlined, PlusOutlined, BookOutlined } from '@ant-design/icons'
 import { useEffect, useState } from 'react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { getStatus, getConfig, updateConfig, AppConfig, pickDirectory, ToolDiagnostic, testTelegram, testLark, type ProbeHit } from './api'
 import { TelegramProbeModal } from './TelegramProbeModal'
+import telegramSetupMd from '../../docs/TELEGRAM-setup.md?raw'
+import larkSetupMd from '../../docs/LARK.md?raw'
 
 const { Paragraph, Text } = Typography
 
@@ -185,6 +189,8 @@ export default function SettingsDrawer({ open, onClose }: Props) {
           larkDefaultPermissionMode: result.config.lark?.defaultPermissionMode || 'bypass',
           larkNotificationCooldownMs: result.config.lark?.notificationCooldownMs ?? 600000,
           pricingCnyRate: result.config.pricing.cnyRate,
+          pricingShowInPush: result.config.pricing.showInPush === true,
+          pricingShowCnyInPush: result.config.pricing.showCnyInPush !== false,
           pricingDefault: { ...result.config.pricing.default },
           pricingModels: Object.entries(result.config.pricing.models).map(([pattern, rate]) => ({
             pattern,
@@ -245,6 +251,8 @@ export default function SettingsDrawer({ open, onClose }: Props) {
         },
         pricing: {
           cnyRate: Number(values.pricingCnyRate) || 7.2,
+          showInPush: values.pricingShowInPush === true,
+          showCnyInPush: values.pricingShowCnyInPush !== false,
           default: {
             input: Number(values.pricingDefault?.input) || 0,
             output: Number(values.pricingDefault?.output) || 0,
@@ -279,6 +287,8 @@ export default function SettingsDrawer({ open, onClose }: Props) {
         // normalizeConfig 会把默认 models 合回来（即使 UI 里被删也会复活），
         // 用保存后的 config 重置 pricingModels 保证和服务端一致
         pricingCnyRate: result.config.pricing.cnyRate,
+        pricingShowInPush: result.config.pricing.showInPush === true,
+        pricingShowCnyInPush: result.config.pricing.showCnyInPush !== false,
         pricingDefault: { ...result.config.pricing.default },
         pricingModels: Object.entries(result.config.pricing.models).map(([pattern, rate]) => ({
           pattern,
@@ -499,7 +509,44 @@ export default function SettingsDrawer({ open, onClose }: Props) {
     </>
   )
 
+  const setupGuide = (markdown: string) => (
+    <Collapse
+      ghost
+      style={{ marginBottom: 12 }}
+      items={[
+        {
+          key: 'guide',
+          label: (
+            <span style={{ fontWeight: 500 }}>
+              <BookOutlined style={{ marginRight: 6 }} />
+              配置教程（不熟悉的话点开看）
+            </span>
+          ),
+          children: (
+            <div
+              className="quadtodo-setup-guide"
+              style={{
+                maxHeight: 460,
+                overflow: 'auto',
+                padding: '10px 14px',
+                background: '#fcfaf5',
+                border: '1px solid #ece7dd',
+                borderRadius: 6,
+                fontSize: 13,
+                lineHeight: 1.65,
+              }}
+            >
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{markdown}</ReactMarkdown>
+            </div>
+          ),
+        },
+      ]}
+    />
+  )
+
   const telegramTab = (
+    <>
+    {setupGuide(telegramSetupMd)}
     <Collapse
       defaultActiveKey={['basic', 'topic', 'notify', 'security']}
       items={[
@@ -657,10 +704,12 @@ export default function SettingsDrawer({ open, onClose }: Props) {
         },
       ]}
     />
+    </>
   )
 
   const larkTab = (
     <>
+      {setupGuide(larkSetupMd)}
       <Alert
         type="info"
         showIcon
@@ -791,6 +840,27 @@ export default function SettingsDrawer({ open, onClose }: Props) {
           </>
         }
       />
+
+      <Form.Item
+        name="pricingShowInPush"
+        label="在 Telegram / 飞书推送末尾显示每轮费用"
+        valuePropName="checked"
+        extra="打开后，每条 Stop / SessionEnd 推送会附 turn token 用量 + USD 估算的 footer。默认关。"
+      >
+        <Switch />
+      </Form.Item>
+      <Form.Item noStyle shouldUpdate={(p, n) => p.pricingShowInPush !== n.pricingShowInPush}>
+        {({ getFieldValue }) => (
+          <Form.Item
+            name="pricingShowCnyInPush"
+            label="同时显示人民币（¥）"
+            valuePropName="checked"
+            extra="footer 显示时同时带 ¥ 估算；只有上面开关打开时才有意义。"
+          >
+            <Switch disabled={!getFieldValue('pricingShowInPush')} />
+          </Form.Item>
+        )}
+      </Form.Item>
 
       <Form.Item
         name="pricingCnyRate"

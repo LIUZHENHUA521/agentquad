@@ -1,0 +1,107 @@
+- generic [ref=e3]:
+  - generic [ref=e4]:
+    - button "9" [ref=e5] [cursor=pointer]
+    - generic [ref=e6]:
+      - button "提" [ref=e7] [cursor=pointer]
+      - button "为" [ref=e8] [cursor=pointer]
+      - button "接" [ref=e9] [cursor=pointer]
+      - button "帮" [ref=e10] [cursor=pointer]
+      - button "t" [ref=e11] [cursor=pointer]
+      - button "t" [ref=e12] [cursor=pointer]
+      - button "t" [ref=e13] [cursor=pointer]
+      - button "宝" [ref=e14] [cursor=pointer]
+      - button "测" [ref=e15] [cursor=pointer]
+  - generic [ref=e16]:
+    - generic [ref=e17]:
+      - generic [ref=e18]:
+        - heading "待办事项" [level=2] [ref=e19]
+        - button "plus 新建" [ref=e20] [cursor=pointer]:
+          - img "plus" [ref=e22]:
+            - img [ref=e23]
+          - generic [ref=e26]: 新建
+        - button "search" [ref=e27] [cursor=pointer]:
+          - img "search" [ref=e29]:
+            - img [ref=e30]
+        - generic [ref=e32]:
+          - text: 自动填入
+          - switch [checked] [ref=e33] [cursor=pointer]
+        - button "dashboard AI 面板" [ref=e36] [cursor=pointer]:
+          - img "dashboard" [ref=e38]:
+            - img [ref=e39]
+          - generic [ref=e41]: AI 面板
+        - button "setting 设置" [ref=e42] [cursor=pointer]:
+          - img "setting" [ref=e44]:
+            - img [ref=e45]
+          - generic [ref=e47]: 设置
+        - button "more 更多" [ref=e48] [cursor=pointer]:
+          - img "more" [ref=e50]:
+            - img [ref=e51]
+          - generic [ref=e53]: 更多
+      - generic [ref=e54]:
+        - generic [ref=e55]:
+          - generic [ref=e56] [cursor=pointer]:
+            - generic [ref=e57]:
+              - radio "待办" [checked]
+            - text: 待办
+          - generic [ref=e58] [cursor=pointer]:
+            - generic [ref=e59]:
+              - radio "已完成"
+            - text: 已完成
+          - generic [ref=e60] [cursor=pointer]:
+            - generic [ref=e61]:
+              - radio "全部"
+            - text: 全部
+        - generic [ref=e62]:
+          - img "search" [ref=e64]:
+            - img [ref=e65]
+          - textbox "搜索标题..." [ref=e67]
+        - radiogroup "segmented control" [ref=e70]:
+          - generic [ref=e71]:
+            - generic [ref=e72] [cursor=pointer]:
+              - radio "列表" [checked]
+              - generic "列表" [ref=e73]
+            - generic [ref=e74] [cursor=pointer]:
+              - radio "优先级"
+              - generic "优先级" [ref=e75]
+    - generic [ref=e76]:
+      - generic:
+        - generic:
+          - generic:
+            - generic:
+              - generic:
+                - generic: P0
+                - generic: 重要且紧急
+                - generic: "0"
+              - generic:
+                - generic: 拖拽任务到此处
+            - generic:
+              - generic:
+                - generic: P1
+                - generic: 重要不紧急
+                - generic: "0"
+              - generic:
+                - generic: 拖拽任务到此处
+          - generic:
+            - generic:
+              - generic:
+                - generic: P2
+                - generic: 紧急不重要
+                - generic: "0"
+              - generic:
+                - generic: 拖拽任务到此处
+            - generic:
+              - generic:
+                - generic: P3
+                - generic: 不重要不紧急
+                - generic: "0"
+              - generic:
+                - generic: 拖拽任务到此处
+        - status
+  - generic [ref=e84]:
+    - generic [ref=e86]:
+      - generic [ref=e87]: AI 终端 Dock
+      - generic [ref=e88]: 0 个会话
+      - button "close" [ref=e89] [cursor=pointer]:
+        - img "close" [ref=e91]:
+          - img [ref=e92]
+    - generic [ref=e95]: 没有打开的会话

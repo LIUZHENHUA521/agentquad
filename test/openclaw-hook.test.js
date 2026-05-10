@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { openDb } from '../src/db.js'
 import { createOpenClawHookHandler, __test__ } from '../src/openclaw-hook.js'
 import { createOpenClawHookRouter } from '../src/routes/openclaw-hook.js'
+import { DEFAULT_PRICING } from '../src/pricing.js'
 
 function makeFakeBridge({ sendOk = true, sendReason = null, route = null, explicitRoute = route != null } = {}) {
   const sent = []
@@ -840,7 +841,7 @@ describe('openclaw-hook usage footer integration', () => {
     writeFileSync(jsonlPath, lines.join('\n') + '\n', 'utf8')
   }
 
-  function mkHandler(configOverrides = {}) {
+  function mkHandler({ telegram = {}, pricing = {} } = {}) {
     return createOpenClawHookHandler({
       db, openclaw: bridge,
       cooldownMs: 0,
@@ -850,7 +851,9 @@ describe('openclaw-hook usage footer integration', () => {
       },
       // pty.findClaudeSession 把 nativeId 翻译成 jsonl 路径
       pty: { findClaudeSession: (nativeId) => nativeId === 'native-uuid-1' ? { filePath: jsonlPath } : null },
-      getConfig: () => ({ telegram: { ...configOverrides } }),
+      // 合并 DEFAULT_PRICING 保证 default/models/cnyRate 必填字段始终存在 —— 真实运行时
+      // normalizeConfig 也会填这些字段，测试这里手动模拟。
+      getConfig: () => ({ telegram: { ...telegram }, pricing: { ...DEFAULT_PRICING, ...pricing } }),
       logger: { warn() {}, info() {} },
     })
   }
@@ -866,35 +869,35 @@ describe('openclaw-hook usage footer integration', () => {
     try { rmSync(tmp, { recursive: true, force: true }) } catch {}
   })
 
-  it('stop event: appends footer with both turn + session lines (default config)', async () => {
-    mkJsonl({ multipleAssistants: true })   // 2 assistant turns
-    const handler = mkHandler()             // showUsage / showUsageCny default true
+  it('default config: NO footer (showInPush opt-in, default false)', async () => {
+    mkJsonl({ multipleAssistants: true })
+    const handler = mkHandler()
     const r = await handler.handle({ event: 'stop', sessionId: 's1', todoId: 't1', todoTitle: 'A' })
     expect(r.action).toBe('sent')
     const msg = bridge.sent[0].message
     expect(msg).toContain('又改了一行')      // 最新 assistant 内容
+    expect(msg).not.toContain('💸')          // 默认不显示 footer
+    expect(msg).not.toContain('turn:')
+  })
+
+  it('pricing.showInPush=true → footer with both turn + session lines', async () => {
+    mkJsonl({ multipleAssistants: true })   // 2 assistant turns
+    const handler = mkHandler({ pricing: { showInPush: true } })
+    const r = await handler.handle({ event: 'stop', sessionId: 's1', todoId: 't1', todoTitle: 'A' })
+    expect(r.action).toBe('sent')
+    const msg = bridge.sent[0].message
+    expect(msg).toContain('又改了一行')
     expect(msg).toContain('💸')              // footer divider
     expect(msg).toContain('turn:')
     expect(msg).toContain('session:')
-    expect(msg).toContain('2 turns')         // 累计 2 个 assistant turn
+    expect(msg).toContain('2 turns')
     expect(msg).toContain('$')               // USD
     expect(msg).toContain('¥')               // CNY 默认开
   })
 
-  it('showUsage=false → no footer at all', async () => {
+  it('pricing.showInPush=true & showCnyInPush=false → footer present but no ¥', async () => {
     mkJsonl()
-    const handler = mkHandler({ showUsage: false })
-    const r = await handler.handle({ event: 'stop', sessionId: 's1', todoId: 't1', todoTitle: 'A' })
-    expect(r.action).toBe('sent')
-    const msg = bridge.sent[0].message
-    expect(msg).toContain('已加上注释')
-    expect(msg).not.toContain('💸')
-    expect(msg).not.toContain('turn:')
-  })
-
-  it('showUsageCny=false → footer present but no ¥', async () => {
-    mkJsonl()
-    const handler = mkHandler({ showUsageCny: false })
+    const handler = mkHandler({ pricing: { showInPush: true, showCnyInPush: false } })
     const r = await handler.handle({ event: 'stop', sessionId: 's1', todoId: 't1', todoTitle: 'A' })
     expect(r.action).toBe('sent')
     const msg = bridge.sent[0].message
@@ -903,9 +906,9 @@ describe('openclaw-hook usage footer integration', () => {
     expect(msg).not.toContain('¥')
   })
 
-  it('session-end: also appends footer', async () => {
+  it('session-end with showInPush=true: also appends footer', async () => {
     mkJsonl({ multipleAssistants: true })
-    const handler = mkHandler()
+    const handler = mkHandler({ pricing: { showInPush: true } })
     const r = await handler.handle({ event: 'session-end', sessionId: 's1', todoId: 't1', todoTitle: 'A' })
     expect(r.action).toBe('sent')
     const msg = bridge.sent[0].message
@@ -913,9 +916,12 @@ describe('openclaw-hook usage footer integration', () => {
     expect(msg).toContain('session:')
   })
 
-  it('notification: NO footer (it is an idle heartbeat, not a turn)', async () => {
+  it('notification with showInPush=true: still NO footer (idle heartbeat, not a turn)', async () => {
     mkJsonl()
-    const handler = mkHandler({ suppressNotificationEvents: false, notificationCooldownMs: 0 })
+    const handler = mkHandler({
+      telegram: { suppressNotificationEvents: false, notificationCooldownMs: 0 },
+      pricing: { showInPush: true },
+    })
     const r = await handler.handle({ event: 'notification', sessionId: 's1', todoId: 't1', todoTitle: 'A', hookPayload: { message: 'idle' } })
     expect(r.action).toBe('sent')
     const msg = bridge.sent[0].message
@@ -929,7 +935,7 @@ describe('openclaw-hook usage footer integration', () => {
       db, openclaw: bridge,
       cooldownMs: 0,
       pty: { findClaudeSession: () => null },
-      getConfig: () => ({ telegram: {} }),
+      getConfig: () => ({ telegram: {}, pricing: { ...DEFAULT_PRICING, showInPush: true } }),
       logger: { warn() {}, info() {} },
     })
     const r = await handler.handle({
@@ -955,7 +961,7 @@ describe('openclaw-hook usage footer integration', () => {
       db, openclaw: bridge,
       cooldownMs: 0,
       pty: { findClaudeSession: () => null },
-      getConfig: () => ({ telegram: {} }),
+      getConfig: () => ({ telegram: {}, pricing: { ...DEFAULT_PRICING, showInPush: true } }),
       logger: { warn() {}, info() {} },
     })
     const r = await handler.handle({
@@ -975,7 +981,8 @@ describe('openclaw-hook usage footer integration', () => {
 
   it('jsonl missing: silently skips footer, message still sent', async () => {
     // 不调 mkJsonl → jsonlPath 文件不存在
-    const handler = mkHandler()
+    // 即便 showInPush=true，jsonl 缺失也应该没 footer（验证错误兜底而非配置默认）
+    const handler = mkHandler({ pricing: { showInPush: true } })
     const r = await handler.handle({ event: 'stop', sessionId: 's1', todoId: 't1', todoTitle: 'A' })
     expect(r.action).toBe('sent')
     const msg = bridge.sent[0].message
@@ -985,7 +992,7 @@ describe('openclaw-hook usage footer integration', () => {
 
   it('opus model uses correct pricing (5x sonnet on input)', async () => {
     mkJsonl({ model: 'claude-opus-4-20260101' })
-    const handler = mkHandler({ showUsageCny: false })
+    const handler = mkHandler({ pricing: { showInPush: true, showCnyInPush: false } })
     const r = await handler.handle({ event: 'stop', sessionId: 's1', todoId: 't1', todoTitle: 'A' })
     expect(r.action).toBe('sent')
     const msg = bridge.sent[0].message

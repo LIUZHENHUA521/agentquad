@@ -157,6 +157,27 @@ interface SortableTodoCardProps {
   highlightTodoId?: string | null
 }
 
+type HistoryDockStatus = 'closed' | 'active' | 'background' | 'popout'
+
+const DOCK_STATUS_TIP: Record<Exclude<HistoryDockStatus, 'closed'>, string> = {
+  active: '已在 AI 终端中打开（活动 tab）',
+  background: '已在 AI 终端中打开（后台 tab）',
+  popout: '已弹出为独立窗口',
+}
+
+function dockStatusOf(
+  sessionId: string,
+  openTabIds: Set<string>,
+  activeTabId: string | null,
+  splitSecondaryTabId: string | null,
+  poppedOutTabIds: Set<string>,
+): HistoryDockStatus {
+  if (!openTabIds.has(sessionId)) return 'closed'
+  if (poppedOutTabIds.has(sessionId)) return 'popout'
+  if (sessionId === activeTabId || sessionId === splitSecondaryTabId) return 'active'
+  return 'background'
+}
+
 function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo = false, onCreateSubtodo, onClick, onToggleDone, onAiExec, onAiExecBoth, onDeleteAiSession, onUpdateSessionLabel, onDelete, onOpenTrae, onOpenTerminal, onOpenNativeResume, onCopyPrompt, onExport, onOpenSessionInDock, isNarrow, onRequestFork, onRefresh, highlightTodoId }: SortableTodoCardProps) {
   const [editingLabelSessionId, setEditingLabelSessionId] = useState<string | null>(null)
   const [editingLabelText, setEditingLabelText] = useState('')
@@ -173,6 +194,26 @@ function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo = false,
   const historySessions = todo.aiSessions || []
   const hasHistory = historySessions.length > 0
   const statusChip = currentStatusLabel(todo.status)
+
+  const dockOpenTabs = useTerminalDockStore(s => s.openTabs)
+  const dockActiveTabId = useTerminalDockStore(s => s.activeTabId)
+  const dockSplitSecondaryTabId = useTerminalDockStore(s => s.splitSecondaryTabId)
+  const dockPoppedOutTabIds = useTerminalDockStore(s => s.poppedOutTabIds)
+  const dockSetActive = useTerminalDockStore(s => s.setActive)
+  const dockToggleCollapsed = useTerminalDockStore(s => s.toggleCollapsed)
+  const dockDockTab = useTerminalDockStore(s => s.dock)
+  const dockIsCollapsed = useTerminalDockStore(s => s.isCollapsed)
+  const dockOpenTabIdSet = useMemo(() => new Set(dockOpenTabs.map(t => t.id)), [dockOpenTabs])
+  const dockPoppedSet = useMemo(() => new Set(dockPoppedOutTabIds), [dockPoppedOutTabIds])
+
+  const focusSessionInDock = useCallback((sid: string) => {
+    if (!dockOpenTabIdSet.has(sid)) return false
+    if (dockPoppedSet.has(sid)) dockDockTab(sid)
+    dockSetActive(sid)
+    if (dockIsCollapsed) dockToggleCollapsed()
+    return true
+  }, [dockOpenTabIdSet, dockPoppedSet, dockDockTab, dockSetActive, dockIsCollapsed, dockToggleCollapsed])
+
   const aiMenuItems = [
     { key: 'start:claude', label: '▶ 启动 Claude' },
     { key: 'start:codex', label: '▶ 启动 Codex' },
@@ -305,24 +346,40 @@ function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo = false,
             <div className="todo-history-title">历史会话 ({historySessions.length})</div>
             <div className="todo-history-list">
               {historySessions.map((session) => {
-                const isCurrent = session.sessionId === sessionId
+                const isPrimarySession = session.sessionId === sessionId
                 const nativeSessionId = session.nativeSessionId || ''
                 const terminalCommand = session.tool === 'codex'
                   ? `codex resume ${nativeSessionId}`
                   : session.tool === 'cursor'
                     ? `cursor-agent --resume ${nativeSessionId}`
                     : `claude --resume ${nativeSessionId}`
+                const dockStatus = dockStatusOf(
+                  session.sessionId,
+                  dockOpenTabIdSet,
+                  dockActiveTabId,
+                  dockSplitSecondaryTabId,
+                  dockPoppedSet,
+                )
+                const isOpenInDock = dockStatus !== 'closed'
                 return (
                   <button
                     key={session.sessionId}
                     type="button"
-                    className={`todo-history-item ${isCurrent ? 'active' : ''}`}
+                    className={`todo-history-item ${isPrimarySession ? 'is-primary-session' : ''} ${isOpenInDock ? `dock-${dockStatus}` : ''}`}
                     onClick={() => {
                       // 如果用户正在拖蓝选中里面的 session id / 命令文字，就别触发展开
                       if (typeof window !== 'undefined' && window.getSelection()?.toString()) return
                       onOpenSessionInDock(todo, session.sessionId)
                     }}
                   >
+                    {isOpenInDock && (
+                      <Tooltip title={DOCK_STATUS_TIP[dockStatus as Exclude<HistoryDockStatus, 'closed'>]}>
+                        <span
+                          className={`todo-history-dock-dot is-${dockStatus}`}
+                          aria-label={DOCK_STATUS_TIP[dockStatus as Exclude<HistoryDockStatus, 'closed'>]}
+                        />
+                      </Tooltip>
+                    )}
                     <div className="todo-history-body">
                       {editingLabelSessionId === session.sessionId ? (
                         <div style={{ display: 'flex', gap: 4, marginBottom: 4 }} onClick={(e) => e.stopPropagation()}>
@@ -408,9 +465,16 @@ function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo = false,
                           <button
                             type="button"
                             className="todo-history-link"
-                            onClick={() => onAiExec(todo, session.tool, session)}
+                            onClick={() => {
+                              if (isOpenInDock) {
+                                focusSessionInDock(session.sessionId)
+                              } else {
+                                onAiExec(todo, session.tool, session)
+                              }
+                            }}
+                            title={isOpenInDock ? '该会话已在 AI 终端中打开，点击切到该 tab' : '恢复该会话（重新挂载到 AI 终端）'}
                           >
-                            恢复
+                            {isOpenInDock ? '切到该 tab' : '恢复'}
                           </button>
                           {session.nativeSessionId ? (
                             <button
@@ -720,14 +784,7 @@ export default function TodoManage() {
   const isMobile = useIsMobile()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [cmdPaletteOpen, setCmdPaletteOpen] = useState(false)
-  const [viewMode, setViewMode] = useState<'list' | 'priority'>(() => {
-    const saved = localStorage.getItem('quadtodo:viewMode')
-    return saved === 'priority' || saved === 'list' ? saved : 'list'
-  })
-  const changeViewMode = useCallback((v: 'list' | 'priority') => {
-    setViewMode(v)
-    localStorage.setItem('quadtodo:viewMode', v)
-  }, [])
+  const [viewMode] = useState<'list' | 'priority'>('list')
   const setLiveSessions = useAiSessionStore(s => s.setSessions)
   const [workDirOptions, setWorkDirOptions] = useState<{ label: string; value: string }[]>([])
   const [workDirRoot, setWorkDirRoot] = useState<string>('')
@@ -865,7 +922,6 @@ export default function TodoManage() {
 
   const handleOpenAttentionItem = useCallback((item: AttentionItem) => {
     setDashboardOpen(false)
-    setViewMode('list')
     setKeyword('')
     setFilterStatus('todo')
     const todo = todos.find(t => t.id === item.todoId)
@@ -1627,7 +1683,6 @@ export default function TodoManage() {
       <div className="todo-sticky-header">
       {/* 工具栏 */}
       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-        <h2 style={{ margin: 0, fontSize: 18 }}>待办事项</h2>
         <div style={{ flex: 1 }} />
         <Button type="primary" icon={<PlusOutlined />} size="small" onClick={handleCreate}>
           新建
@@ -1741,16 +1796,6 @@ export default function TodoManage() {
           onChange={(e) => setKeyword(e.target.value)}
           onPressEnter={() => fetchTodos()}
           allowClear
-        />
-        <div style={{ flex: 1 }} />
-        <Segmented
-          size="small"
-          value={viewMode}
-          onChange={(v) => changeViewMode(v as 'list' | 'priority')}
-          options={[
-            { label: '列表', value: 'list' },
-            { label: '优先级', value: 'priority' },
-          ]}
         />
       </div>
       </div>

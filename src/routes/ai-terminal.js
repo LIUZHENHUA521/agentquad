@@ -7,6 +7,11 @@ import pidusage from 'pidusage'
 const MAX_OUTPUT_BUFFER = 512 * 1024
 const CLEANUP_MS = 30 * 60_000
 const MIN_RESIZE_COLS = 30
+// PTY 实际使用的 cols 下限。低于这个值的 viewer（例如默认 480px Dock、手机竖屏）
+// 不会真的把 PTY 拉窄，而是让 PTY 留在 80 cols 输出，xterm 端做软折行。
+// 为什么：Claude 的 TUI/diff 输出包含按 cols 计算好坐标的字符画，一旦 PTY 写下窄行
+// 就以 \r\n 形式硬刻进 outputHistory，replay 到更宽的 viewer 仍然窄。
+const MIN_PTY_COLS = 80
 const TERMINAL_RESIZE_STATUSES = new Set(['done', 'failed', 'stopped'])
 const DEFAULT_CONFIRM_PATTERNS = [
   /Press Enter to confirm/i,
@@ -41,6 +46,10 @@ function detectConfirmMatch(text) {
 
 function isValidResizeSize(cols, rows) {
   return Number.isFinite(cols) && Number.isFinite(rows) && cols >= MIN_RESIZE_COLS && rows > 0
+}
+
+function clampPtyCols(cols) {
+  return cols < MIN_PTY_COLS ? MIN_PTY_COLS : cols
 }
 
 function canResizeSession(session) {
@@ -594,6 +603,7 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
       if (sz.rows < rows) rows = sz.rows
     }
     if (!isValidResizeSize(cols, rows)) return
+    cols = clampPtyCols(cols)
     if (session.lastAppliedCols === cols && session.lastAppliedRows === rows) return
     session.lastAppliedCols = cols
     session.lastAppliedRows = rows
@@ -720,13 +730,21 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
       } else {
         if (!isValidResizeSize(cols, rows)) return
         // 没拿到 ws 兜底走老路径，保留对非 WS 调用方的兼容
-        if (session.lastAppliedCols === cols && session.lastAppliedRows === rows) return
-        session.lastAppliedCols = cols
+        const clampedCols = clampPtyCols(cols)
+        if (session.lastAppliedCols === clampedCols && session.lastAppliedRows === rows) return
+        session.lastAppliedCols = clampedCols
         session.lastAppliedRows = rows
-        pty.resize(sessionId, cols, rows)
+        pty.resize(sessionId, clampedCols, rows)
       }
     } else if (msg.type === 'set_auto_mode') {
       handleSetAutoMode(sessionId, msg, ws)
+    } else if (msg.type === 'clear_history') {
+      // 用户主动清空旧 scrollback：用于摆脱"老 session 在窄 cols 时写下的硬折行"
+      // 污染新窗口显示的场景。只清缓冲，不动 PTY 状态——Claude 会在下次输出时自动重绘。
+      const session = sessions.get(sessionId)
+      if (!session) return
+      session.outputHistory = []
+      session.outputSize = 0
     }
   }
 

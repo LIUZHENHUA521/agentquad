@@ -325,19 +325,18 @@ export function createOpenClawHookHandler({
   }
 
   // ── token usage footer 配置 ──
-  // showUsage    : 是否在每条推送末尾追加 token / 费用 footer（默认 true）
-  // showUsageCny : footer 里是否同时显示人民币（默认 true）
-  // pricing      : 单价表，缺省走 pricing.js 的 DEFAULT_PRICING（含 cnyRate=7.2）
-  //                若 config.pricing 存在，原样透传给 estimateCost
+  // pricing.showInPush    : 是否在每条 Telegram/飞书推送末尾追加 token / 费用 footer（默认 false，需在 UI 打开）
+  // pricing.showCnyInPush : footer 显示时是否同时带 ¥（默认 true，仅 showInPush=true 时生效）
+  // pricing              : 单价表，缺省走 pricing.js 的 DEFAULT_PRICING（含 cnyRate=7.2）
+  //                       若 config.pricing 存在，原样透传给 estimateCost
   function shouldShowUsage() {
     try {
-      const v = getConfig?.()?.telegram?.showUsage
-      return v !== false   // undefined / true → on
-    } catch { return true }
+      return getConfig?.()?.pricing?.showInPush === true
+    } catch { return false }
   }
   function shouldShowUsageCny() {
     try {
-      const v = getConfig?.()?.telegram?.showUsageCny
+      const v = getConfig?.()?.pricing?.showCnyInPush
       return v !== false   // undefined / true → on
     } catch { return true }
   }
@@ -534,7 +533,7 @@ export function createOpenClawHookHandler({
 
     // 3d. token usage footer ——
     // 仅 Stop / SessionEnd 推送时附加（notification 是 idle 心跳，没新轮次，无意义）
-    // 配置开关：telegram.showUsage（默认 true）/ telegram.showUsageCny（默认 true）
+    // 配置开关：pricing.showInPush（默认 false，需 UI 打开）/ pricing.showCnyInPush（默认 true）
     let usageFooter = ''
     if ((evt === 'stop' || evt === 'session-end') && jsonlPath && shouldShowUsage()) {
       try {

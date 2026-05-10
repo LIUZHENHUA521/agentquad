@@ -895,17 +895,41 @@ export function createOpenClawWizard({
       return { ok: false, reason: 'lark_send_failed', detail: e.message }
     }
 
-    // 飞书响应 data 里如果带 root_id 就用它（thread 真正 root）；否则这条 sendMessage
-    // 自己就是 root，用它的 message_id（用户在它上面回复时事件 ev.root_id 就是这个）。
-    const replyRootId = payload?.root_id != null ? String(payload.root_id) : null
-    const replyMessageId = payload?.message_id != null ? String(payload.message_id) : null
-    const rootMessageId = replyRootId || replyMessageId
-    if (!rootMessageId) return { ok: false, reason: 'no_root_message_id' }
+    // 飞书 sendMessage 出来的是普通消息，不是 thread 根；用户对它"回复"时事件的
+    // root_id 不一定回到这条 message_id（取决于客户端用的"回复"还是"在话题中回复"）。
+    // 立即 replyInThread 一次自己，把这条消息升级成真正的 thread 根 —— 之后所有
+    // thread 内的事件 root_id 就会稳定回到这个 message_id，findSessionByRoute 才能命中。
+    const introMessageId = payload?.message_id != null ? String(payload.message_id) : null
+    if (!introMessageId) return { ok: false, reason: 'no_root_message_id' }
+
+    let rootMessageId = introMessageId
+    let threadAnchorPayload = null
+    if (larkBot.replyInThread) {
+      try {
+        const anchor = await larkBot.replyInThread({
+          rootMessageId: introMessageId,
+          text: '↑ 在这条消息上回复就能直接发给 PTY ↑',
+        })
+        if (anchor?.ok !== false) {
+          threadAnchorPayload = anchor?.payload || anchor || {}
+          // 飞书把 thread 真正的 root_id 在 reply 响应里 echo 回来；优先用它。
+          // 一般 == introMessageId，但保险起见以飞书返回为准。
+          const replyRoot = threadAnchorPayload?.root_id != null ? String(threadAnchorPayload.root_id) : null
+          if (replyRoot) rootMessageId = replyRoot
+        } else {
+          logger.warn?.(`[wizard] auto-bind thread anchor reply failed (${anchor.reason || 'unknown'}); falling back to intro id`)
+        }
+      } catch (e) {
+        logger.warn?.(`[wizard] auto-bind thread anchor reply threw: ${e.message}; falling back to intro id`)
+      }
+    }
 
     const route = {
       targetUserId: String(chatId),
       rootMessageId,
-      threadId: payload?.thread_id != null ? String(payload.thread_id) : null,
+      // anchor reply 的响应里 thread_id 才是真正的 thread；否则退回 sendMessage 的 thread_id
+      threadId: (threadAnchorPayload?.thread_id != null ? String(threadAnchorPayload.thread_id)
+        : (payload?.thread_id != null ? String(payload.thread_id) : null)),
       topicName,
       messageAppLink: payload?.message_app_link != null ? String(payload.message_app_link) : null,
       channel: 'lark',

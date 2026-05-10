@@ -629,6 +629,49 @@ describe('routes/ai-terminal', () => {
     ])
   })
 
+  it('resize floors PTY cols to 80 when browser reports a narrower viewport', async () => {
+    const todo = ctx.db.createTodo({ title: 'T', quadrant: 1 })
+    const { body } = await request(ctx.app).post('/api/ai-terminal/exec')
+      .send({ todoId: todo.id, prompt: 'hi', tool: 'claude' })
+    const ws = { readyState: 1, OPEN: 1, send: vi.fn() }
+    ctx.ait.addBrowser(body.sessionId, ws)
+
+    // 50 cols 是合法（>=30）但仍偏窄。期望 PTY 收到 80，而不是 50：
+    // 防止 Claude 的 TUI/diff 输出按窄 cols 写入 outputHistory，污染未来 replay。
+    ctx.ait.handleBrowserMessage(body.sessionId, { type: 'resize', cols: 50, rows: 24 }, ws)
+
+    expect(ctx.pty.resizes).toEqual([{ id: body.sessionId, cols: 80, rows: 24 }])
+  })
+
+  it('resize fallback path also clamps narrow cols up to 80', async () => {
+    const todo = ctx.db.createTodo({ title: 'T', quadrant: 1 })
+    const { body } = await request(ctx.app).post('/api/ai-terminal/exec')
+      .send({ todoId: todo.id, prompt: 'hi', tool: 'claude' })
+
+    ctx.ait.handleBrowserMessage(body.sessionId, { type: 'resize', cols: 50, rows: 24 })
+
+    expect(ctx.pty.resizes).toEqual([{ id: body.sessionId, cols: 80, rows: 24 }])
+  })
+
+  it('clear_history empties outputHistory so a later browser sees no replay', async () => {
+    const todo = ctx.db.createTodo({ title: 'T', quadrant: 1 })
+    const { body } = await request(ctx.app).post('/api/ai-terminal/exec')
+      .send({ todoId: todo.id, prompt: 'hi', tool: 'claude' })
+    ctx.pty.emit('output', { sessionId: body.sessionId, data: 'old-narrow-output' })
+    expect(ctx.ait.sessions.get(body.sessionId).outputHistory).toEqual(['old-narrow-output'])
+
+    ctx.ait.handleBrowserMessage(body.sessionId, { type: 'clear_history' })
+
+    const session = ctx.ait.sessions.get(body.sessionId)
+    expect(session.outputHistory).toEqual([])
+    expect(session.outputSize).toBe(0)
+
+    const sent = []
+    const ws = { readyState: 1, OPEN: 1, send: (d) => sent.push(JSON.parse(d)) }
+    ctx.ait.addBrowser(body.sessionId, ws)
+    expect(sent.find(m => m.type === 'replay')).toBeUndefined()
+  })
+
   it('resize applies while session is pending_confirm', async () => {
     ctx = makeApp()
     const todo = ctx.db.createTodo({ title: 'T', quadrant: 1 })

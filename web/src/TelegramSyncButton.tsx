@@ -1,35 +1,40 @@
 /**
- * Telegram 同步按钮：先 dry-run 预览要做的动作，让用户确认后再真做。
- *   - open_topic: todo 活但没绑 topic → 建
- *   - close_topic: todo 死了/没 PTY 但 topic 还在 → 关 topic + mark done
+ * 同步对账按钮：覆盖 telegram + lark 两条 channel。
+ * 先 dry-run 预览要做的动作，让用户确认后再真做。
+ *   - open_topic / open_thread: PTY 活但没绑 topic/thread → 建
+ *   - close_topic / close_thread: PTY 死但还绑着 → 关 + mark done
  *   - clear_route: 孤儿路由 → 清
  */
 import { useState } from 'react'
 import { Button, Modal, Tag, message, Tooltip } from 'antd'
 import { SyncOutlined } from '@ant-design/icons'
-import { telegramSync, TelegramSyncResponse, TelegramSyncAction } from './api'
+import { syncChannels, SyncResponse, SyncActionType } from './api'
 
-const TYPE_LABEL: Record<TelegramSyncAction['type'], string> = {
-  open_topic: '建话题',
-  close_topic: '关话题 + 完成',
+const TYPE_LABEL: Record<SyncActionType, string> = {
+  open_topic: '建 TG 话题',
+  close_topic: '关 TG 话题 + 完成',
+  open_thread: '建 Lark 线程',
+  close_thread: '关 Lark 线程 + 完成',
   clear_route: '清孤儿路由',
 }
-const TYPE_COLOR: Record<TelegramSyncAction['type'], string> = {
+const TYPE_COLOR: Record<SyncActionType, string> = {
   open_topic: 'green',
   close_topic: 'red',
+  open_thread: 'cyan',
+  close_thread: 'magenta',
   clear_route: 'orange',
 }
 
 export default function TelegramSyncButton() {
   const [loading, setLoading] = useState(false)
-  const [plan, setPlan] = useState<TelegramSyncResponse | null>(null)
+  const [plan, setPlan] = useState<SyncResponse | null>(null)
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [executing, setExecuting] = useState(false)
 
   async function preview() {
     setLoading(true)
     try {
-      const res = await telegramSync(true)
+      const res = await syncChannels(true)
       setPlan(res)
       if (res.summary.total === 0) {
         message.success('一切已同步，无需动作')
@@ -46,7 +51,7 @@ export default function TelegramSyncButton() {
   async function execute() {
     setExecuting(true)
     try {
-      const res = await telegramSync(false)
+      const res = await syncChannels(false)
       const ok = res.summary.succeeded || 0
       const fail = res.summary.failed || 0
       if (fail > 0) {
@@ -65,18 +70,18 @@ export default function TelegramSyncButton() {
 
   return (
     <>
-      <Tooltip title="对账 Telegram topic 与待办状态，预览后确认">
+      <Tooltip title="对账 Telegram topic / Lark thread 与待办状态，预览后确认">
         <Button
           icon={<SyncOutlined spin={loading} />}
           size="small"
           loading={loading}
           onClick={preview}
         >
-          TG 同步
+          同步对账
         </Button>
       </Tooltip>
       <Modal
-        title="Telegram 同步预览"
+        title="同步对账预览"
         open={confirmOpen}
         onCancel={() => setConfirmOpen(false)}
         onOk={execute}
@@ -88,7 +93,11 @@ export default function TelegramSyncButton() {
         {plan && (
           <>
             <div style={{ marginBottom: 12, fontSize: 12, color: '#666' }}>
-              建 <b>{plan.summary.open_topic}</b> ｜ 关 <b>{plan.summary.close_topic}</b> ｜ 清 <b>{plan.summary.clear_route}</b>
+              TG 建 <b>{plan.summary.open_topic}</b> · 关 <b>{plan.summary.close_topic}</b>
+              {' ｜ '}
+              Lark 建 <b>{plan.summary.open_thread}</b> · 关 <b>{plan.summary.close_thread}</b>
+              {' ｜ '}
+              清孤儿 <b>{plan.summary.clear_route}</b>
             </div>
             <div style={{ maxHeight: 360, overflowY: 'auto' }}>
               {plan.actions.map((a, i) => (
@@ -106,7 +115,7 @@ export default function TelegramSyncButton() {
                   <Tag color={TYPE_COLOR[a.type]}>{TYPE_LABEL[a.type]}</Tag>
                   <div style={{ flex: 1, overflow: 'hidden' }}>
                     <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {a.todoTitle || a.sessionId || `thread ${a.threadId}`}
+                      {a.todoTitle || a.sessionId || a.rootMessageId || `thread ${a.threadId}`}
                     </div>
                     <div style={{ fontSize: 11, color: '#999' }}>{a.reason}</div>
                   </div>

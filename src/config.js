@@ -273,6 +273,10 @@ function cloneDefaultPricing() {
 			Object.entries(DEFAULT_PRICING.models).map(([k, v]) => [k, { ...v }]),
 		),
 		cnyRate: DEFAULT_PRICING.cnyRate,
+		// 是否在 Telegram / 飞书推送末尾附 token + 费用 footer。默认关，需要在 Settings 抽屉打开。
+		showInPush: false,
+		// footer 显示时是否同时带 ¥（CNY），仅在 showInPush=true 时有意义。
+		showCnyInPush: true,
 	};
 }
 

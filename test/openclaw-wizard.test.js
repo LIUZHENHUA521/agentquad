@@ -1135,6 +1135,66 @@ describe('openclaw-wizard state machine', () => {
     expect(persisted.larkRoute.channel).toBe('lark')
   })
 
+  it('ensureLarkThreadForSession: replyInThread anchor upgrades intro to a real thread root', async () => {
+    // 飞书 sendMessage 后立即 replyInThread 自己一次，把这条消息升级为 thread 根。
+    // 之后用户对它"回复"时，事件 root_id 才会稳定指向我们注册的 rootMessageId。
+    const todo = db.createTodo({ title: 'lark-anchor', quadrant: 2, workDir: '/tmp' })
+    db.updateTodo(todo.id, {
+      aiSessions: [{ sessionId: 'sid-lark-anchor', tool: 'claude', status: 'running', startedAt: Date.now() }],
+    })
+    const fakeLarkBot = {
+      sendMessage: vi.fn(async () => ({ ok: true, payload: { message_id: 'om_intro', thread_id: null } })),
+      replyInThread: vi.fn(async () => ({ ok: true, payload: { message_id: 'om_anchor_reply', root_id: 'om_intro', thread_id: 'omt_real' } })),
+    }
+    bridge.resolveRoute = (sid) => bridge.routes.get(sid) || null
+    const w2 = createOpenClawWizard({
+      db, aiTerminal: ai, openclaw: bridge, pending,
+      larkBot: fakeLarkBot,
+      getConfig: () => ({
+        defaultCwd: '/tmp', port: 5677, defaultTool: 'claude',
+        lark: { enabled: true, chatId: 'oc_chat_anchor', autoCreateTopic: true },
+      }),
+    })
+    const r = await w2.ensureLarkThreadForSession({ sessionId: 'sid-lark-anchor', todoId: todo.id })
+    expect(r.ok).toBe(true)
+    // 立即跟一条 reply_in_thread 上去
+    expect(fakeLarkBot.replyInThread).toHaveBeenCalledWith(expect.objectContaining({ rootMessageId: 'om_intro' }))
+    // 路由用 reply 响应里的 root_id（这里跟 intro 一致），thread_id 用 reply 响应里的真实值
+    const route = bridge.routes.get('sid-lark-anchor')
+    expect(route).toMatchObject({
+      rootMessageId: 'om_intro',
+      threadId: 'omt_real',
+      channel: 'lark',
+    })
+    const persisted = db.getTodo(todo.id).aiSessions.find((s) => s.sessionId === 'sid-lark-anchor')
+    expect(persisted.larkRoute.threadId).toBe('omt_real')
+  })
+
+  it('ensureLarkThreadForSession: anchor reply failure → falls back to intro message_id', async () => {
+    const todo = db.createTodo({ title: 'lark-anchor-fail', quadrant: 2, workDir: '/tmp' })
+    db.updateTodo(todo.id, {
+      aiSessions: [{ sessionId: 'sid-anchor-fail', tool: 'claude', status: 'running', startedAt: Date.now() }],
+    })
+    const fakeLarkBot = {
+      sendMessage: vi.fn(async () => ({ ok: true, payload: { message_id: 'om_intro_fb', thread_id: 'omt_fb' } })),
+      replyInThread: vi.fn(async () => ({ ok: false, reason: 'lark_reply_failed', detail: 'boom' })),
+    }
+    bridge.resolveRoute = (sid) => bridge.routes.get(sid) || null
+    const w2 = createOpenClawWizard({
+      db, aiTerminal: ai, openclaw: bridge, pending,
+      larkBot: fakeLarkBot,
+      getConfig: () => ({
+        defaultCwd: '/tmp', port: 5677, defaultTool: 'claude',
+        lark: { enabled: true, chatId: 'oc_chat_fb', autoCreateTopic: true },
+      }),
+    })
+    const r = await w2.ensureLarkThreadForSession({ sessionId: 'sid-anchor-fail', todoId: todo.id })
+    expect(r.ok).toBe(true)
+    expect(r.rootMessageId).toBe('om_intro_fb')
+    const route = bridge.routes.get('sid-anchor-fail')
+    expect(route).toMatchObject({ rootMessageId: 'om_intro_fb', threadId: 'omt_fb' })
+  })
+
   it('ensureLarkThreadForSession: idempotent — already-bound bridge route returns no-op', async () => {
     const todo = db.createTodo({ title: 'lark-idem', quadrant: 2, workDir: '/tmp' })
     db.updateTodo(todo.id, {
@@ -1398,6 +1458,74 @@ describe('openclaw-wizard state machine', () => {
       getConfig: () => ({ defaultCwd: '/tmp', port: 5677, defaultTool: 'claude' }),
     })
     const r = await w2.handleTopicEvent({ type: 'closed', chatId: '-100', threadId: 99999 })
+    expect(r.ok).toBe(false)
+    expect(r.reason).toBe('no_todo')
+  })
+
+  it('handleLarkThreadClose: marks todo done, kills PTY, clears route, replies ✅ in lark thread', async () => {
+    const todo = db.createTodo({ title: 'lark-close', quadrant: 2, workDir: '/tmp' })
+    db.updateTodo(todo.id, {
+      aiSessions: [{
+        sessionId: 'lsid-old',
+        tool: 'claude',
+        nativeSessionId: 'native-lark-1',
+        status: 'running',
+        startedAt: Date.now(),
+        larkRoute: {
+          targetUserId: 'oc_chat_xx',
+          rootMessageId: 'om_root_close',
+          topicName: '#t01 lark-close',
+          channel: 'lark',
+        },
+      }],
+    })
+    bridge.routes.set('lsid-old', {
+      targetUserId: 'oc_chat_xx', rootMessageId: 'om_root_close', topicName: '#t01 lark-close', channel: 'lark',
+    })
+    bridge.findSessionByRoute = ({ chatId, rootMessageId, channel }) => {
+      for (const [sid, info] of bridge.routes) {
+        if (channel && info.channel !== channel) continue
+        if (String(info.targetUserId) === String(chatId) && info.rootMessageId === rootMessageId) return sid
+      }
+      return null
+    }
+    bridge.clearSessionRoute = (sid) => bridge.routes.delete(sid)
+    const stops = []
+    const replies = []
+    const fakePty = { has: () => true, write: () => {}, stop: (sid) => stops.push(sid) }
+    const fakeLarkBot = {
+      replyInThread: vi.fn(async (a) => { replies.push(a); return { ok: true, payload: { message_id: 'om_reply' } } }),
+      sendMessage: vi.fn(),
+    }
+    const w2 = createOpenClawWizard({
+      db, aiTerminal: ai, openclaw: bridge, pending, pty: fakePty,
+      larkBot: fakeLarkBot,
+      getConfig: () => ({ defaultCwd: '/tmp', port: 5677, defaultTool: 'claude' }),
+    })
+    const r = await w2.handleLarkThreadClose({
+      chatId: 'oc_chat_xx',
+      rootMessageId: 'om_root_close',
+    })
+    expect(r.ok).toBe(true)
+    expect(r.action).toBe('closed')
+    expect(r.todoId).toBe(todo.id)
+    expect(stops).toEqual(['lsid-old'])
+    expect(bridge.routes.has('lsid-old')).toBe(false)
+    const refreshed = db.getTodo(todo.id)
+    expect(refreshed.status).toBe('done')
+    expect(refreshed.completedAt).toBeTruthy()
+    expect(fakeLarkBot.replyInThread).toHaveBeenCalledTimes(1)
+    expect(replies[0]).toMatchObject({ rootMessageId: 'om_root_close' })
+    expect(replies[0].text).toContain('✅')
+  })
+
+  it('handleLarkThreadClose: returns no_todo when rootMessageId is unknown', async () => {
+    const w2 = createOpenClawWizard({
+      db, aiTerminal: ai, openclaw: bridge, pending,
+      larkBot: { replyInThread: vi.fn() },
+      getConfig: () => ({ defaultCwd: '/tmp', port: 5677, defaultTool: 'claude' }),
+    })
+    const r = await w2.handleLarkThreadClose({ chatId: 'oc_chat_xx', rootMessageId: 'om_no_match' })
     expect(r.ok).toBe(false)
     expect(r.reason).toBe('no_todo')
   })
