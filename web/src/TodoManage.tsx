@@ -373,19 +373,21 @@ function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo = false,
                       onOpenSessionInDock(todo, session.sessionId)
                     }}
                   >
-                    {isOpenInDock && (
-                      <Tooltip title={DOCK_STATUS_TIP[dockStatus as Exclude<HistoryDockStatus, 'closed'>]}>
-                        <span
-                          className={`todo-history-dock-dot is-${dockStatus}`}
-                          aria-label={DOCK_STATUS_TIP[dockStatus as Exclude<HistoryDockStatus, 'closed'>]}
-                        />
-                      </Tooltip>
-                    )}
-                    {sessionUnread && (
-                      <Tooltip title="此 AI 会话有新回复未读" placement="left">
-                        <span className="todo-history-unread-dot" aria-label="未读" />
-                      </Tooltip>
-                    )}
+                    {(sessionUnread || isOpenInDock) && (() => {
+                      // 一个点位多重含义：有未读时优先显示红色（更紧急），其次才是 dock 状态色
+                      const dotKind = sessionUnread ? 'unread' : dockStatus
+                      const tip = sessionUnread
+                        ? '此 AI 会话有新回复未读'
+                        : DOCK_STATUS_TIP[dockStatus as Exclude<HistoryDockStatus, 'closed'>]
+                      return (
+                        <Tooltip title={tip}>
+                          <span
+                            className={`todo-history-dock-dot is-${dotKind}`}
+                            aria-label={tip}
+                          />
+                        </Tooltip>
+                      )
+                    })()}
                     <div className="todo-history-body">
                       {editingLabelSessionId === session.sessionId ? (
                         <div style={{ display: 'flex', gap: 4, marginBottom: 4 }} onClick={(e) => e.stopPropagation()}>
