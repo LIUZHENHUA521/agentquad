@@ -63,6 +63,8 @@ import PipelineRunDrawer from './pipeline/PipelineRunDrawer'
 import TerminalDock from './dock/TerminalDock'
 import AttentionRail from './dock/AttentionRail'
 import { useTerminalDockStore } from './store/terminalDockStore'
+import { useDrawerStackStore } from './store/drawerStackStore'
+import { useDrawerStack } from './hooks/useDrawerStack'
 import './TodoManage.css'
 
 const { TextArea } = Input
@@ -755,6 +757,33 @@ export default function TodoManage() {
     window.addEventListener('resize', onResize)
     return () => window.removeEventListener('resize', onResize)
   }, [])
+
+  // Drawer stack ESC handling: when ≥ 1 drawer is open, ESC closes only the topmost.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      const { topKey, registered } = useDrawerStackStore.getState()
+      const top = topKey()
+      if (top && registered[top]) {
+        e.stopImmediatePropagation()
+        e.preventDefault()
+        registered[top]()
+      }
+    }
+    // Use capture phase so we beat antd Drawer's own keyboard handler.
+    document.addEventListener('keydown', handler, true)
+    return () => document.removeEventListener('keydown', handler, true)
+  }, [])
+
+  // Wire each drawer into the shared drawer stack so ESC can close just the topmost.
+  useDrawerStack('settings', settingsOpen, () => setSettingsOpen(false))
+  useDrawerStack('stats', statsOpen, () => setStatsOpen(false))
+  useDrawerStack('wiki', wikiOpen, () => setWikiOpen(false))
+  useDrawerStack('report', reportOpen, () => setReportOpen(false))
+  useDrawerStack('template', templateDrawerOpen, () => setTemplateDrawerOpen(false))
+  useDrawerStack('dashboard', dashboardOpen, () => setDashboardOpen(false))
+  useDrawerStack('transcript', transcriptDrawerOpen, () => setTranscriptDrawerOpen(false))
+  useDrawerStack('pipeline', pipelineDrawerOpen, () => setPipelineDrawerOpen(false))
 
   useEffect(() => {
     let cancelled = false
