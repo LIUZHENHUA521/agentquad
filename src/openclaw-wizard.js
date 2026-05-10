@@ -295,6 +295,36 @@ function isGeneralChannel(chatId, threadId) {
 const QUADTODO_GLOBAL_SLASH = new Set(['list', 'pending', 'stop'])
 
 /**
+ * 把 sessionInputDispatcher.send() 返回的 action 翻译成 wizard 的 reply / action。
+ * 集中映射，避免 lark / telegram 两个接入点重复 switch。
+ */
+function mapDispatcherResultToWizardReply(result, sid, imagePaths) {
+  const imgs = imagePaths && imagePaths.length ? imagePaths : undefined
+  switch (result?.action) {
+    case 'sent':
+      return { reply: '', action: 'stdin_proxy', sessionId: sid, imagePaths: imgs }
+    case 'queued':
+      return { reply: '', action: 'queued', sessionId: sid, queueSize: result.queueSize }
+    case 'queue_full':
+      return {
+        reply: `📥 队列已满 (${result.queueSize})，请等当前任务结束或发送 \`!!\` 中断。`,
+        action: 'queue_full',
+        sessionId: sid,
+      }
+    case 'soft_interrupted':
+      return { reply: '⏸ 已发 Esc 中断当前任务，新消息会接着投递。', action: 'soft_interrupted', sessionId: sid }
+    case 'hard_cancelled':
+      return { reply: '⏹ 已中断当前任务（Ctrl+C）。', action: 'hard_cancelled', sessionId: sid }
+    case 'noop_idle':
+      return { reply: '✅ 当前没有正在跑的任务，无需中断。', action: 'noop_idle', sessionId: sid }
+    case 'session_ended':
+      return { reply: '这个任务已结束，请在群里重新发起任务。', action: 'session_ended', sessionId: sid }
+    default:
+      return { reply: '', action: result?.action || 'unknown', sessionId: sid }
+  }
+}
+
+/**
  * 创建协调器实例。
  *
  * 依赖：
@@ -308,6 +338,7 @@ const QUADTODO_GLOBAL_SLASH = new Set(['list', 'pending', 'stop'])
 export function createOpenClawWizard({
   db, aiTerminal, openclaw, pending,
   pty = null, telegramBot = null, larkBot = null, loadingTracker = null,
+  sessionInputDispatcher = null,
   getConfig, logger = console,
 } = {}) {
   if (!db) throw new Error('db_required')
@@ -1250,6 +1281,28 @@ export function createOpenClawWizard({
           sessionId: sid,
         }
       }
+      // 走 dispatcher（首选）；未注入时回退到旧裸投递路径
+      if (sessionInputDispatcher) {
+        loadingTracker?.markRunning?.(sid)?.catch?.(() => {})
+        try {
+          const r = await sessionInputDispatcher.send({
+            sessionId: sid,
+            text: trimmed,
+            imagePaths,
+            channel: 'lark',
+            echoTarget: { chatId, threadId, rootMessageId, messageId: triggerMessageId },
+          })
+          return mapDispatcherResultToWizardReply(r, sid, imagePaths)
+        } catch (e) {
+          logger.warn?.(`[wizard] lark dispatcher.send failed: ${e.message}`)
+          return {
+            reply: '⚠️ 投递失败，请重试。',
+            action: 'dispatcher_error',
+            sessionId: sid,
+          }
+        }
+      }
+      // Fallback: 裸 stdin proxy（兜底兼容）
       try {
         loadingTracker?.markRunning?.(sid)?.catch?.(() => {})
         try { aiTerminal?.markSessionAwaitingReply?.(sid, false) } catch { /* ignore */ }

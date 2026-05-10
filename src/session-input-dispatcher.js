@@ -35,6 +35,12 @@ function writeToPty(pty, sessionId, payload, logger) {
   }, 80)
 }
 
+// 写真实文本到 PTY 后，更新 ai-terminal awaitingReply=false（"已经把输入交给 Claude，现在它在干活"）。
+// 写 Esc / Ctrl+C 这类控制字符不调用此函数，因为它们让 Claude 回到 idle prompt 而不是开始新 turn。
+function markBusyAfterWrite(aiTerminal, sessionId) {
+  try { aiTerminal.markSessionAwaitingReply?.(sessionId, false) } catch { /* ignore */ }
+}
+
 export function createSessionInputDispatcher({ pty, aiTerminal, callbacks = {}, logger = console } = {}) {
   if (!pty) throw new Error('pty_required')
   if (!aiTerminal) throw new Error('aiTerminal_required')
@@ -93,6 +99,7 @@ export function createSessionInputDispatcher({ pty, aiTerminal, callbacks = {}, 
       // queue_or_send / soft_interrupt 在 idle 下都等同直发 stripped
       const payload = buildPayload(stripped, imagePaths)
       writeToPty(pty, sessionId, payload, logger)
+      markBusyAfterWrite(aiTerminal, sessionId)
       return { action: 'sent', sessionId }
     }
 
@@ -150,6 +157,7 @@ export function createSessionInputDispatcher({ pty, aiTerminal, callbacks = {}, 
     if (stripped || (imagePaths && imagePaths.length)) {
       const payload = buildPayload(stripped, imagePaths)
       writeToPty(pty, sessionId, payload, logger)
+      markBusyAfterWrite(aiTerminal, sessionId)
     }
     return { action: 'soft_interrupted', sessionId }
   }
@@ -170,6 +178,7 @@ export function createSessionInputDispatcher({ pty, aiTerminal, callbacks = {}, 
     queues.delete(sessionId)
     try {
       writeToPty(pty, sessionId, payload, logger)
+      markBusyAfterWrite(aiTerminal, sessionId)
     } catch (e) {
       logger?.warn?.(`[dispatcher] flush write failed sid=${sessionId}: ${e.message}`)
       return { flushed: 0, error: e.message }
