@@ -52,6 +52,14 @@ const RESIZE_STABILITY_MS = 200
 const MIN_CONTAINER_WIDTH = 300
 const MIN_VALID_COLS = 30
 
+// 后端 isValidResizeSize 把 cols < 30 视为无效 → 删除该 ws 的尺寸贡献并重算 min 聚合。
+// 同 session 被多个浏览器 tab 共享时，后台 tab 用这个发"我退出尺寸聚合"。
+function sendUnregisterSize(ws: WebSocket | null) {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: 'resize', cols: 0, rows: 0 }))
+  }
+}
+
 export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeTarget, onSessionRecovered, onSessionSwitch, onClose, onDone, onStatusChange, fillHeight }: Props) {
   void onClose
   const { theme, preset, override, customPresets, setPreset, setOverride, resetOverride, saveCustomPreset, deleteCustomPreset } = useTerminalTheme()
@@ -444,10 +452,7 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
         requestAnimationFrame(() => {
           if (isHiddenRef.current) {
             // 重连时仍处后台：只发 0/0 unregister，不上报真实尺寸
-            const wsNow = wsRef.current
-            if (wsNow && wsNow.readyState === WebSocket.OPEN) {
-              wsNow.send(JSON.stringify({ type: 'resize', cols: 0, rows: 0 }))
-            }
+            sendUnregisterSize(wsRef.current)
             return
           }
           requestAnimationFrame(() => doFit())
@@ -639,10 +644,7 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
           clearTimeout(pendingResizeRef.current.timer)
         }
         pendingResizeRef.current = null
-        const ws = wsRef.current
-        if (ws && ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ type: 'resize', cols: 0, rows: 0 }))
-        }
+        sendUnregisterSize(wsRef.current)
         // 重置已发送记录，等可见时重新发当前真实尺寸（不会被去抖跳过）
         lastSentSizeRef.current = null
         return
