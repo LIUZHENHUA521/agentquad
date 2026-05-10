@@ -139,3 +139,46 @@ describe('send: busy + queue', () => {
     expect(desc.byId.sid2.queueSize).toBe(1)
   })
 })
+
+describe('onSessionIdle: flush queue', () => {
+  it('合并 3 条文本 → 单次 pty.write 用 \\n 拼', async () => {
+    vi.useFakeTimers()
+    const { pty, aiTerminal, writes } = makeDeps({ awaitingReply: false })
+    const onFlush = vi.fn().mockResolvedValue()
+    const d = createSessionInputDispatcher({
+      pty, aiTerminal,
+      callbacks: { onFlush },
+    })
+    await d.send({ sessionId: 'sid1', text: 'a' })
+    await d.send({ sessionId: 'sid1', text: 'b' })
+    await d.send({ sessionId: 'sid1', text: 'c' })
+    await d.onSessionIdle('sid1')
+    await vi.advanceTimersByTimeAsync(100)
+    expect(writes).toEqual([
+      { sid: 'sid1', data: 'a\nb\nc' },
+      { sid: 'sid1', data: '\r' },
+    ])
+    expect(onFlush).toHaveBeenCalledWith(expect.objectContaining({ sessionId: 'sid1', count: 3 }))
+    expect(d.describe().byId.sid1).toBeUndefined()
+    vi.useRealTimers()
+  })
+
+  it('imagePaths 跨条目合并到 payload 前面', async () => {
+    vi.useFakeTimers()
+    const { pty, aiTerminal, writes } = makeDeps({ awaitingReply: false })
+    const d = createSessionInputDispatcher({ pty, aiTerminal })
+    await d.send({ sessionId: 'sid1', text: 'first', imagePaths: ['/tmp/a.png'] })
+    await d.send({ sessionId: 'sid1', text: 'second', imagePaths: ['/tmp/b.png'] })
+    await d.onSessionIdle('sid1')
+    await vi.advanceTimersByTimeAsync(100)
+    expect(writes[0].data).toBe('@/tmp/a.png @/tmp/b.png first\nsecond')
+    vi.useRealTimers()
+  })
+
+  it('空队列 onSessionIdle → noop，不写 PTY', async () => {
+    const { pty, aiTerminal, writes } = makeDeps({ awaitingReply: false })
+    const d = createSessionInputDispatcher({ pty, aiTerminal })
+    await d.onSessionIdle('sid1')
+    expect(writes).toEqual([])
+  })
+})

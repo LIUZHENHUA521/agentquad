@@ -93,7 +93,36 @@ export function createSessionInputDispatcher({ pty, aiTerminal, callbacks = {}, 
     return { action: 'noop', reason: 'busy_not_implemented_yet', sessionId }
   }
 
-  function onSessionIdle(_sessionId) { /* TODO Task 5 */ }
+  async function flushQueue(sessionId) {
+    const q = queues.get(sessionId)
+    if (!q || q.items.length === 0) return { flushed: 0 }
+    const allImages = []
+    const texts = []
+    for (const item of q.items) {
+      if (item.imagePaths && item.imagePaths.length) allImages.push(...item.imagePaths)
+      if (item.text) texts.push(item.text)
+    }
+    const count = q.items.length
+    const combinedText = texts.join('\n')
+    const payload = buildPayload(combinedText, allImages)
+    if (q.staleTimer) { clearTimeout(q.staleTimer); q.staleTimer = null }
+    queues.delete(sessionId)
+    try {
+      writeToPty(pty, sessionId, payload, logger)
+    } catch (e) {
+      logger?.warn?.(`[dispatcher] flush write failed sid=${sessionId}: ${e.message}`)
+      return { flushed: 0, error: e.message }
+    }
+    if (callbacks.onFlush) {
+      try { await callbacks.onFlush({ sessionId, count }) }
+      catch (e) { logger?.warn?.(`[dispatcher] onFlush callback failed: ${e.message}`) }
+    }
+    return { flushed: count }
+  }
+
+  async function onSessionIdle(sessionId) {
+    return flushQueue(sessionId)
+  }
   function onSessionEnd(_sessionId) { /* TODO Task 8 */ }
 
   function describe() {
