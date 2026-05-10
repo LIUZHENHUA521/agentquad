@@ -304,7 +304,15 @@ function mapDispatcherResultToWizardReply(result, sid, imagePaths) {
     case 'sent':
       return { reply: '', action: 'stdin_proxy', sessionId: sid, imagePaths: imgs }
     case 'queued':
-      return { reply: '', action: 'queued', sessionId: sid, queueSize: result.queueSize }
+      return {
+        // 首条排队 → 简短文字提示；后续排队仅靠 reaction 静默标记，不刷屏
+        reply: result.queueSize === 1
+          ? '🔄 当前任务进行中，已排队，会在结束后投递。'
+          : '',
+        action: 'queued',
+        sessionId: sid,
+        queueSize: result.queueSize,
+      }
     case 'queue_full':
       return {
         reply: `📥 队列已满 (${result.queueSize})，请等当前任务结束或发送 \`!!\` 中断。`,

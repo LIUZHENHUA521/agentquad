@@ -1246,17 +1246,42 @@ export function createServer(opts = {}) {
 
 	// Session Input Dispatcher：所有 "把用户文本投递到一个 Claude Code session" 的路径都走它
 	// 三档语义：queue_or_send / soft_interrupt (`!`) / hard_cancel (`!!` or in-topic `/stop`)
-	// 回调暂用 stub，Task 15 填具体的 lark/telegram 路由实现
+	//
+	// Echo 策略（spec: reaction-first，第 1 条带文字、其后 silent）：
+	//   - reactions: 由 lark-bot.handleEvent / telegram-bot reactionTracker 在收到用户消息时
+	//     自动添加（已绑 sessionId），由 Stop / session-end hook 自动清除（已存在路径，不重复）
+	//   - 第 1 条排队的文字 reply：由 wizard 的 mapDispatcherResultToWizardReply 直接返回
+	//     （走 wizard 同步 reply 路径），不走 dispatcher 回调
+	//   - dispatcher 回调专门处理 wizard *不在场* 的事件：
+	//     - onStale: 队列卡住超过 5min，主动告知用户
+	//     - onSessionEnd: session 已结束，未投递的消息给用户做交代
 	const sessionInputDispatcher = createSessionInputDispatcher({
 		pty,
 		aiTerminal: ait,
 		callbacks: {
-			onQueueFirstEnqueue: async (_ctx) => undefined,
-			onQueueAdditionalEnqueue: async (_ctx) => undefined,
-			onFlush: async (_ctx) => undefined,
-			onHardCancel: async (_ctx) => undefined,
-			onStale: async (_ctx) => undefined,
-			onSessionEnd: async (_ctx) => undefined,
+			onQueueFirstEnqueue: async () => undefined,
+			onQueueAdditionalEnqueue: async () => undefined,
+			onFlush: async () => undefined,
+			onHardCancel: async () => undefined,
+			onStale: async ({ sessionId, queueSize }) => {
+				const text = `⚠️ session 有 ${queueSize} 条排队消息超过 5 分钟未投递，看起来卡住了。可发送 \`!!\` 中断后重新发送。`
+				try {
+					await openclawBridge?.postText?.({ sessionId, message: text })
+				} catch (e) {
+					console.warn(`[server] dispatcher.onStale postText failed: ${e.message}`)
+				}
+			},
+			onSessionEnd: async ({ sessionId, undeliveredCount, undeliveredTexts }) => {
+				if (!undeliveredCount) return
+				const preview = undeliveredTexts.slice(0, 3).map((t) => `• ${String(t).slice(0, 80)}`).join('\n')
+				const more = undeliveredCount > 3 ? `\n（还有 ${undeliveredCount - 3} 条未列出）` : ''
+				const text = `⚠️ session 已结束，未投递 ${undeliveredCount} 条消息：\n${preview}${more}`
+				try {
+					await openclawBridge?.postText?.({ sessionId, message: text })
+				} catch (e) {
+					console.warn(`[server] dispatcher.onSessionEnd postText failed: ${e.message}`)
+				}
+			},
 		},
 		logger: console,
 	})
