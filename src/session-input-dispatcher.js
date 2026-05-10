@@ -39,8 +39,33 @@ export function createSessionInputDispatcher({ pty, aiTerminal, callbacks = {}, 
   if (!pty) throw new Error('pty_required')
   if (!aiTerminal) throw new Error('aiTerminal_required')
 
-  // sessionId → QueueState
+  // sessionId → QueueState { items, firstEchoMessageId, staleTimer }
   const queues = new Map()
+
+  function getOrCreateQueue(sessionId) {
+    let q = queues.get(sessionId)
+    if (!q) {
+      q = { items: [], staleTimer: null, firstEchoMessageId: null }
+      queues.set(sessionId, q)
+    }
+    return q
+  }
+
+  async function enqueue({ sessionId, stripped, imagePaths, channel, echoTarget }) {
+    const q = getOrCreateQueue(sessionId)
+    q.items.push({ text: stripped, imagePaths, enqueuedAt: Date.now() })
+    const isFirst = q.items.length === 1
+    const cb = isFirst ? callbacks.onQueueFirstEnqueue : callbacks.onQueueAdditionalEnqueue
+    if (cb) {
+      try {
+        const echo = await cb({ sessionId, channel, echoTarget, queueSize: q.items.length })
+        if (isFirst && echo?.messageId) q.firstEchoMessageId = echo.messageId
+      } catch (e) {
+        logger?.warn?.(`[dispatcher] echo callback failed: ${e.message}`)
+      }
+    }
+    return q.items.length
+  }
 
   async function send({ sessionId, text, imagePaths = [], channel, echoTarget } = {}) {
     if (!pty.has(sessionId)) {
@@ -59,13 +84,28 @@ export function createSessionInputDispatcher({ pty, aiTerminal, callbacks = {}, 
       return { action: 'sent', sessionId }
     }
 
-    // busy 路径在后续 task 实现
+    if (mode === 'queue_or_send') {
+      const size = await enqueue({ sessionId, stripped, imagePaths, channel, echoTarget })
+      return { action: 'queued', queueSize: size, sessionId }
+    }
+
+    // soft_interrupt / hard_cancel busy 路径在后续 task 实现
     return { action: 'noop', reason: 'busy_not_implemented_yet', sessionId }
   }
 
   function onSessionIdle(_sessionId) { /* TODO Task 5 */ }
   function onSessionEnd(_sessionId) { /* TODO Task 8 */ }
-  function describe() { return { sessions: 0 } }
+
+  function describe() {
+    const byId = {}
+    for (const [sid, q] of queues.entries()) {
+      byId[sid] = {
+        queueSize: q.items.length,
+        oldestEnqueuedAt: q.items[0]?.enqueuedAt ?? null,
+      }
+    }
+    return { sessions: queues.size, byId }
+  }
 
   return { send, onSessionIdle, onSessionEnd, describe, __test__: { queues, parseTrigger } }
 }

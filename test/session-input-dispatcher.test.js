@@ -95,3 +95,47 @@ describe('send: idle path', () => {
     expect(result).toMatchObject({ action: 'session_ended' })
   })
 })
+
+describe('send: busy + queue', () => {
+  it('busy + 普通文本 → 入队，触发 onQueueFirstEnqueue', async () => {
+    const { pty, aiTerminal, writes } = makeDeps({ awaitingReply: false })
+    const onFirst = vi.fn().mockResolvedValue({ messageId: 'first-echo' })
+    const onMore = vi.fn().mockResolvedValue()
+    const d = createSessionInputDispatcher({
+      pty, aiTerminal,
+      callbacks: { onQueueFirstEnqueue: onFirst, onQueueAdditionalEnqueue: onMore },
+    })
+    const result = await d.send({ sessionId: 'sid1', text: 'hello', channel: 'telegram' })
+    expect(result).toMatchObject({ action: 'queued', queueSize: 1 })
+    expect(writes).toEqual([])
+    expect(onFirst).toHaveBeenCalledWith(expect.objectContaining({ sessionId: 'sid1', channel: 'telegram', queueSize: 1 }))
+    expect(onMore).not.toHaveBeenCalled()
+  })
+
+  it('busy + 连续 3 条 → 第 2/3 条触发 onQueueAdditionalEnqueue', async () => {
+    const { pty, aiTerminal } = makeDeps({ awaitingReply: false })
+    const onFirst = vi.fn().mockResolvedValue()
+    const onMore = vi.fn().mockResolvedValue()
+    const d = createSessionInputDispatcher({
+      pty, aiTerminal,
+      callbacks: { onQueueFirstEnqueue: onFirst, onQueueAdditionalEnqueue: onMore },
+    })
+    await d.send({ sessionId: 'sid1', text: 'a' })
+    await d.send({ sessionId: 'sid1', text: 'b' })
+    await d.send({ sessionId: 'sid1', text: 'c' })
+    expect(onFirst).toHaveBeenCalledTimes(1)
+    expect(onMore).toHaveBeenCalledTimes(2)
+  })
+
+  it('describe() 反映 per-sid 队列长度', async () => {
+    const { pty, aiTerminal } = makeDeps({ awaitingReply: false })
+    const d = createSessionInputDispatcher({ pty, aiTerminal })
+    await d.send({ sessionId: 'sid1', text: 'a' })
+    await d.send({ sessionId: 'sid1', text: 'b' })
+    await d.send({ sessionId: 'sid2', text: 'x' })
+    const desc = d.describe()
+    expect(desc.sessions).toBe(2)
+    expect(desc.byId.sid1.queueSize).toBe(2)
+    expect(desc.byId.sid2.queueSize).toBe(1)
+  })
+})
