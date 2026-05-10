@@ -21,6 +21,7 @@ import { homedir } from 'node:os'
 import { join, resolve as resolvePath } from 'node:path'
 import { buildAskUserReplyMarkup } from '../../../ask-user-buttons.js'
 import { applySystemRules } from '../../../system-rules.js'
+import { resolveTool } from '../../../dispatch.js'
 
 function asText(value) {
   return {
@@ -192,7 +193,8 @@ export function registerOpenClawTools(server, deps) {
           return asError('cwd_not_exists', { cwd })
         }
 
-        const tool = args.tool || (getConfig?.()?.defaultTool) || 'claude'
+        const cfg = getConfig?.() || {}
+        const tool = resolveTool({ channel: args.channel || 'openclaw', userId: args.targetUserId, override: args.tool }, cfg)
         // 默认 bypass —— 微信远程驱动场景必备（无法响应权限弹窗）
         const permissionMode = args.permissionMode || 'bypass'
 
