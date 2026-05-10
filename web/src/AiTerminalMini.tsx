@@ -322,6 +322,7 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
     lastSentSizeRef.current = null
     if (pendingResizeRef.current?.timer) clearTimeout(pendingResizeRef.current.timer)
     pendingResizeRef.current = null
+    isHiddenRef.current = typeof document !== 'undefined' ? document.hidden : false
     lastPongRef.current = Date.now()
     setSessionExpired(false)
     setWsConnected(false)
@@ -774,6 +775,9 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
 
   useEffect(() => {
     refitAttemptsRef.current = 0
+    // 后台 tab 不应触发 fit + 上报：fullscreen / height 变化路径未走 isHiddenRef 守门的
+    // observer 链，需要在这里显式跳过，否则会把真实尺寸重新塞回多 tab 聚合。
+    if (isHiddenRef.current) return
     requestAnimationFrame(doFit)
   }, [fullscreen, height, doFit])
 
