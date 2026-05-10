@@ -2,9 +2,10 @@ import { EventEmitter } from 'node:events'
 import { createRequire } from 'node:module'
 import { randomUUID } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
-import { readdirSync, statSync, existsSync, watch as fsWatch, mkdirSync, openSync, readSync, closeSync } from 'node:fs'
+import { readdirSync, statSync, existsSync, watch as fsWatch, mkdirSync, openSync, readSync, closeSync, readFileSync } from 'node:fs'
 import { delimiter, dirname, isAbsolute, join } from 'node:path'
 import { homedir } from 'node:os'
+import { createCodexPromptDetector } from './codex-prompt-detector.js'
 
 const require = createRequire(import.meta.url)
 
@@ -121,6 +122,53 @@ function detectCodexSessionFromFs(afterMs) {
   }
 }
 
+function tryReadCwdFromSessionMeta(filePath) {
+  try {
+    const head = readFileSync(filePath, 'utf8').split('\n').slice(0, 2)
+    for (const line of head) {
+      if (!line.trim()) continue
+      const j = JSON.parse(line)
+      if (j?.type === 'session_meta' && j?.payload?.cwd) return j.payload.cwd
+    }
+  } catch {}
+  return null
+}
+
+/**
+ * 反向定位某个 codex nativeSessionId 对应的 rollout-*.jsonl 文件 + 起始 cwd。
+ * 用途：拿到 native id 后由上层需要订阅 jsonl 增量，或恢复时校验文件是否还在。
+ * 读 head 两行扫 session_meta，找不到时 cwd:null（仍返回 filePath）。
+ */
+export function findCodexSession(nativeSessionId, { sessionsRoot = CODEX_SESSIONS_DIR } = {}) {
+  if (!nativeSessionId) return null
+  if (!existsSync(sessionsRoot)) return null
+  let years
+  try { years = readdirSync(sessionsRoot).filter(y => /^\d{4}$/.test(y)) } catch { return null }
+  for (const y of years) {
+    const yDir = join(sessionsRoot, y)
+    let months
+    try { months = readdirSync(yDir) } catch { continue }
+    for (const m of months) {
+      const mDir = join(yDir, m)
+      let days
+      try { days = readdirSync(mDir) } catch { continue }
+      for (const d of days) {
+        const dDir = join(mDir, d)
+        let files
+        try { files = readdirSync(dDir) } catch { continue }
+        for (const f of files) {
+          const match = f.match(CODEX_ROLLOUT_FILE_RE)
+          if (!match || match[1] !== nativeSessionId) continue
+          const filePath = join(dDir, f)
+          const cwd = tryReadCwdFromSessionMeta(filePath)
+          return { filePath, cwd, nativeId: nativeSessionId }
+        }
+      }
+    }
+  }
+  return null
+}
+
 function defaultPtyFactory() {
   const pty = require('node-pty')
   return (bin, args, opts) => pty.spawn(bin, args, opts)
@@ -218,14 +266,18 @@ function defaultClaudeSessionLocator(nativeSessionId) {
 }
 
 export class PtyManager extends EventEmitter {
-  constructor({ tools, ptyFactory, promptDelayMs = 2000, codexWatcherFactory, claudeSessionLocator } = {}) {
+  constructor({ tools, ptyFactory, promptDelayMs = 2000, codexWatcherFactory, claudeSessionLocator, codexSessionLocator, sidecar = null, eventEmitterFactory = null, codexPromptDetectorFactory = null } = {}) {
     super()
     if (!tools) throw new Error('PtyManager: tools required')
     this.tools = tools
     this.ptyFactory = ptyFactory || defaultPtyFactory()
     this.codexWatcherFactory = codexWatcherFactory || defaultCodexWatcherFactory
     this.claudeSessionLocator = claudeSessionLocator || defaultClaudeSessionLocator
+    this.codexSessionLocator = codexSessionLocator || ((id) => findCodexSession(id))
     this.promptDelayMs = promptDelayMs
+    this.sidecar = sidecar
+    this.eventEmitterFactory = eventEmitterFactory
+    this.codexPromptDetectorFactory = codexPromptDetectorFactory || createCodexPromptDetector
     this.sessions = new Map()
   }
 
@@ -246,6 +298,29 @@ export class PtyManager extends EventEmitter {
     if (session.detectTimer) { clearInterval(session.detectTimer); session.detectTimer = null }
     if (session.fsWatcher) { try { session.fsWatcher.close() } catch { /* ignore */ } session.fsWatcher = null }
     this.emit('native-session', { sessionId: session.sessionId, nativeId })
+    // codex 专属：拿到 native id 后落 sidecar + 启动 jsonl 增量 emitter，给 IM 推送链路用。
+    if (session.tool === 'codex') {
+      if (this.sidecar) {
+        try {
+          const p = this.sidecar.write({
+            nativeId,
+            quadtodoSessionId: session.sessionId,
+            todoId: session.todoId || null,
+            cwd: session.cwd || null,
+          })
+          if (p && typeof p.catch === 'function') p.catch(() => {})
+        } catch { /* ignore */ }
+      }
+      if (this.eventEmitterFactory && !session.eventEmitter) {
+        try {
+          const loc = this.codexSessionLocator(nativeId)
+          if (loc?.filePath) {
+            session.eventEmitter = this.eventEmitterFactory({ filePath: loc.filePath, nativeId })
+            session.eventEmitter.start?.()
+          }
+        } catch { /* ignore */ }
+      }
+    }
     return true
   }
 
@@ -265,6 +340,25 @@ export class PtyManager extends EventEmitter {
       if (pid) out.push({ sessionId, pid, tool: s.tool })
     }
     return out
+  }
+
+  /**
+   * 测试 / Phase A 友好入口：传 { tool, sessionId, cwd, todoId, prompt?, ... }，返回一个
+   * 可 .kill() 的 handle。内部仍走 start() 的全部生命周期，方便 sidecar / emitter 接线
+   * 测试不必走 onExit 链路。
+   */
+  spawn({ tool, sessionId, cwd, todoId, prompt = null, resumeNativeId = null, permissionMode = null, extraEnv = null } = {}) {
+    this.start({ sessionId, tool, prompt, cwd, resumeNativeId, permissionMode, extraEnv })
+    const session = this.sessions.get(sessionId)
+    if (session) {
+      session.todoId = todoId || null
+      session.cwd = cwd || null
+    }
+    return {
+      sessionId,
+      get nativeId() { return session?.nativeId || null },
+      kill: () => this.stop(sessionId),
+    }
   }
 
   start({ sessionId, tool, prompt, cwd, resumeNativeId, permissionMode, extraEnv }) {
@@ -356,6 +450,8 @@ export class PtyManager extends EventEmitter {
       proc,
       tool,
       sessionId,
+      cwd: effectiveCwd,
+      todoId: null,
       fullLog: [],
       logBytes: 0,
       pendingPrompt: useCliPrompt ? null : (prompt && !resumeNativeId ? prompt : null),
@@ -365,9 +461,36 @@ export class PtyManager extends EventEmitter {
       stopped: false,
       detectTimer: null,
       fsWatcher: null,
+      eventEmitter: null,
+      detector: null,
       lastTuiAlertAt: 0,
     }
     this.sessions.set(sessionId, session)
+
+    // Codex 专属：stdout 提示词检测器（接 [Y/n] / apply patch? 之类的兜底权限弹窗）。
+    // emitter 用迟绑定 getter 包装：detector 创建在 _setNativeId 之前，eventEmitter 还是 null。
+    if (tool === 'codex') {
+      try {
+        session.detector = this.codexPromptDetectorFactory({
+          pty: proc,
+          emitter: {
+            getLatestAssistantContent: () => session.eventEmitter?.getLatestAssistantContent?.() || '',
+          },
+          onMatch: ({ promptText, matchedPattern }) => {
+            this.emit('codex-prompt', {
+              sessionId: session.sessionId,
+              nativeId: session.nativeId,
+              promptText,
+              matchedPattern,
+            })
+          },
+        })
+        session.detector.start?.()
+      } catch (e) {
+        console.warn('[pty] codex prompt detector start failed:', e?.message || e)
+        session.detector = null
+      }
+    }
 
     // 已知 nativeId 立即同步通知 —— 覆盖三种情况：
     //   1) Claude 新会话：presetClaudeId（randomUUID）
@@ -450,6 +573,25 @@ export class PtyManager extends EventEmitter {
       if (session.detectTimer) clearInterval(session.detectTimer)
       if (session.promptTimer) clearTimeout(session.promptTimer)
       if (session.fsWatcher) { try { session.fsWatcher.close() } catch { /* ignore */ } session.fsWatcher = null }
+      if (session.detector) { try { session.detector.stop?.() } catch { /* ignore */ } session.detector = null }
+      if (session.eventEmitter) {
+        // codex 在 jsonl 里没有"会话整体结束"的事件，只有 task_complete（一轮）和
+        // 进程实际退出。这里合成 SessionEnd 抛给上层，对应 IM 里的 ✅ + 全量 transcript 附件。
+        if (session.tool === 'codex' && session.nativeId) {
+          try {
+            session.eventEmitter.emitSynthetic?.({
+              event: 'SessionEnd',
+              nativeId: session.nativeId,
+              rawEventPayload: { exitCode: exitCode ?? 1 },
+            })
+          } catch { /* ignore */ }
+        }
+        try { session.eventEmitter.stop?.() } catch { /* ignore */ }
+        session.eventEmitter = null
+      }
+      if (this.sidecar && session.tool === 'codex' && session.nativeId) {
+        try { this.sidecar.clear(session.nativeId) } catch { /* ignore */ }
+      }
       const fullLog = session.fullLog.join('')
       this.sessions.delete(sessionId)
       this.emit('done', {
@@ -546,6 +688,14 @@ export class PtyManager extends EventEmitter {
     const s = this.sessions.get(sessionId)
     if (!s) return
     s.stopped = true
+    // Codex 侧的 sidecar/emitter 在这里同步清理 —— onExit 也会再做一次（幂等）。
+    // 之所以提前清，是因为某些 PTY 实现的 kill() 不一定会准时触发 onExit（测试环境
+    // 用 mock proc 完全不触发），sidecar 残留会让下次 boot 误以为会话还在。
+    if (s.detector) { try { s.detector.stop?.() } catch { /* ignore */ } s.detector = null }
+    if (s.eventEmitter) { try { s.eventEmitter.stop?.() } catch { /* ignore */ } s.eventEmitter = null }
+    if (this.sidecar && s.tool === 'codex' && s.nativeId) {
+      try { this.sidecar.clear(s.nativeId) } catch { /* ignore */ }
+    }
     try { s.proc.kill() } catch { /* ignore */ }
     // cleanup happens in onExit
   }

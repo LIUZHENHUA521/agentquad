@@ -14,6 +14,8 @@ import {
 } from "./config.js";
 import { openDb } from "./db.js";
 import { PtyManager } from "./pty.js";
+import { createCodexSidecar } from "./codex-sidecar.js";
+import { createCodexEventEmitter } from "./codex-event-emitter.js";
 import { createAiTerminal } from "./routes/ai-terminal.js";
 import { createTranscriptsRouter } from "./routes/transcripts.js";
 import { createTranscriptsService } from "./transcripts/index.js";
@@ -412,6 +414,30 @@ export function resolveEditorTargetPath(baseDirs, rawPath) {
 	return resolveEditorTargetInfo(baseDirs, rawPath)?.resolvedPath || null;
 }
 
+// Phase C：Codex 事件流转给 /api/openclaw/hook（与 Claude hook 同一端点，靠 source/path 区分）。
+// 让 hook handler 走与 Claude 相同的路由 / 节流 / 推送链路，无需在内存里另开桥。
+async function handleCodexEvent(evt, _ptyManager, runtimeConfig) {
+	if (!evt) return;
+	const port = runtimeConfig?.port || 5677;
+	console.log(`[codex-event] ${evt.event} native=${evt.nativeId}`);
+	try {
+		await fetch(`http://127.0.0.1:${port}/api/openclaw/hook`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({
+				source: "codex",
+				path: "jsonl",
+				event: evt.event,
+				nativeId: evt.nativeId,
+				transcript_path: evt.transcriptPath || null,
+				raw_event_payload: evt.rawEventPayload || null,
+			}),
+		});
+	} catch (e) {
+		console.warn("[codex-event] post failed:", e.message);
+	}
+}
+
 function buildSafeLarkConfig(cfg) {
 	const { appSecret: _appSecret, ...larkSafe } = cfg.lark || {};
 	return {
@@ -455,8 +481,54 @@ export function createServer(opts = {}) {
 		tools: tools || resolveToolsConfig(initialConfig?.tools),
 		defaultTool: initialConfig?.defaultTool || "claude",
 	};
+	// Codex sidecar：把 quadtodo session ↔ codex native id 的映射落到 ~/.quadtodo/codex-sessions/，
+	// 重启后 restoreFromDisk() 复活内存映射。Phase A 只暂存元数据；Phase C 起 IM 推送链路会用它
+	// 来反查 quadtodo session / todoId / cwd。
+	const codexSidecar = createCodexSidecar();
+	codexSidecar.restoreFromDisk();
+	let ptyRef = null;
 	const pty =
-		injectedPty || new PtyManager({ tools: runtimeConfig.tools || {} });
+		injectedPty ||
+		new PtyManager({
+			tools: runtimeConfig.tools || {},
+			sidecar: codexSidecar,
+			eventEmitterFactory: (opts) =>
+				createCodexEventEmitter({
+					...opts,
+					// 把 emitterFactory 已知的 jsonl 路径注入到事件里，下游 hook 可以直接读 transcript。
+					onEvent: (evt) =>
+						handleCodexEvent(
+							{ ...evt, transcriptPath: evt?.transcriptPath || opts?.filePath || null },
+							ptyRef,
+							runtimeConfig,
+						),
+				}),
+		});
+	ptyRef = pty;
+
+	// Phase E：Codex stdout 提示词检测器命中 → 走与 Claude/Codex jsonl 相同的 hook 端点。
+	// path=detector 让 hook handler 走 handleCodexDetector 分支，推权限卡片到 IM。
+	pty.on("codex-prompt", async (data) => {
+		const port = runtimeConfig?.port || 5677;
+		try {
+			await fetch(`http://127.0.0.1:${port}/api/openclaw/hook`, {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					source: "codex",
+					path: "detector",
+					event: "Notification",
+					sessionId: data.sessionId,
+					nativeId: data.nativeId,
+					promptText: data.promptText,
+					matchedPattern: data.matchedPattern,
+				}),
+			});
+		} catch (e) {
+			console.warn("[codex-prompt] post failed:", e.message);
+		}
+	});
+
 	// Telegram 自动 topic 钩子：ait 创建在前，wizard 创建在后；用 lazy ref 桥接
 	const aiSessionHooks = {
 		onSessionSpawned: () => null,

@@ -44,6 +44,7 @@ import { existsSync, readdirSync, statSync } from 'node:fs'
 import { join, basename } from 'node:path'
 import { parseCallbackData, buildAnswerReplyText, buildExtendedReplyText, CB_KIND_ANSWER, CB_KIND_EXTEND } from './ask-user-buttons.js'
 import { applySystemRules } from './system-rules.js'
+import { resolveTool } from './dispatch.js'
 
 const WIZARD_TIMEOUT_MS = 10 * 60 * 1000
 
@@ -414,7 +415,7 @@ export function createOpenClawWizard({
     return out
   }
 
-  function startWizard({ channel = 'openclaw', chatId, threadId, text, messageId = null, rootMessageId = null, imagePaths = [] }) {
+  function startWizard({ channel = 'openclaw', chatId, threadId, text, messageId = null, rootMessageId = null, imagePaths = [], userId = null }) {
     const routeKey = makeRouteKey(channel, chatId, threadId)
     const title = extractTitle(text) || '(未命名任务)'
     const workdirHint = tryExtractWorkdir(text)
@@ -425,6 +426,7 @@ export function createOpenClawWizard({
       peer: chatId,        // 兼容字段（旧代码读 w.peer）
       channel,
       chatId,
+      userId: userId || null,        // dispatch perUser 路由用（Lark open_id / Telegram from_user_id）
       threadId,
       rootMessageId,                 // lark thread root 锚点（用户在 thread 里起的 wizard 用）
       triggerMessageId: messageId,   // 用户触发本任务的消息 id（D 方案：tracker 加 reaction）
@@ -665,7 +667,7 @@ export function createOpenClawWizard({
       let sessionInfo = null
       if (aiTerminal?.spawnSession) {
         const cfg = getConfig?.() || {}
-        const tool = cfg.defaultTool || 'claude'
+        const tool = resolveTool({ channel: w.channel, userId: w.userId, chatId: w.chatId }, cfg)
         const port = cfg.port || 5677
         const permissionMode = permissionModeForChannel(channel, cfg)
         const sessionId = `ai-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
@@ -1258,6 +1260,7 @@ export function createOpenClawWizard({
     const text = args.text || ''
     const messageId = args.messageId != null ? args.messageId : null
     const replyToMessageId = args.replyToMessageId != null ? args.replyToMessageId : null
+    const fromUserId = args.fromUserId != null ? String(args.fromUserId) : (args.userId != null ? String(args.userId) : null)
     // 入站图片本地路径（已下载好），格式：[abs_path, ...]
     const imagePaths = Array.isArray(args.imagePaths) ? args.imagePaths.filter(Boolean) : []
     const peer = chatId  // 内部用，跟旧代码保持一致
@@ -1450,7 +1453,7 @@ export function createOpenClawWizard({
       // 如果用户在 wizard 中又发新任务触发词 → 重启（仅在 General/DM/普通群有效）
       if (newTaskGateOpen && NEW_TASK_TRIGGERS.some((re) => re.test(trimmed))) {
         wizards.delete(routeKey)
-        const w = startWizard({ channel, chatId, threadId, text: trimmed, messageId, rootMessageId, imagePaths })
+        const w = startWizard({ channel, chatId, threadId, text: trimmed, messageId, rootMessageId, imagePaths, userId: fromUserId })
         if (w.step === STEP_DONE) return await finalizeWizard(w)
         if (w.step === STEP_QUADRANT) {
           const p = buildQuadrantPrompt()
@@ -1473,7 +1476,7 @@ export function createOpenClawWizard({
     // 仅在 General/DM/普通群触发；在 supergroup task topic 里"做 X"是给已有 PTY 的输入，
     // 不该建新任务（避免污染 task 上下文 + 防止用户被意外拉进 wizard）
     if (newTaskGateOpen && NEW_TASK_TRIGGERS.some((re) => re.test(trimmed))) {
-      const w = startWizard({ channel, chatId, threadId, text: trimmed, messageId, rootMessageId, imagePaths })
+      const w = startWizard({ channel, chatId, threadId, text: trimmed, messageId, rootMessageId, imagePaths, userId: fromUserId })
       if (w.step === STEP_DONE) return await finalizeWizard(w)
       if (w.step === STEP_QUADRANT) {
         const p = buildQuadrantPrompt()

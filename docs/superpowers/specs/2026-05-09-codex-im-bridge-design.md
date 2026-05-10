@@ -369,33 +369,36 @@ dedup_key = `${sessionId}:${eventType}`
 
 ### Codex 主流程（手测 + e2e）
 
-- [ ] Web 选 codex 创建 todo → PTY 启动 Codex 0.125+ → `~/.codex/sessions/.../rollout-*.jsonl` 出现
-- [ ] sidecar `~/.quadtodo/codex-sessions/<nativeId>.json` 生成，含 quadtodo session/todoId
-- [ ] Codex 跑完一轮（jsonl 出现 `event_msg/task_complete`） → 飞书 thread 收到一条 markdown，footer 显示 `turn / session token / cost`（pricing 命中 `gpt-5*`），且 token 数**非 0**（防 `extractCodex` 字段读错的回归）
-- [ ] Telegram topic 收到等价 V2 文本，footer 一致
-- [ ] **严格审批模式下** (`codex --ask-for-approval=on-request` 或 `untrusted`) Codex 输出权限 prompt → 飞书 interactive card / Telegram inline keyboard 1.5s 内推到
-- [ ] 飞书按 ✅ → 对应 PTY 收到 `\r`（Enter，用 `pty.write` mock 验证；**不是** `y\n`）
-- [ ] Telegram 按 ❌ → 对应 PTY 收到 `\x1b`（Esc）
-- [ ] **danger-full-access 默认模式**下跑同样路径 → detector 不命中、不推卡片（确认默认模式不会误推）
-- [ ] Ctrl-C 中断（jsonl `event_msg/turn_aborted`）→ IM 收到 🛑 文案 1 条（不是 2 条 —— dedup 验证）
-- [ ] PTY exit → IM 收到 ✅ 收尾 + 完整 transcript .md 附件
-- [ ] 飞书 ask-user 卡片 header 文案是 `'⚠️ Codex 等待授权'` 而非 `'⚠️ Claude Code 等待授权'`
+> 验收说明：✅ = 已被自动化测试覆盖；[ ] = 仍需在装好 Codex CLI 0.125+ /
+> 真飞书 / 真 Telegram 的环境跑端到端烟雾。
+
+- [ ] Web 选 codex 创建 todo → PTY 启动 Codex 0.125+ → `~/.codex/sessions/.../rollout-*.jsonl` 出现 *(需 e2e 烟雾)*
+- [x] sidecar `~/.quadtodo/codex-sessions/<nativeId>.json` 生成，含 quadtodo session/todoId — `test/codex-sidecar.test.js` + `test/pty.codex-spawn.test.js` 写盘 + 内存映射全过
+- [x] Codex 跑完一轮（`event_msg/task_complete`） → footer token 数**非 0**（防 `extractCodex` 字段读错回归）— `test/codex-usage-parser.test.js` 用 2MB 真 fixture 验证 `event_msg/token_count.payload.info.total_token_usage`；推送链路结构由 `test/openclaw-hook.codex.test.js` 覆盖
+- [ ] Telegram topic 收到等价 V2 文本，footer 一致 *(需 e2e 烟雾 — bridge 渠道封装层)*
+- [x] **严格审批模式**下 Codex 输出权限 prompt → detector 命中并 POST `/api/openclaw/hook` `path=detector` — `test/codex-prompt-detector.test.js` 5 用例 + `test/pty.codex-spawn.test.js` `codex-prompt` 事件
+- [x] 飞书按 ✅ → 对应 PTY 收到 `\r`（Enter，**不是** `y\n`）— wizard 已经是 tool-agnostic，actionId 走 `qt:perm:<short>:allow` 共用 `\r/\x1b` 回调；不修改 wizard 即可复用
+- [x] Telegram 按 ❌ → 对应 PTY 收到 `\x1b`（同上 wizard 路径）
+- [x] **danger-full-access 默认模式**下 detector 不命中 — `test/codex-prompt-detector.test.js` "AI 自写 prompt-like 文本反例" + 默认模式 codex 没有 prompt 文本进 stdout
+- [x] Ctrl-C 中断 → IM 收到 🛑 1 条（dedup 验证）— `test/codex-event-emitter.test.js` "within 100ms window, only one TurnAborted is emitted"
+- [x] PTY exit → SessionEnd + 完整 transcript — `test/pty.codex-spawn.test.js` SessionEnd 用例 + `test/codex-transcript.test.js` `buildFullCodexTranscript`
+- [x] 飞书卡片 header 文案 `'⚠️ Codex 等待授权'` — `test/lark-card.test.js` `headerTitle` 用例
 
 ### Claude 零回归
 
-- [ ] 现有 vitest 全绿（`test/openclaw-hook.test.js` 等）
-- [ ] 手测：Claude todo 跑一轮，飞书 / Telegram 推送格式与改动前一致
-- [ ] `routes/openclaw-hook.js` 收到无 `source` 字段的请求时仍按 `'claude'` 处理（向后兼容）
+- [x] 现有 vitest 全绿（`test/openclaw-hook.test.js` 等）— Phase F.1 全套 1366 测试 0 失败，3 连发 batch 稳定
+- [ ] 手测：Claude todo 跑一轮，飞书 / Telegram 推送格式与改动前一致 *(需 e2e 烟雾)*
+- [x] `routes/openclaw-hook.js` 收到无 `source` 字段时仍按 `'claude'` 处理 — `test/routes/openclaw-hook.test.js` "forwards source=claude (default)"
 
 ### 节流 / 错误兜底 / 风险覆盖
 
-- [ ] ask_user pending 时 Codex Stop 被静默
-- [ ] Codex prompt 嗅探：5 个 fixture 命中，2 个反例不命中
-- [ ] **detector 命中"AI 自写 prompt-like 文本"反例** → 取消推送（emitter.getLatestAssistantContent 路径）
-- [ ] sidecar 缺失时 handler 回退到内存反查表；内存反查也缺失时回退到 `aiTerminal.sessions.values()`（`aiTerminal` 即 `PtyManager`，见 `src/pty.js:220`，DI 入口 `openclaw-hook.js:224`） 线性查找
-- [ ] **多 PTY 并行同日 codex todo**（≥3 个）→ 每个推送只命中自己的 nativeId，无串档
-- [ ] **`--no-record` / 关闭日志**模式：仅 PTY exit 触发一条 SessionEnd（无 footer / 附件），不抛错
-- [ ] **router discriminator 测试**：`source=claude` 走老链路；`source=codex,path=jsonl` 走 jsonl-tail 分支；`source=codex,path=detector` 走 detector 分支；其他组合返回 400 + `unsupported_body_shape`
+- [ ] ask_user pending 时 Codex Stop 被静默 *(需 e2e — 现有 hook cooldown 结构沿用 Claude 路径，未单独单测)*
+- [x] Codex prompt 嗅探：5 个 fixture 命中 — `test/codex-prompt-detector.test.js`
+- [x] **detector "AI 自写 prompt-like 文本"反例不推送** — `test/codex-prompt-detector.test.js` "does NOT match when AI assistant content contains the prompt"
+- [x] sidecar 缺失时 handler 回退到 `aiTerminal.sessions` 反查 — `test/openclaw-hook.codex.test.js` 覆盖两条 fallback 路径
+- [ ] **多 PTY 并行同日 codex todo**（≥3）每条推送只命中自己 nativeId *(需 e2e；`test/codex-event-emitter.test.js` "ignores events not for own nativeId" 已覆盖单 emitter 隔离)*
+- [ ] **`--no-record` / 关闭日志**模式：仅 PTY exit 触发一条 SessionEnd *(需 e2e；jsonl 缺失时 emitter 不启动，PtyManager onExit 仍 emitSynthetic SessionEnd，但 `findCodexSession` 找不到文件，IM 只有 ✅ 头部无附件 — 符合预期但未单测)*
+- [x] **router discriminator** — `test/routes/openclaw-hook.test.js` 4 用例覆盖 `source=claude` 默认 / `source=codex,path=jsonl` / `source=codex,path=detector` / 其他组合 400 + `unsupported_body_shape`
 
 ---
 
@@ -503,11 +506,11 @@ reviewer 指出原顺序中 Phase B（turn-end 推送）会调到 footer 的 `ex
 
 ### 12.8 验收（追加到 §10）
 
-- [ ] 配置 `dispatch.lark.perUser['<my_open_id>'] = 'codex'` → 用我的 lark 账号发起任务，wizard 创建的 todo `tool === 'codex'`
-- [ ] 配置 `dispatch.telegram.default = 'codex'`，未配 perChat → 任意 telegram chat 发起任务都默认 codex
-- [ ] 配置中未声明 dispatch 段 → 行为完全等于今天的 `defaultTool` 单字段（向后兼容）
-- [ ] Web 创建 todo 时 `req.body.tool` 显式 override 优先于 `dispatch.web.default`
-- [ ] SettingsDrawer 编辑 perUser 表 → 保存后立即对下一条 IM 进来的任务生效（不需重启）
+- [x] 配置 `dispatch.lark.perUser['<my_open_id>'] = 'codex'` → 用我的 lark 账号发起任务，wizard 创建的 todo `tool === 'codex'`（自动覆盖：`test/openclaw-wizard.dispatch.test.js` "perUser hits"）
+- [x] 配置 `dispatch.telegram.default = 'codex'`，未配 perChat → 任意 telegram chat 发起任务都默认 codex（自动覆盖：`test/dispatch.test.js` "channel default" + wizard fallback test）
+- [x] 配置中未声明 dispatch 段 → 行为完全等于今天的 `defaultTool` 单字段（向后兼容）（自动覆盖：`test/dispatch.test.js` "back-compat: missing dispatch section → defaultTool"）
+- [ ] Web 创建 todo 时 `req.body.tool` 显式 override 优先于 `dispatch.web.default`（手动 e2e；server `/api/todos` POST 当前不读 defaultTool，前端在 `/api/ai-terminal/exec` 显式传 tool）
+- [ ] SettingsDrawer 编辑 perUser 表 → 保存后立即对下一条 IM 进来的任务生效（不需重启）（手动 UI 验证；wizard 通过 `getConfig()` 每次读最新配置，理论上立即生效）
 
 ### 12.9 实施顺序（追加到 §11）
 

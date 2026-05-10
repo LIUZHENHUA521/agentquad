@@ -318,7 +318,17 @@ function defaultConfig() {
 	};
 }
 
-function normalizeConfig(cfg = {}) {
+function normalizeDispatch(d = {}) {
+	const channels = ['lark', 'telegram', 'web'];
+	const out = {};
+	for (const ch of channels) {
+		const src = (d && typeof d[ch] === 'object' && d[ch] !== null) ? d[ch] : {};
+		out[ch] = { default: 'claude', ...src };
+	}
+	return out;
+}
+
+export function normalizeConfig(cfg = {}) {
 	const defaults = defaultConfig();
 	const mergedTools = {
 		...defaults.tools,
@@ -398,6 +408,7 @@ function normalizeConfig(cfg = {}) {
 			...(cfg.wiki || {}),
 		},
 		pipeline: { ...defaults.pipeline, ...(cfg.pipeline || {}) },
+		dispatch: normalizeDispatch(cfg.dispatch),
 	};
 }
 

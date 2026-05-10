@@ -96,21 +96,20 @@ export function extractTurnUsage(raw) {
 
 /**
  * 从 jsonl lines 算 session 累计 usage。
- * 仅 Claude（codex 暂不在 footer 范围；Codex 推送目前没走 hook 路径）。
  *
- * 返回 { input, output, cacheRead, cacheCreation, primaryModel, turnCount }
- *   - turnCount = jsonl 里 role=assistant 的消息数（≈ AI 回话轮数）
+ * @param {string[]} lines  JSONL lines
+ * @param {'claude'|'codex'} tool  tool name; default 'claude' for back-compat
  */
-export function extractSessionUsageFromLines(lines) {
-  const summary = extractUsage('claude', lines)
-  // turn count: 数 jsonl 里 type=assistant 的有效 record（usage-parser 没暴露，自己数）
+export function extractSessionUsageFromLines(lines, tool = 'claude') {
+  const summary = extractUsage(tool, lines)
   let turnCount = 0
   for (const line of lines) {
     if (!line || !line.trim()) continue
     try {
       const j = JSON.parse(line)
-      if (j?.message?.role === 'assistant') turnCount++
-    } catch { /* 忽略坏行 */ }
+      if (tool === 'claude' && j?.message?.role === 'assistant') turnCount++
+      else if (tool === 'codex' && j?.type === 'response_item' && j?.payload?.type === 'message' && j?.payload?.role === 'assistant') turnCount++
+    } catch {}
   }
   return {
     input: summary.inputTokens,

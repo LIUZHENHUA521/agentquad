@@ -3,7 +3,7 @@ import { MinusCircleOutlined, PlusOutlined, BookOutlined } from '@ant-design/ico
 import { useEffect, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { getStatus, getConfig, updateConfig, AppConfig, pickDirectory, ToolDiagnostic, testTelegram, testLark, type ProbeHit } from './api'
+import { getStatus, getConfig, updateConfig, AppConfig, pickDirectory, ToolDiagnostic, testTelegram, testLark, type ProbeHit, type DispatchChannelConfig } from './api'
 import { TelegramProbeModal } from './TelegramProbeModal'
 import telegramSetupMd from '../../docs/TELEGRAM-setup.md?raw'
 import larkSetupMd from '../../docs/LARK.md?raw'
@@ -116,6 +116,15 @@ export default function SettingsDrawer({ open, onClose }: Props) {
   const [larkTestResult, setLarkTestResult] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<'run' | 'tools' | 'telegram' | 'lark' | 'pricing'>('run')
   const [viewingTool, setViewingTool] = useState<ToolKey>('claude')
+  const [dispatchDraft, setDispatchDraft] = useState<{
+    lark: DispatchChannelConfig
+    telegram: DispatchChannelConfig
+    web: DispatchChannelConfig
+  }>({
+    lark: { default: 'claude', perUser: {}, perChat: {} },
+    telegram: { default: 'claude', perUser: {}, perChat: {} },
+    web: { default: 'claude', perUser: {}, perChat: {} },
+  })
   const [form] = Form.useForm()
 
   const buildToolPatch = (tool: ToolKey, nextCommandValue: string, nextBinValue: string) => {
@@ -201,6 +210,24 @@ export default function SettingsDrawer({ open, onClose }: Props) {
         setTokenMasked(result.config.telegram?.botTokenMasked || '')
         setLarkSecretSource((result.config.lark?.appSecretSource as 'quadtodo' | 'missing' | undefined) || 'missing')
         setViewingTool((result.config.defaultTool as ToolKey) || 'claude')
+        const d = result.config.dispatch || {}
+        setDispatchDraft({
+          lark: {
+            default: (d.lark?.default === 'codex' ? 'codex' : 'claude'),
+            perUser: { ...(d.lark?.perUser || {}) },
+            perChat: { ...(d.lark?.perChat || {}) },
+          },
+          telegram: {
+            default: (d.telegram?.default === 'codex' ? 'codex' : 'claude'),
+            perUser: { ...(d.telegram?.perUser || {}) },
+            perChat: { ...(d.telegram?.perChat || {}) },
+          },
+          web: {
+            default: (d.web?.default === 'codex' ? 'codex' : 'claude'),
+            perUser: { ...(d.web?.perUser || {}) },
+            perChat: { ...(d.web?.perChat || {}) },
+          },
+        })
         setErr(null)
       })
       .catch((e) => setErr(e.message))
@@ -270,6 +297,23 @@ export default function SettingsDrawer({ open, onClose }: Props) {
             }
             return acc
           }, {}),
+        },
+        dispatch: {
+          lark: {
+            default: dispatchDraft.lark.default || 'claude',
+            perUser: { ...(dispatchDraft.lark.perUser || {}) },
+            perChat: { ...(dispatchDraft.lark.perChat || {}) },
+          },
+          telegram: {
+            default: dispatchDraft.telegram.default || 'claude',
+            perUser: { ...(dispatchDraft.telegram.perUser || {}) },
+            perChat: { ...(dispatchDraft.telegram.perChat || {}) },
+          },
+          web: {
+            default: dispatchDraft.web.default || 'claude',
+            perUser: { ...(dispatchDraft.web.perUser || {}) },
+            perChat: { ...(dispatchDraft.web.perChat || {}) },
+          },
         },
       })
       setConfig(result.config)
@@ -479,6 +523,150 @@ export default function SettingsDrawer({ open, onClose }: Props) {
     </>
   )
 
+  // ── Dispatch sub-section: per-channel default tool + perUser/perChat overrides ──
+  const renderPerKeyEditor = (
+    channel: 'lark' | 'telegram' | 'web',
+    field: 'perUser' | 'perChat',
+    placeholder: string,
+  ) => {
+    const map = (dispatchDraft[channel]?.[field] as Record<string, 'claude' | 'codex'>) || {}
+    const entries = Object.entries(map)
+    return (
+      <div style={{ marginTop: 8 }}>
+        {entries.length === 0 && (
+          <Text type="secondary" style={{ fontSize: 12 }}>（暂无 {field} 覆盖）</Text>
+        )}
+        {entries.map(([k, v]) => (
+          <Space key={k} style={{ display: 'flex', marginBottom: 6 }}>
+            <Input
+              style={{ width: 200 }}
+              value={k}
+              disabled
+              addonBefore={field === 'perUser' ? '用户 id' : '会话 id'}
+            />
+            <Radio.Group
+              size="small"
+              value={v}
+              onChange={(e) => {
+                const next = { ...(dispatchDraft[channel][field] || {}) }
+                next[k] = e.target.value
+                setDispatchDraft({
+                  ...dispatchDraft,
+                  [channel]: { ...dispatchDraft[channel], [field]: next },
+                })
+              }}
+            >
+              <Radio.Button value="claude">claude</Radio.Button>
+              <Radio.Button value="codex">codex</Radio.Button>
+            </Radio.Group>
+            <Button
+              type="text"
+              danger
+              icon={<MinusCircleOutlined />}
+              onClick={() => {
+                const next = { ...(dispatchDraft[channel][field] || {}) }
+                delete next[k]
+                setDispatchDraft({
+                  ...dispatchDraft,
+                  [channel]: { ...dispatchDraft[channel], [field]: next },
+                })
+              }}
+            />
+          </Space>
+        ))}
+        <Space.Compact style={{ marginTop: 4 }}>
+          <Input
+            placeholder={placeholder}
+            style={{ width: 240 }}
+            id={`dispatch-${channel}-${field}-new`}
+            onPressEnter={(e) => {
+              const input = e.currentTarget as HTMLInputElement
+              const k = String(input.value || '').trim()
+              if (!k) return
+              const next = { ...(dispatchDraft[channel][field] || {}) }
+              if (next[k]) return
+              next[k] = 'codex'
+              setDispatchDraft({
+                ...dispatchDraft,
+                [channel]: { ...dispatchDraft[channel], [field]: next },
+              })
+              input.value = ''
+            }}
+          />
+          <Button
+            icon={<PlusOutlined />}
+            onClick={() => {
+              const input = document.getElementById(`dispatch-${channel}-${field}-new`) as HTMLInputElement | null
+              const k = String(input?.value || '').trim()
+              if (!k) return
+              const next = { ...(dispatchDraft[channel][field] || {}) }
+              if (next[k]) return
+              next[k] = 'codex'
+              setDispatchDraft({
+                ...dispatchDraft,
+                [channel]: { ...dispatchDraft[channel], [field]: next },
+              })
+              if (input) input.value = ''
+            }}
+          >
+            添加
+          </Button>
+        </Space.Compact>
+      </div>
+    )
+  }
+
+  const dispatchSection = (
+    <Form.Item
+      label="按渠道分发工具"
+      extra="可针对 Lark / Telegram / Web 分别设默认工具，并对特定用户 / 会话覆盖。优先级：override > perUser > perChat > 渠道默认 > 全局 defaultTool。"
+    >
+      <Collapse
+        ghost
+        items={(['lark', 'telegram', 'web'] as const).map((channel) => ({
+          key: channel,
+          label: <span style={{ fontWeight: 500 }}>{channel}</span>,
+          children: (
+            <>
+              <Form.Item label="渠道默认工具" style={{ marginBottom: 8 }}>
+                <Radio.Group
+                  value={dispatchDraft[channel]?.default || 'claude'}
+                  onChange={(e) => {
+                    setDispatchDraft({
+                      ...dispatchDraft,
+                      [channel]: {
+                        ...dispatchDraft[channel],
+                        default: e.target.value,
+                      },
+                    })
+                  }}
+                >
+                  <Radio.Button value="claude">claude</Radio.Button>
+                  <Radio.Button value="codex">codex</Radio.Button>
+                </Radio.Group>
+              </Form.Item>
+              {channel === 'lark' && (
+                <Form.Item label="按用户覆盖（perUser，open_id → 工具）" style={{ marginBottom: 8 }}>
+                  {renderPerKeyEditor('lark', 'perUser', '输入 open_id 后回车 / 添加')}
+                </Form.Item>
+              )}
+              {channel === 'telegram' && (
+                <Form.Item label="按会话覆盖（perChat，chat_id → 工具）" style={{ marginBottom: 8 }}>
+                  {renderPerKeyEditor('telegram', 'perChat', '输入 chat_id 后回车 / 添加')}
+                </Form.Item>
+              )}
+              {channel === 'web' && (
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  Web 端可在创建会话时显式传 tool 字段覆盖；如未传则取 web 渠道默认。
+                </Text>
+              )}
+            </>
+          ),
+        }))}
+      />
+    </Form.Item>
+  )
+
   const toolsTab = (
     <>
       <Form.Item
@@ -493,6 +681,8 @@ export default function SettingsDrawer({ open, onClose }: Props) {
           <Radio.Button value="cursor">Cursor</Radio.Button>
         </Radio.Group>
       </Form.Item>
+
+      {dispatchSection}
 
       <Form.Item label="查看工具配置">
         <Segmented
