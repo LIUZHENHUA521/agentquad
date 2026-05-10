@@ -37,6 +37,7 @@ import {
   Todo, Quadrant, AiTool, Comment,
   runWiki, getWikiPending,
   uploadImage,
+  ApiError,
 } from './api'
 import { renderAppliedTemplates } from './promptRender'
 import SettingsDrawer from './SettingsDrawer'
@@ -783,6 +784,7 @@ export default function TodoManage() {
   const [dashboardOpen, setDashboardOpen] = useState(false)
   const [transcriptDrawerOpen, setTranscriptDrawerOpen] = useState(false)
   const [reportOpen, setReportOpen] = useState(false)
+  const [toolMissing, setToolMissing] = useState<null | { tool: string; bin: string; fix: string }>(null)
   const [, setUnboundTranscripts] = useState(0)
   const isMobile = useIsMobile()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
@@ -1439,6 +1441,10 @@ export default function TodoManage() {
       handleOpenTerminalInDock(todo, sessionId)
       fetchTodos()
     } catch (e: any) {
+      if (e instanceof ApiError && e.status === 424 && e.body?.code === 'tool_missing') {
+        setToolMissing({ tool: e.body.tool, bin: e.body.bin, fix: e.body.fix })
+        return
+      }
       message.error(e?.message || 'AI 启动失败')
     }
   }, [fetchTodos, autoFillPrompt, templates, handleOpenTerminalInDock])
@@ -1464,6 +1470,10 @@ export default function TodoManage() {
       fetchTodos()
       message.success('Fork 成功，新会话已启动')
     } catch (e: any) {
+      if (e instanceof ApiError && e.status === 424 && e.body?.code === 'tool_missing') {
+        setToolMissing({ tool: e.body.tool, bin: e.body.bin, fix: e.body.fix })
+        return
+      }
       message.error(e?.message || 'Fork 启动失败')
     }
   }, [fetchTodos, todos, handleOpenTerminalInDock])
@@ -2451,6 +2461,39 @@ export default function TodoManage() {
           fetchTodos()
         }}
       />
+      <Modal
+        open={!!toolMissing}
+        onCancel={() => setToolMissing(null)}
+        title={toolMissing ? `AI 工具 ${toolMissing.tool} 未安装` : ''}
+        footer={[
+          <Button
+            key="copy"
+            type="primary"
+            onClick={() => {
+              if (toolMissing) {
+                navigator.clipboard.writeText(toolMissing.fix)
+                message.success('已复制到剪贴板')
+              }
+            }}
+          >
+            复制命令
+          </Button>,
+          <Button key="close" onClick={() => setToolMissing(null)}>关闭</Button>,
+        ]}
+      >
+        {toolMissing && (
+          <>
+            <p>未找到可执行文件 <code>{toolMissing.bin}</code>。请在终端运行：</p>
+            <pre style={{
+              fontFamily: 'ui-monospace, monospace',
+              background: '#f5f5f5',
+              padding: 12,
+              borderRadius: 4,
+              userSelect: 'all',
+            }}>{toolMissing.fix}</pre>
+          </>
+        )}
+      </Modal>
       </div>
       <TerminalDock
         resolveTabContext={resolveTabContext}
