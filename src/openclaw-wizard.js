@@ -2220,6 +2220,8 @@ export function createOpenClawWizard({
     const visible = todos.slice(0, PAGE)
     // 活跃 sid 集合 → 标 🟢
     const activeSids = new Set(findActiveSessions().map((s) => s.sid))
+    // dispatcher 排队信息：sid → queueSize（busy 期间累积的用户输入）
+    const dispatcherDesc = sessionInputDispatcher?.describe?.() || { byId: {} }
     const groups = new Map()
     for (const q of QUADRANTS) groups.set(q.id, [])
     for (const t of visible) {
@@ -2236,9 +2238,12 @@ export function createOpenClawWizard({
         const short = String(t.id).slice(0, 4)
         const dirTag = t.workDir ? `· ${basename(t.workDir)}` : ''
         const aiSessions = t.aiSessions || (t.aiSession ? [t.aiSession] : [])
-        const isRunning = aiSessions.some((s) => s?.sessionId && activeSids.has(s.sessionId))
+        const runningSid = aiSessions.find((s) => s?.sessionId && activeSids.has(s.sessionId))?.sessionId
+        const isRunning = !!runningSid
         const statusTag = isRunning ? '🟢' : '·'
-        lines.push(`  ${statusTag} ${short}  ${t.title} ${dirTag}`)
+        const queueSize = runningSid ? (dispatcherDesc.byId?.[runningSid]?.queueSize || 0) : 0
+        const queueTag = queueSize > 0 ? ` 📥${queueSize}` : ''
+        lines.push(`  ${statusTag} ${short}  ${t.title} ${dirTag}${queueTag}`)
       }
     }
     if (todos.length > PAGE) {
