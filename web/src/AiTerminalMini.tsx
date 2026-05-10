@@ -52,6 +52,14 @@ const RESIZE_STABILITY_MS = 200
 const MIN_CONTAINER_WIDTH = 300
 const MIN_VALID_COLS = 30
 
+// 后端 isValidResizeSize 把 cols < 30 视为无效 → 删除该 ws 的尺寸贡献并重算 min 聚合。
+// 同 session 被多个浏览器 tab 共享时，后台 tab 用这个发"我退出尺寸聚合"。
+function sendUnregisterSize(ws: WebSocket | null) {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: 'resize', cols: 0, rows: 0 }))
+  }
+}
+
 export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeTarget, onSessionRecovered, onSessionSwitch, onClose, onDone, onStatusChange, fillHeight }: Props) {
   void onClose
   const { theme, preset, override, customPresets, setPreset, setOverride, resetOverride, saveCustomPreset, deleteCustomPreset } = useTerminalTheme()
@@ -109,6 +117,9 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
   const refitAttemptsRef = useRef(0)
   // 稳定性去抖：只有 cols/rows 在连续 RESIZE_STABILITY_MS 内保持不变才发 WS resize
   const pendingResizeRef = useRef<{ cols: number; rows: number; timer: ReturnType<typeof setTimeout> | null } | null>(null)
+  // 切到后台 tab 时置 true：阻止 ResizeObserver / window resize / IO 在后台继续 fit + 上报，
+  // 避免后台 tab 的 cols 把同 session 的前台 tab 拖到窄宽（PTY 走 min 聚合）。
+  const isHiddenRef = useRef<boolean>(typeof document !== 'undefined' ? document.hidden : false)
   const lastPongRef = useRef<number>(Date.now())
   const STALE_THRESHOLD = 30_000
   const recoveringRef = useRef(false)
@@ -311,6 +322,7 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
     lastSentSizeRef.current = null
     if (pendingResizeRef.current?.timer) clearTimeout(pendingResizeRef.current.timer)
     pendingResizeRef.current = null
+    isHiddenRef.current = typeof document !== 'undefined' ? document.hidden : false
     lastPongRef.current = Date.now()
     setSessionExpired(false)
     setWsConnected(false)
@@ -439,6 +451,11 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
         // WS 打开后走 doFit 统一管路：guards + 稳定性去抖，
         // 避免在 Chat tab 激活 / 终端折叠 时发出错误 cols（Claude 会按此折行污染 scrollback）
         requestAnimationFrame(() => {
+          if (isHiddenRef.current) {
+            // 重连时仍处后台：只发 0/0 unregister，不上报真实尺寸
+            sendUnregisterSize(wsRef.current)
+            return
+          }
           requestAnimationFrame(() => doFit())
         })
         heartbeatTimer = setInterval(() => {
@@ -610,8 +627,31 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
 
     // 标签页切回时：检查 WS 健康，死连接立即重连 + 重新聚焦终端
     function handleVisibilityChange() {
-      if (document.visibilityState !== 'visible') return
       if (disposedRef.current || stopReconnectRef.current) return
+      const hidden = document.visibilityState !== 'visible'
+      if (hidden) {
+        // 同 session 多 tab 时，PTY 尺寸取所有连接的 min。后台 tab 不应继续约束尺寸：
+        // 取消 pending fit，发 0/0 让后端 unregister 我们这一份，并屏蔽后续后台触发。
+        isHiddenRef.current = true
+        if (resizeTimerRef.current) {
+          clearTimeout(resizeTimerRef.current)
+          resizeTimerRef.current = null
+        }
+        if (refitTimerRef.current) {
+          clearTimeout(refitTimerRef.current)
+          refitTimerRef.current = null
+        }
+        if (pendingResizeRef.current?.timer) {
+          clearTimeout(pendingResizeRef.current.timer)
+        }
+        pendingResizeRef.current = null
+        sendUnregisterSize(wsRef.current)
+        // 重置已发送记录，等可见时重新发当前真实尺寸（不会被去抖跳过）
+        lastSentSizeRef.current = null
+        return
+      }
+      // 切回前台
+      isHiddenRef.current = false
       lastPongRef.current = Date.now()
       const ws = wsRef.current
       if (!ws || ws.readyState !== WebSocket.OPEN) {
@@ -619,6 +659,11 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
       } else {
         ws.send(JSON.stringify({ type: 'ping' }))
       }
+      // 清掉 lastSent 后立即 refit，重新把当前 cols/rows 加回聚合
+      lastSentSizeRef.current = null
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => doFit())
+      })
       term.focus()
     }
     document.addEventListener('visibilitychange', handleVisibilityChange)
@@ -646,9 +691,11 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
     termTextarea?.addEventListener('focus', handleTermFocus)
 
     const ro = new ResizeObserver(() => {
+      if (isHiddenRef.current) return
       if (resizeTimerRef.current) clearTimeout(resizeTimerRef.current)
       resizeTimerRef.current = setTimeout(() => {
         resizeTimerRef.current = null
+        if (isHiddenRef.current) return
         requestAnimationFrame(() => doFit())
       }, RESIZE_DEBOUNCE_MS)
     })
@@ -657,6 +704,7 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
     // 可见性监听：display:none ↔ 可见切换时 ResizeObserver 不保证触发，用 IO 兜底
     // 双 rAF：第一帧让样式计算提交，第二帧让布局完全 settle，再读 clientWidth 做 fit
     const io = new IntersectionObserver((entries) => {
+      if (isHiddenRef.current) return
       for (const entry of entries) {
         if (entry.isIntersecting && entry.intersectionRatio > 0) {
           refitAttemptsRef.current = 0
@@ -671,9 +719,11 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
     // 浏览器窗口缩放/拖拽：ResizeObserver 可能不触发，需要额外监听
     let windowResizeTimer: ReturnType<typeof setTimeout> | null = null
     function handleWindowResize() {
+      if (isHiddenRef.current) return
       if (windowResizeTimer) clearTimeout(windowResizeTimer)
       windowResizeTimer = setTimeout(() => {
         windowResizeTimer = null
+        if (isHiddenRef.current) return
         requestAnimationFrame(() => doFit())
       }, RESIZE_DEBOUNCE_MS)
     }
@@ -725,6 +775,9 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
 
   useEffect(() => {
     refitAttemptsRef.current = 0
+    // 后台 tab 不应触发 fit + 上报：fullscreen / height 变化路径未走 isHiddenRef 守门的
+    // observer 链，需要在这里显式跳过，否则会把真实尺寸重新塞回多 tab 聚合。
+    if (isHiddenRef.current) return
     requestAnimationFrame(doFit)
   }, [fullscreen, height, doFit])
 
