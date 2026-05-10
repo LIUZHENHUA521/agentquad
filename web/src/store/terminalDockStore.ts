@@ -36,13 +36,12 @@ interface DockState {
 const WIDTH_KEY = 'quadtodo.dock.width'
 const COLLAPSED_KEY = 'quadtodo.dock.collapsed'
 const MIN_W = 320
-const MAX_W = 720
 const DEFAULT_W = 480
 
 const readWidth = (): number => {
   try {
     const v = Number(localStorage.getItem(WIDTH_KEY))
-    if (Number.isFinite(v) && v >= MIN_W && v <= MAX_W) return v
+    if (Number.isFinite(v) && v >= MIN_W) return v
   } catch {}
   return DEFAULT_W
 }
@@ -127,7 +126,7 @@ export const useTerminalDockStore = create<DockState>((set, get) => ({
   },
 
   setWidth: (px) => {
-    const clamped = Math.max(MIN_W, Math.min(MAX_W, Math.round(px)))
+    const clamped = Math.max(MIN_W, Math.round(px))
     set({ widthPx: clamped })
     writeWidth(clamped)
   },
@@ -148,4 +147,4 @@ export const useTerminalDockStore = create<DockState>((set, get) => ({
   },
 }))
 
-export const DOCK_LIMITS = { MIN_W, MAX_W, DEFAULT_W }
+export const DOCK_LIMITS = { MIN_W, DEFAULT_W }

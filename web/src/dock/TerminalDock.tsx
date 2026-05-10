@@ -181,7 +181,7 @@ export default function TerminalDock({
     <>
     <div
       className={`terminal-dock ${isMobile ? 'is-mobile' : ''}`}
-      style={isMobile ? undefined : { width: widthPx, minWidth: DOCK_LIMITS.MIN_W, maxWidth: DOCK_LIMITS.MAX_W }}
+      style={isMobile ? undefined : { width: widthPx, minWidth: DOCK_LIMITS.MIN_W }}
     >
       {!isMobile && <div className="terminal-dock__divider" onMouseDown={onMouseDownDivider} />}
       <div className="terminal-dock__head">
