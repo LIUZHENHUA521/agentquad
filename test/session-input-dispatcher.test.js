@@ -230,3 +230,29 @@ describe('send: busy + soft_interrupt', () => {
     vi.useRealTimers()
   })
 })
+
+describe('send: busy + hard_cancel', () => {
+  it('busy + !! → Ctrl+C，丢弃队列，触发 onHardCancel', async () => {
+    const { pty, aiTerminal, writes } = makeDeps({ awaitingReply: false })
+    const onHardCancel = vi.fn().mockResolvedValue()
+    const d = createSessionInputDispatcher({
+      pty, aiTerminal,
+      callbacks: { onHardCancel },
+    })
+    await d.send({ sessionId: 'sid1', text: 'queued1' })
+    expect(d.describe().byId.sid1.queueSize).toBe(1)
+    const result = await d.send({ sessionId: 'sid1', text: '!!stop now' })
+    expect(result).toMatchObject({ action: 'hard_cancelled' })
+    expect(writes).toEqual([{ sid: 'sid1', data: '\x03' }])
+    expect(d.describe().sessions).toBe(0)
+    expect(onHardCancel).toHaveBeenCalledWith(expect.objectContaining({ sessionId: 'sid1' }))
+  })
+
+  it('busy + 精确 /stop → 同 !!', async () => {
+    const { pty, aiTerminal, writes } = makeDeps({ awaitingReply: false })
+    const d = createSessionInputDispatcher({ pty, aiTerminal })
+    const result = await d.send({ sessionId: 'sid1', text: '/stop' })
+    expect(result).toMatchObject({ action: 'hard_cancelled' })
+    expect(writes).toEqual([{ sid: 'sid1', data: '\x03' }])
+  })
+})

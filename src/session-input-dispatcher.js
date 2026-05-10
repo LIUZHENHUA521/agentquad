@@ -100,8 +100,25 @@ export function createSessionInputDispatcher({ pty, aiTerminal, callbacks = {}, 
       return await performSoftInterrupt({ sessionId, stripped, imagePaths })
     }
 
-    // hard_cancel busy 路径在后续 task 实现
-    return { action: 'noop', reason: 'busy_not_implemented_yet', sessionId }
+    if (mode === 'hard_cancel') {
+      return await performHardCancel({ sessionId, channel, echoTarget })
+    }
+
+    return { action: 'noop', reason: 'unknown_mode', sessionId }
+  }
+
+  async function performHardCancel({ sessionId, channel, echoTarget }) {
+    const q = queues.get(sessionId)
+    if (q) {
+      if (q.staleTimer) clearTimeout(q.staleTimer)
+      queues.delete(sessionId)
+    }
+    pty.write(sessionId, '\x03')
+    if (callbacks.onHardCancel) {
+      try { await callbacks.onHardCancel({ sessionId, channel, echoTarget }) }
+      catch (e) { logger?.warn?.(`[dispatcher] onHardCancel callback failed: ${e.message}`) }
+    }
+    return { action: 'hard_cancelled', sessionId }
   }
 
   async function performSoftInterrupt({ sessionId, stripped, imagePaths }) {
