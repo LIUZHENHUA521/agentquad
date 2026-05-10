@@ -32,6 +32,7 @@ import {
   buildFullCodexTranscript as defaultBuildFullCodexTranscript,
   extractCodexTurnUsageFromLines as defaultExtractCodexTurnUsageFromLines,
 } from './codex-transcript.js'
+import { buildPermissionCard } from './lark-card.js'
 
 const DEFAULT_COOLDOWN_MS = 30_000
 const TRANSCRIPT_TMP_DIR = join(homedir(), '.quadtodo', 'tmp')
@@ -547,9 +548,34 @@ export function createOpenClawHookHandler(deps = {}) {
     return { ok: true, action: 'sent', source: 'codex', event }
   }
 
-  async function handleCodexDetector(_req) {
-    // Phase E 将填充 detector 路径（解析 prompt 文本 / 模式匹配）。当前为占位。
-    return { ok: false, reason: 'not_implemented' }
+  // ─── Codex stdout detector 分支（Phase E）────────────────────────────────────
+  // PtyManager 的 prompt-detector 命中（[Y/n] / apply patch? 等）→ POST /api/openclaw/hook
+  // 走到这里推一张飞书 / Telegram 权限卡片。actionId 里带 'codex:' 前缀，让卡片回调
+  // 走的还是 wizard.handlePermissionCallback 的 \r/\x1b 路径（tool-agnostic）。
+  async function handleCodexDetector({ event, sessionId, nativeId, promptText, matchedPattern } = {}) {
+    if (!sessionId) return { ok: false, reason: 'no_sessionId' }
+    const sess = aiTerminal?.sessions?.get(sessionId)
+    if (!sess) return { ok: false, reason: 'session_gone' }
+    const todoId = sess.todoId
+    let todoTitle = todoId
+    try {
+      const todo = await db.getTodo?.(todoId)
+      todoTitle = todo?.title || todoId
+    } catch { /* ignore */ }
+    const idTail = todoId ? String(todoId).slice(-3) : '???'
+    const text = `⚠️ [#t${idTail}] 任务「${todoTitle}」AI 卡住等输入：\n\n\`\`\`\n${promptText}\n\`\`\``
+    const card = buildPermissionCard({
+      message: text,
+      actionId: `codex:${sessionId}`,
+      headerTitle: '⚠️ Codex 等待授权',
+    })
+    try {
+      await codexBridge.postCard?.({ sessionId, card })
+    } catch (e) {
+      logger.warn?.(`[codex-detector] postCard failed: ${e.message}`)
+      return { ok: false, reason: 'post_failed', detail: e?.message }
+    }
+    return { ok: true, action: 'sent', source: 'codex', event, nativeId, matchedPattern }
   }
 
   // ─── Claude 分支（既有实现，原 handle() 主体不变）─────────────────────────────

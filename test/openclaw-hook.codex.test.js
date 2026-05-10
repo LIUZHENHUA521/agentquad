@@ -52,4 +52,59 @@ describe('openclaw-hook codex branch', () => {
     expect(result.ok).toBe(false)
     expect(bridge.postText).not.toHaveBeenCalled()
   })
+
+  it('routes source=codex,path=detector Notification to bridge.postCard with Codex header', async () => {
+    const bridge = fakeBridge()
+    const aiTerminal = { sessions: new Map([['qs1', { todoId: 't1' }]]) }
+    const handler = createOpenClawHookHandler({
+      bridge,
+      openclaw: bridge,
+      db: {
+        listPendingQuestions: () => [],
+        getTodo: async () => ({ id: 't1', title: '清理仓库' }),
+      },
+      aiTerminal,
+      sidecar: { lookup: () => null },
+      pty: { findCodexSession: () => null },
+      logger: { warn: () => {}, info: () => {} },
+    })
+    const result = await handler.handle({
+      source: 'codex',
+      path: 'detector',
+      event: 'Notification',
+      sessionId: 'qs1',
+      promptText: 'Approve? (y/n)',
+    })
+    expect(result.ok).toBe(true)
+    expect(bridge.postCard).toHaveBeenCalled()
+    const arg = bridge.postCard.mock.calls[0][0]
+    expect(arg.sessionId).toBe('qs1')
+    const cardJson = JSON.stringify(arg.card)
+    expect(cardJson).toContain('Codex 等待授权')
+    expect(cardJson).not.toContain('Claude Code 等待授权')
+    expect(cardJson).toContain('Approve? (y/n)')
+  })
+
+  it('returns session_gone when sessionId not in aiTerminal.sessions', async () => {
+    const bridge = fakeBridge()
+    const handler = createOpenClawHookHandler({
+      bridge,
+      openclaw: bridge,
+      db: { listPendingQuestions: () => [], getTodo: async () => null },
+      aiTerminal: { sessions: new Map() },
+      sidecar: { lookup: () => null },
+      pty: { findCodexSession: () => null },
+      logger: { warn: () => {}, info: () => {} },
+    })
+    const result = await handler.handle({
+      source: 'codex',
+      path: 'detector',
+      event: 'Notification',
+      sessionId: 'gone',
+      promptText: 'Approve? (y/n)',
+    })
+    expect(result.ok).toBe(false)
+    expect(result.reason).toBe('session_gone')
+    expect(bridge.postCard).not.toHaveBeenCalled()
+  })
 })
