@@ -265,7 +265,7 @@ function defaultClaudeSessionLocator(nativeSessionId) {
 }
 
 export class PtyManager extends EventEmitter {
-  constructor({ tools, ptyFactory, promptDelayMs = 2000, codexWatcherFactory, claudeSessionLocator } = {}) {
+  constructor({ tools, ptyFactory, promptDelayMs = 2000, codexWatcherFactory, claudeSessionLocator, sidecar = null, eventEmitterFactory = null } = {}) {
     super()
     if (!tools) throw new Error('PtyManager: tools required')
     this.tools = tools
@@ -273,6 +273,8 @@ export class PtyManager extends EventEmitter {
     this.codexWatcherFactory = codexWatcherFactory || defaultCodexWatcherFactory
     this.claudeSessionLocator = claudeSessionLocator || defaultClaudeSessionLocator
     this.promptDelayMs = promptDelayMs
+    this.sidecar = sidecar
+    this.eventEmitterFactory = eventEmitterFactory
     this.sessions = new Map()
   }
 
@@ -293,6 +295,29 @@ export class PtyManager extends EventEmitter {
     if (session.detectTimer) { clearInterval(session.detectTimer); session.detectTimer = null }
     if (session.fsWatcher) { try { session.fsWatcher.close() } catch { /* ignore */ } session.fsWatcher = null }
     this.emit('native-session', { sessionId: session.sessionId, nativeId })
+    // codex 专属：拿到 native id 后落 sidecar + 启动 jsonl 增量 emitter，给 IM 推送链路用。
+    if (session.tool === 'codex') {
+      if (this.sidecar) {
+        try {
+          const p = this.sidecar.write({
+            nativeId,
+            quadtodoSessionId: session.sessionId,
+            todoId: session.todoId || null,
+            cwd: session.cwd || null,
+          })
+          if (p && typeof p.catch === 'function') p.catch(() => {})
+        } catch { /* ignore */ }
+      }
+      if (this.eventEmitterFactory && !session.eventEmitter) {
+        try {
+          const loc = findCodexSession(nativeId)
+          if (loc?.filePath) {
+            session.eventEmitter = this.eventEmitterFactory({ filePath: loc.filePath, nativeId })
+            session.eventEmitter.start?.()
+          }
+        } catch { /* ignore */ }
+      }
+    }
     return true
   }
 
@@ -312,6 +337,25 @@ export class PtyManager extends EventEmitter {
       if (pid) out.push({ sessionId, pid, tool: s.tool })
     }
     return out
+  }
+
+  /**
+   * 测试 / Phase A 友好入口：传 { tool, sessionId, cwd, todoId, prompt?, ... }，返回一个
+   * 可 .kill() 的 handle。内部仍走 start() 的全部生命周期，方便 sidecar / emitter 接线
+   * 测试不必走 onExit 链路。
+   */
+  spawn({ tool, sessionId, cwd, todoId, prompt = null, resumeNativeId = null, permissionMode = null, extraEnv = null } = {}) {
+    this.start({ sessionId, tool, prompt, cwd, resumeNativeId, permissionMode, extraEnv })
+    const session = this.sessions.get(sessionId)
+    if (session) {
+      session.todoId = todoId || null
+      session.cwd = cwd || null
+    }
+    return {
+      sessionId,
+      get nativeId() { return session?.nativeId || null },
+      kill: () => this.stop(sessionId),
+    }
   }
 
   start({ sessionId, tool, prompt, cwd, resumeNativeId, permissionMode, extraEnv }) {
@@ -403,6 +447,8 @@ export class PtyManager extends EventEmitter {
       proc,
       tool,
       sessionId,
+      cwd: effectiveCwd,
+      todoId: null,
       fullLog: [],
       logBytes: 0,
       pendingPrompt: useCliPrompt ? null : (prompt && !resumeNativeId ? prompt : null),
@@ -412,6 +458,7 @@ export class PtyManager extends EventEmitter {
       stopped: false,
       detectTimer: null,
       fsWatcher: null,
+      eventEmitter: null,
       lastTuiAlertAt: 0,
     }
     this.sessions.set(sessionId, session)
@@ -497,6 +544,10 @@ export class PtyManager extends EventEmitter {
       if (session.detectTimer) clearInterval(session.detectTimer)
       if (session.promptTimer) clearTimeout(session.promptTimer)
       if (session.fsWatcher) { try { session.fsWatcher.close() } catch { /* ignore */ } session.fsWatcher = null }
+      if (session.eventEmitter) { try { session.eventEmitter.stop?.() } catch { /* ignore */ } session.eventEmitter = null }
+      if (this.sidecar && session.tool === 'codex' && session.nativeId) {
+        try { this.sidecar.clear(session.nativeId) } catch { /* ignore */ }
+      }
       const fullLog = session.fullLog.join('')
       this.sessions.delete(sessionId)
       this.emit('done', {
@@ -593,6 +644,13 @@ export class PtyManager extends EventEmitter {
     const s = this.sessions.get(sessionId)
     if (!s) return
     s.stopped = true
+    // Codex 侧的 sidecar/emitter 在这里同步清理 —— onExit 也会再做一次（幂等）。
+    // 之所以提前清，是因为某些 PTY 实现的 kill() 不一定会准时触发 onExit（测试环境
+    // 用 mock proc 完全不触发），sidecar 残留会让下次 boot 误以为会话还在。
+    if (s.eventEmitter) { try { s.eventEmitter.stop?.() } catch { /* ignore */ } s.eventEmitter = null }
+    if (this.sidecar && s.tool === 'codex' && s.nativeId) {
+      try { this.sidecar.clear(s.nativeId) } catch { /* ignore */ }
+    }
     try { s.proc.kill() } catch { /* ignore */ }
     // cleanup happens in onExit
   }
