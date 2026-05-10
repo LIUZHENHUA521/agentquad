@@ -302,3 +302,28 @@ describe('queue limits / lifecycle', () => {
     expect(d.describe().sessions).toBe(0)
   })
 })
+
+describe('per-sid serialization', () => {
+  it('并发 send 在同 sid 上严格按顺序入队', async () => {
+    const { pty, aiTerminal } = makeDeps({ awaitingReply: false })
+    const d = createSessionInputDispatcher({ pty, aiTerminal })
+    const promises = []
+    for (let i = 0; i < 10; i++) {
+      promises.push(d.send({ sessionId: 'sid1', text: `m${i}` }))
+    }
+    await Promise.all(promises)
+    const q = d.__test__.queues.get('sid1')
+    expect(q.items.map((it) => it.text)).toEqual(
+      Array.from({ length: 10 }, (_, i) => `m${i}`)
+    )
+  })
+
+  it('不同 sid 之间不互相阻塞', async () => {
+    const { pty, aiTerminal } = makeDeps({ awaitingReply: false })
+    const d = createSessionInputDispatcher({ pty, aiTerminal })
+    const r1 = d.send({ sessionId: 'sid1', text: 'a' })
+    const r2 = d.send({ sessionId: 'sid2', text: 'b' })
+    await Promise.all([r1, r2])
+    expect(d.describe().sessions).toBe(2)
+  })
+})
