@@ -156,8 +156,13 @@
   flex: 1;
   min-width: 0;
 }
+.terminal-dock__body.is-split {
+  gap: 8px;
+  background: #1677ff;
+}
 .terminal-dock__body.is-split .terminal-dock__pane.is-secondary {
-  border-left: 2px solid #1677ff;
+  border-left: 3px solid #69b1ff;
+  box-shadow: -1px 0 0 0 rgba(255, 255, 255, 0.15);
 }
 
 /* === Mobile === */
