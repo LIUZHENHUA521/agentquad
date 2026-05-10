@@ -259,6 +259,26 @@ describe('lark defaultPermissionMode normalization', () => {
 	});
 });
 
+describe('dispatch defaults', () => {
+	it('normalizes config with empty dispatch section', async () => {
+		const { normalizeConfig } = await import('../src/config.js');
+		const c = normalizeConfig({});
+		expect(c.dispatch).toEqual({
+			lark: { default: 'claude' },
+			telegram: { default: 'claude' },
+			web: { default: 'claude' },
+		});
+	});
+
+	it('preserves user dispatch values', async () => {
+		const { normalizeConfig } = await import('../src/config.js');
+		const c = normalizeConfig({ dispatch: { lark: { default: 'codex', perUser: { 'u1': 'claude' } } } });
+		expect(c.dispatch.lark.default).toBe('codex');
+		expect(c.dispatch.lark.perUser.u1).toBe('claude');
+		expect(c.dispatch.telegram.default).toBe('claude');
+	});
+});
+
 describe('lark defaults', () => {
 	it('adds lark defaults when config file omits lark section', async () => {
 		const { loadConfig } = await import('../src/config.js');
