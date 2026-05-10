@@ -2,7 +2,7 @@ import { EventEmitter } from 'node:events'
 import { createRequire } from 'node:module'
 import { randomUUID } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
-import { readdirSync, statSync, existsSync, watch as fsWatch, mkdirSync, openSync, readSync, closeSync } from 'node:fs'
+import { readdirSync, statSync, existsSync, watch as fsWatch, mkdirSync, openSync, readSync, closeSync, readFileSync } from 'node:fs'
 import { delimiter, dirname, isAbsolute, join } from 'node:path'
 import { homedir } from 'node:os'
 
@@ -119,6 +119,53 @@ function detectCodexSessionFromFs(afterMs) {
   } catch {
     return null
   }
+}
+
+function tryReadCwdFromSessionMeta(filePath) {
+  try {
+    const head = readFileSync(filePath, 'utf8').split('\n').slice(0, 2)
+    for (const line of head) {
+      if (!line.trim()) continue
+      const j = JSON.parse(line)
+      if (j?.type === 'session_meta' && j?.payload?.cwd) return j.payload.cwd
+    }
+  } catch {}
+  return null
+}
+
+/**
+ * 反向定位某个 codex nativeSessionId 对应的 rollout-*.jsonl 文件 + 起始 cwd。
+ * 用途：拿到 native id 后由上层需要订阅 jsonl 增量，或恢复时校验文件是否还在。
+ * 读 head 两行扫 session_meta，找不到时 cwd:null（仍返回 filePath）。
+ */
+export function findCodexSession(nativeSessionId, { sessionsRoot = CODEX_SESSIONS_DIR } = {}) {
+  if (!nativeSessionId) return null
+  if (!existsSync(sessionsRoot)) return null
+  let years
+  try { years = readdirSync(sessionsRoot).filter(y => /^\d{4}$/.test(y)) } catch { return null }
+  for (const y of years) {
+    const yDir = join(sessionsRoot, y)
+    let months
+    try { months = readdirSync(yDir) } catch { continue }
+    for (const m of months) {
+      const mDir = join(yDir, m)
+      let days
+      try { days = readdirSync(mDir) } catch { continue }
+      for (const d of days) {
+        const dDir = join(mDir, d)
+        let files
+        try { files = readdirSync(dDir) } catch { continue }
+        for (const f of files) {
+          const match = f.match(CODEX_ROLLOUT_FILE_RE)
+          if (!match || match[1] !== nativeSessionId) continue
+          const filePath = join(dDir, f)
+          const cwd = tryReadCwdFromSessionMeta(filePath)
+          return { filePath, cwd, nativeId: nativeSessionId }
+        }
+      }
+    }
+  }
+  return null
 }
 
 function defaultPtyFactory() {
