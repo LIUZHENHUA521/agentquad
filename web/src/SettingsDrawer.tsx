@@ -130,7 +130,12 @@ export default function SettingsDrawer({ open, onClose }: Props) {
     const meta = toolDiagnostics?.[tool]
     const parsedCommand = splitCommandLine(nextCommandValue.trim())
     const baseCommand = parsedCommand[0] || ''
-    const nextArgs = parsedCommand.length > 1
+    // 区分两种"args 看起来空"的语义：
+    //   1) 用户把整个字段清空（baseCommand=''）→ 保留旧 args，否则一次空表单提交会
+    //      把曾经设过的参数全部蒸发掉
+    //   2) 用户敲了完整命令但不带参数（baseCommand='claude'）→ 用户明确想要 args=[]，
+    //      旧 args 不能再回填，否则永远删不掉历史参数
+    const nextArgs = baseCommand
       ? parsedCommand.slice(1)
       : (config?.tools[tool].args || [])
     const trimmedBin = nextBinValue.trim()
