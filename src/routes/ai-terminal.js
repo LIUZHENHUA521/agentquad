@@ -1,8 +1,10 @@
 import { existsSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
 import { Router } from 'express'
 import { writeFile, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import pidusage from 'pidusage'
+import { loadConfig, resolveToolsConfig, DEFAULT_ROOT_DIR } from '../config.js'
 
 const MAX_OUTPUT_BUFFER = 512 * 1024
 const CLEANUP_MS = 30 * 60_000
@@ -56,7 +58,21 @@ function canResizeSession(session) {
   return session && !TERMINAL_RESIZE_STATUSES.has(session.status)
 }
 
-export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, onSessionSpawned = null, onSessionEnded = null }) {
+// 在 spawn PTY 前先确认工具确实在 PATH（或显式 bin 路径）里。
+// 比起让 node-pty 抛 ENOENT，这里返回结构化的 tool_missing → 路由层映射成 HTTP 424，
+// CLI/前端可以直接展示「跑 quadtodo install-tools --claude」修复指引。
+function checkToolAvailable(tool, cfg) {
+  const tools = resolveToolsConfig(cfg?.tools || {})
+  const bin = tools?.[tool]?.bin || tools?.[tool]?.command || tool
+  const r = spawnSync('command', ['-v', bin], { encoding: 'utf8', shell: '/bin/sh' })
+  return {
+    ok: r.status === 0 && r.stdout.trim().length > 0,
+    bin,
+    resolvedPath: r.stdout.trim() || null,
+  }
+}
+
+export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, onSessionSpawned = null, onSessionEnded = null, rootDir = DEFAULT_ROOT_DIR }) {
   /** @type {Map<string, any>} */
   const sessions = new Map()
   /** @type {Map<string, string>} */
@@ -300,6 +316,18 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
       const err = new Error('invalid tool'); err.code = 'bad_request'
       throw err
     }
+    // 工具不在 PATH（或显式 bin 路径不存在）时立刻报错，不要把 ENOENT 留给 node-pty。
+    // 路由层会把 tool_missing 映射成 HTTP 424 + 修复指引。
+    const cfg = loadConfig({ rootDir })
+    const avail = checkToolAvailable(tool, cfg)
+    if (!avail.ok) {
+      const err = new Error(`tool_missing: ${tool} (looked for "${avail.bin}" in PATH)`)
+      err.code = 'tool_missing'
+      err.tool = tool
+      err.bin = avail.bin
+      err.fix = `quadtodo install-tools --${tool}`
+      throw err
+    }
     const todo = db.getTodo(todoId)
     if (!todo) {
       const err = new Error('todo_not_found'); err.code = 'not_found'
@@ -422,6 +450,17 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
       })
       res.json({ ok: true, ...result })
     } catch (e) {
+      if (e.code === 'tool_missing') {
+        return res.status(424).json({
+          ok: false,
+          code: 'tool_missing',
+          tool: e.tool,
+          bin: e.bin,
+          fix: e.fix,
+          message: e.message,
+          error: e.message,
+        })
+      }
       const status = e.code === 'bad_request' ? 400 : e.code === 'not_found' ? 404 : 500
       if (status >= 500) console.error('[ai-terminal/exec]', e)
       res.status(status).json({ ok: false, error: e.message })
