@@ -58,10 +58,11 @@ quadtodo 计划发布到 npm registry。当前 `package.json` 已具备发布的
 
 新增脚本 `scripts/ensure-web-deps.js`（10 行内）：
 - 检查 `web/node_modules` 存在；不在 → spawn `npm ci` in `web/`；输出"installing web deps for prepack..."提示。
+- **边界**：只在 `prepack`（即包作者打包时）调用，**不**写进任何 `postinstall` / 包用户侧的 lifecycle；最终用户 `npm i -g quadtodo` 不会触发 web 子目录的 npm ci。
 
 ### 3.2 `src/cli.js` — `doctor` 扩展
 
-现有 `doctorReport()` 加 5 项硬检查，每项返回 `{ name, ok, message, fix }`：
+现有 `doctorReport()` 加 6 项硬检查，每项返回 `{ name, ok, message, fix }`：
 
 | 检查项 | 通过条件 | 失败时 fix 文案 |
 |---|---|---|
@@ -69,16 +70,21 @@ quadtodo 计划发布到 npm registry。当前 `package.json` 已具备发布的
 | `claude` 在 PATH | `which claude` 退码为 0 | "运行 `quadtodo install-tools --claude`" |
 | `codex` 在 PATH | `which codex` 退码为 0 | "运行 `quadtodo install-tools --codex`" |
 | 前端资源 | `dist-web/index.html` 存在 | "重装：`npm i -g quadtodo`" |
-| `node-pty` 可用 | 能 `import node-pty` 且 `spawn('echo', ['ok'])` 收到输出 | "运行 `npm rebuild -g node-pty`" |
+| `node-pty` 可用 | 能 `import node-pty` 且在 1s 超时内 `spawn('echo', ['ok'])` 收到 stdout `ok\n` | "运行 `npm rebuild -g node-pty`" |
+| `better-sqlite3` 可用 | 尝试 `new Database(~/.quadtodo/data.db)` + `.close()` 不抛 | "运行 `npm rebuild -g better-sqlite3`" |
 
-`better-sqlite3` 检查：尝试 open + close `~/.quadtodo/data.db`，捕获异常。
+`node-pty` 检查实现细节：
+- 用 `Promise.race([dataPromise, sleep(1000).then(() => 'TIMEOUT')])`
+- 任何异常 / 超时都判失败，把异常 message 放进 `message` 字段
 
-doctor 输出末尾，若 claude/codex 缺失：
+doctor 输出末尾，**根据实际缺失项**拼装命令（避免重装已有工具）：
 ```
-缺失：claude, codex
-按 [Enter] 自动运行 `quadtodo install-tools --all`，按 [q] 跳过：
+缺失：claude
+按 [Enter] 自动运行 `quadtodo install-tools --claude`，按 [q] 跳过：
 ```
-通过 `readline` 接收输入；非 TTY 环境（如 CI）跳过询问，只打印命令。
+若同时缺：`quadtodo install-tools --claude --codex`。
+
+通过 `readline` 接收输入；`process.stdin.isTTY === false`（如 CI、被管道）则跳过询问，仅打印命令。
 
 ### 3.3 `src/cli.js` — 新增 `install-tools` 子命令
 
@@ -86,10 +92,22 @@ doctor 输出末尾，若 claude/codex 缺失：
 quadtodo install-tools [--claude] [--codex] [--all] [-y]
 ```
 
-- 包名映射：`claude` → `@anthropic-ai/claude-code`，`codex` → `@openai/codex`（启动时已知；硬编码在 cli.js 顶部一个常量里）
-- 行为：依次 `spawn('npm', ['install', '-g', pkg], { stdio: 'inherit' })`；任一失败则中断剩余并退码 1
+- 包名 / bin 映射（**已通过 `npm view <pkg> bin` 核实**）：
+  - `claude` → 包 `@anthropic-ai/claude-code`，bin 名 `claude`
+  - `codex` → 包 `@openai/codex`，bin 名 `codex`
+  - 硬编码在 cli.js 顶部一个 `TOOL_PACKAGES` 常量里
+- 行为：
+  1. 依次 `spawn('npm', ['install', '-g', pkg])`，stdio 用 `['inherit', 'inherit', 'pipe']` —— stdout 实时显示给用户，stderr **同时** tee 到屏幕和内存 buffer，便于失败时附在错误里
+  2. 任一退码非 0 则中断剩余、退码 1
+  3. **每个工具装完后立即 `which <bin>` 复验**——退码 0 才算真的装上；否则即使 npm 装成功也提示"npm 报告成功但 PATH 找不到 `<bin>`，请检查 npm prefix"
 - `-y` 跳过确认；否则先打印 `即将执行：npm install -g <pkg>，继续？[y/N]`
-- 失败提示：若退码非 0 且 stderr 含 `EACCES`，提示用户用 `sudo` 或换 nvm
+- 失败时统一打印通用 fix 文案（不依赖 stderr 关键字匹配）：
+  ```
+  安装失败。常见原因 + 修复：
+    - 权限不足：用 `sudo npm install -g <pkg>`，或切到用户级 npm
+      （nvm: `nvm use 20`；手动改 prefix: `npm config set prefix ~/.npm-global`）
+    - 网络：检查代理 / 镜像 (`npm config get registry`)
+  ```
 - 兼容：默认无参数 = `--all`
 
 ### 3.4 `src/server.js` 启动兜底
@@ -100,7 +118,7 @@ quadtodo install-tools [--claude] [--codex] [--all] [-y]
      如果你是从源码运行：cd web && npm install && npm run build
      如果你是 npm 安装的：npm i -g quadtodo  # 重装
   ```
-- AI 终端 WebSocket 路由（`src/routes/ai-terminal.js`）：spawn 前检查工具是否存在，缺失时发结构化错误帧给前端：
+- AI 终端 WebSocket 路由（`src/routes/ai-terminal.js` —— 已核实存在）：spawn 前检查工具是否存在，缺失时发结构化错误帧给前端：
   ```json
   { "type": "tool_missing", "tool": "claude", "fix": "quadtodo install-tools --claude" }
   ```
@@ -165,10 +183,11 @@ quadtodo install-tools [--claude] [--codex] [--all] [-y]
 
 ## 5. 验收标准
 
-- [ ] 干净 macOS Node 20 / Node 22：`npm i -g quadtodo` 无编译错误，无 warning（`os` warning 只在 Windows 出现）
+- [ ] 干净 macOS Node 20 / Node 22 / Node 24：`npm i -g quadtodo` 无编译错误，无 warning（`os` warning 只在 Windows 出现）
 - [ ] 干净 Ubuntu container Node 20：同上
-- [ ] `quadtodo doctor` 5 项检查全部能准确反映状态，每项失败都给 `fix` 命令
+- [ ] `quadtodo doctor` **6 项**检查全部能准确反映状态，每项失败都给 `fix` 命令
 - [ ] `quadtodo install-tools --all -y` 能装上 claude / codex；非 `-y` 模式有确认提示
+- [ ] `install-tools` 装完后 `which claude` / `which codex` 都退码 0；**紧接着跑 `quadtodo doctor` 对应两项变绿**
 - [ ] `quadtodo start`：dist-web 缺失时给清晰错误；前端缺 claude 时显示提示卡片而非 ENOENT
 - [ ] `npm pack` tgz 体积 < 5MB（后端） + 前端构建产物
 - [ ] README 顶部"30 秒上手"块成立
