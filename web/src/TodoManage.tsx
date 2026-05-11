@@ -54,10 +54,11 @@ import { useAiSessionStore } from './store/aiSessionStore'
 import {
   AttentionItem,
   buildAttentionItems,
-  countAttentionItems,
+  buildUnreadSessionItems,
   parseSeenReplySessionIds,
   SEEN_REPLY_STORAGE_KEY,
   serializeSeenReplySessionIds,
+  type UnreadSessionItem,
 } from './replyHub'
 import { getTranscriptStats, listPipelineTemplates, listPipelineRunsForTodo, startPipelineRun, PipelineTemplate, PipelineRun } from './api'
 import PipelineRunDrawer from './pipeline/PipelineRunDrawer'
@@ -476,12 +477,12 @@ function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo = false,
                           <button
                             type="button"
                             className="todo-history-link"
-                            onClick={() => navigator.clipboard?.writeText(nativeSessionId).then(() => {
-                              message.success('session ID 已复制')
+                            onClick={() => navigator.clipboard?.writeText(terminalCommand).then(() => {
+                              message.success('启动命令已复制')
                             }).catch(() => {
                               message.error('复制失败')
                             })}
-                            title="复制原生 session ID"
+                            title="复制启动命令"
                           >
                             <CopyOutlined />
                           </button>
@@ -882,7 +883,12 @@ export default function TodoManage() {
     liveSessions: [...liveSessionsMap.values()],
     seenSessionIds: seenReplySessionIds,
   }), [todos, liveSessionsMap, seenReplySessionIds])
-  const attentionCounts = useMemo(() => countAttentionItems(attentionItems), [attentionItems])
+  const lastSeenMap = useUnreadStore(s => s.lastSeenAt)
+  const unreadItems = useMemo(() => buildUnreadSessionItems({
+    todos,
+    liveSessions: [...liveSessionsMap.values()],
+    lastSeenMap,
+  }), [todos, liveSessionsMap, lastSeenMap])
 
   useEffect(() => {
     let cancelled = false
@@ -931,7 +937,7 @@ export default function TodoManage() {
     persistSeenReplySessionIds(new Set([...seenReplySessionIds, ...sessionIds]))
   }, [persistSeenReplySessionIds, seenReplySessionIds])
 
-  const handleOpenAttentionItem = useCallback((item: AttentionItem) => {
+  const handleOpenAttentionItem = useCallback((item: AttentionItem | UnreadSessionItem) => {
     setDashboardOpen(false)
     setKeyword('')
     setFilterStatus('todo')
@@ -1674,8 +1680,7 @@ export default function TodoManage() {
   return (
     <div className="todo-manage-shell">
       <AttentionRail
-        items={attentionItems}
-        counts={attentionCounts}
+        items={unreadItems}
         onActivate={handleOpenAttentionItem}
         onOpenDashboard={() => setDashboardOpen(true)}
       />

@@ -869,6 +869,7 @@ body {
 .attention-rail__more:hover { background: #fff1b8; }
 /* kind-specific tints */
 .attention-rail__item.kind-interaction { border-color: #ff4d4f; background: #fff1f0; color: #cf1322; }
+.attention-rail__item.kind-unread { border-color: #ff4d4f; background: #fff1f0; color: #cf1322; }
 .attention-rail__item.kind-awaiting_reply { border-color: #faad14; background: #fffbe6; color: #d48806; }
 .attention-rail__item.kind-review { border-color: #1677ff; background: #e6f4ff; color: #003eb3; }
 .attention-rail__more { font-size: 11px; }
