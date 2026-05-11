@@ -448,7 +448,10 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
         fontSize: 13,
         fontFamily: '"JetBrains Mono", Menlo, Monaco, "Courier New", monospace',
         theme: themeRef.current,
-        cursorBlink: true,
+        // 关闭闪烁：Claude/Codex TUI 工作时每帧重绘期间会把 cursor 在多个 ANSI 位置之间挪，
+        // 每个 blink-on 周期都会把中间态画出来，视觉上"上下跳得很快"。关掉 blink 后光标只在
+        // 当前定位上稳定显示，重绘瞬间也不会被反复擦写。
+        cursorBlink: false,
         convertEol: true,
         scrollback: 5000,
         disableStdin: false,
