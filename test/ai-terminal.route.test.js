@@ -20,10 +20,19 @@ class FakePty extends EventEmitter {
     this.resizes = []
     this.stopped = []
     this._has = new Set()
+    this._nativeIds = new Map() // sessionId → nativeId
   }
   create(opts) {
     this.created.push(opts)
     this._has.add(opts.sessionId)
+    // 真实 PtyManager 行为：claude 新会话预置 UUID；resume 沿用；codex 新会话留 null。
+    if (opts.resumeNativeId) {
+      this._nativeIds.set(opts.sessionId, opts.resumeNativeId)
+    } else if (opts.tool === 'claude') {
+      this._nativeIds.set(opts.sessionId, `claude-preset-${this.created.length}`)
+    } else {
+      this._nativeIds.set(opts.sessionId, null)
+    }
   }
   startWithSize(sessionId, cols, rows) {
     this.startedWithSize.push({ sessionId, cols, rows })
@@ -40,6 +49,7 @@ class FakePty extends EventEmitter {
     this._has.delete(id)
     this.emit('done', { sessionId: id, exitCode: 0, fullLog: '', nativeId: null, stopped: true })
   }
+  getNativeId(id) { return this._nativeIds.get(id) ?? null }
   has(id) { return this._has.has(id) }
   list() { return [...this._has] }
   getPids() { return [...this._has].map((id, i) => ({ sessionId: id, pid: 10000 + i, tool: 'claude' })) }
@@ -125,6 +135,45 @@ describe('routes/ai-terminal', () => {
     expect(updated.aiSession.tool).toBe('claude')
     expect(updated.aiSession.status).toBe('running')
     expect(updated.aiSessions).toHaveLength(1)
+  })
+
+  it('POST /exec persists preset nativeSessionId for new claude session before HTTP response returns', async () => {
+    const todo = ctx.db.createTodo({ title: 'T', quadrant: 1 })
+    const r = await request(ctx.app)
+      .post('/api/ai-terminal/exec')
+      .send({ todoId: todo.id, prompt: 'hello', tool: 'claude' })
+    expect(r.status).toBe(200)
+    // 这里关键：HTTP 响应返回的同一刻，DB 已经能查到 nativeSessionId（不再为 null）。
+    // 不主动 emit('native-session'); 模拟"前端 WS 还没 init"。
+    const updated = ctx.db.getTodo(todo.id)
+    expect(updated.aiSessions).toHaveLength(1)
+    expect(updated.aiSessions[0].nativeSessionId).toBeTruthy()
+    expect(updated.aiSessions[0].nativeSessionId).toMatch(/^claude-preset-/)
+  })
+
+  it('POST /exec persists resumeNativeId immediately for claude resume', async () => {
+    const todo = ctx.db.createTodo({ title: 'T', quadrant: 1 })
+    const r = await request(ctx.app)
+      .post('/api/ai-terminal/exec')
+      .send({
+        todoId: todo.id,
+        prompt: 'resume me',
+        tool: 'claude',
+        resumeNativeId: 'abcdef12-3456-7890-abcd-ef1234567890',
+      })
+    expect(r.status).toBe(200)
+    const updated = ctx.db.getTodo(todo.id)
+    expect(updated.aiSessions[0].nativeSessionId).toBe('abcdef12-3456-7890-abcd-ef1234567890')
+  })
+
+  it('POST /exec leaves nativeSessionId null for new codex session (no preset)', async () => {
+    const todo = ctx.db.createTodo({ title: 'T', quadrant: 1 })
+    const r = await request(ctx.app)
+      .post('/api/ai-terminal/exec')
+      .send({ todoId: todo.id, prompt: 'hi', tool: 'codex' })
+    expect(r.status).toBe(200)
+    const updated = ctx.db.getTodo(todo.id)
+    expect(updated.aiSessions[0].nativeSessionId).toBeNull()
   })
 
   it('POST /exec invokes onSessionSpawned after starting a new session', async () => {
