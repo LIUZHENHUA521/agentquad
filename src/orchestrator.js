@@ -480,6 +480,7 @@ export function createOrchestrator({ db, pty, aiTerminal, logDir }) {
     const todo = db.getTodo(run.todoId)
     if (!todo?.workDir) throw new Error('todo_missing_workDir')
     const all = await listWorktrees(todo.workDir)
+    // NOTE: legacy worktree pool name kept after rebrand to avoid orphaning in-flight worktrees on upgrade.
     const mine = all.filter(w => w.path.includes(`/.quadtodo-worktrees/${runId}/`))
     let removed = 0
     for (const w of mine) {

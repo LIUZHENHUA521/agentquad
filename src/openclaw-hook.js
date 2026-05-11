@@ -1,7 +1,7 @@
 /**
  * Claude Code Hook 主动推送处理器。
  *
- * 接收 hook 脚本（~/.quadtodo/claude-hooks/notify.js）发来的事件，
+ * 接收 hook 脚本（~/.agentquad/claude-hooks/notify.js）发来的事件，
  * 应用节流规则，调 openclaw-bridge 推送微信/Telegram。
  *
  * 节流规则（按设计稿 §4）：
@@ -23,7 +23,6 @@
  */
 import { writeFileSync, mkdirSync } from 'node:fs'
 import { join, dirname } from 'node:path'
-import { homedir } from 'node:os'
 import { readLatestAssistantTurn, readLatestAssistantTurnFresh, buildFullTranscript, readJsonlLines as defaultReadJsonlLines } from './claude-transcript.js'
 import { extractTurnUsage, extractSessionUsageFromLines as defaultExtractSessionUsageFromLines, formatUsageFooter } from './usage-footer.js'
 import { DEFAULT_PRICING } from './pricing.js'
@@ -33,9 +32,10 @@ import {
   extractCodexTurnUsageFromLines as defaultExtractCodexTurnUsageFromLines,
 } from './codex-transcript.js'
 import { buildPermissionCard } from './lark-card.js'
+import { DEFAULT_ROOT_DIR } from './config.js'
 
 const DEFAULT_COOLDOWN_MS = 30_000
-const TRANSCRIPT_TMP_DIR = join(homedir(), '.quadtodo', 'tmp')
+const TRANSCRIPT_TMP_DIR = join(DEFAULT_ROOT_DIR, 'tmp')
 const INLINE_MAX_CHARS = 4000
 const ATTACHMENT_HEAD_CHARS = 800
 

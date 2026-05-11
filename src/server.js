@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import express from "express";
 import { WebSocketServer } from "ws";
 import {
+	DEFAULT_ROOT_DIR,
 	inspectToolsConfig,
 	loadConfig,
 	resolveToolsConfig,
@@ -526,7 +527,7 @@ export function createServer(opts = {}) {
 		tools: tools || resolveToolsConfig(initialConfig?.tools),
 		defaultTool: initialConfig?.defaultTool || "claude",
 	};
-	// Codex sidecar：把 quadtodo session ↔ codex native id 的映射落到 ~/.quadtodo/codex-sessions/，
+	// Codex sidecar：把 quadtodo session ↔ codex native id 的映射落到 ~/.agentquad/codex-sessions/，
 	// 重启后 restoreFromDisk() 复活内存映射。Phase A 只暂存元数据；Phase C 起 IM 推送链路会用它
 	// 来反查 quadtodo session / todoId / cwd。
 	const codexSidecar = createCodexSidecar();
@@ -1141,7 +1142,7 @@ export function createServer(opts = {}) {
 	app.use("/api/pipelines", createPipelinesRouter({ db, orchestrator }));
 
 	const wikiConfig = (initialConfig && initialConfig.wiki) || {
-		wikiDir: join(process.env.HOME || process.cwd(), ".quadtodo", "wiki"),
+		wikiDir: join(DEFAULT_ROOT_DIR, "wiki"),
 		maxTailTurns: 20,
 		tool: "claude",
 		timeoutMs: 600_000,

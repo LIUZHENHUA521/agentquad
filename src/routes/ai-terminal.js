@@ -418,7 +418,7 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
     })
 
     try {
-      // 自动注入 QUADTODO_* env，让 ~/.quadtodo/claude-hooks/notify.js 能识别这是
+      // 自动注入 QUADTODO_* env，让 ~/.agentquad/claude-hooks/notify.js 能识别这是
       // quadtodo 启的 Claude Code → Stop / SessionEnd 事件回推到 quadtodo /api/openclaw/hook。
       // 之前只有 wizard.finalize 会显式传 extraEnv，web/CLI 直接 spawn 的 session 由于缺这些
       // env，hook 脚本 exit 0 → 完成时不推 telegram。caller-supplied 排前面，自动 env 后置覆盖

@@ -1,4 +1,4 @@
-// Rendered verbatim into ~/.quadtodo/wiki/WIKI_GUIDE.md on first init.
+// Rendered verbatim into ~/.agentquad/wiki/WIKI_GUIDE.md on first init.
 // Users are free to edit the file afterwards; we only write it if it's missing.
 export const WIKI_GUIDE_CONTENT = `# Wiki 维护指南（LLM 读这个）
 

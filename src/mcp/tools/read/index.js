@@ -188,7 +188,7 @@ export function registerReadTools(server, { db, searchService, wikiDir, transcri
       'search_transcripts',
       {
         description:
-          '在 AI 会话日志（~/.quadtodo/logs/*.log）里做纯文本逐行扫描。不使用 FTS，适合查 "当时 Claude 说的那句话"。结果带前后文；单次返回上限默认 30 条、单文件最多 5 条。',
+          '在 AI 会话日志（~/.agentquad/logs/*.log）里做纯文本逐行扫描。不使用 FTS，适合查 "当时 Claude 说的那句话"。结果带前后文；单次返回上限默认 30 条、单文件最多 5 条。',
         inputSchema: {
           query: z.string().min(1),
           todoId: z.string().optional().describe('只搜这个 todo 下的会话；不传就全局'),

@@ -10,7 +10,7 @@
  *   - settings.json 损坏 → 抛错让用户修，绝不擅自覆盖
  *
  * 启动期 bootstrap（bootstrapHooks）：
- *   - 部署/升级 ~/.quadtodo/claude-hooks/notify.js（带版本号比对）
+ *   - 部署/升级 ~/.agentquad/claude-hooks/notify.js（带版本号比对）
  *   - 合并 hooks 到 settings.json（已装则 noop，避免 .bak 刷屏）
  *   - 用户跑过 uninstall-hook → 留 .uninstalled marker，bootstrap 默认尊重；
  *     `quadtodo openclaw bootstrap` 显式忽略 marker 强制装回
@@ -20,13 +20,14 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync, copyFileSync, unlin
 import { dirname, join } from 'node:path'
 import { homedir } from 'node:os'
 import { fileURLToPath } from 'node:url'
+import { DEFAULT_ROOT_DIR } from './config.js'
 
 const QUADTODO_MANAGED_KEY = '_quadtodoManaged'
 const HOOK_EVENTS = ['Stop', 'Notification', 'SessionEnd']
 const HOOK_VERSION_RE = /quadtodo-hook-version:\s*(\d+)/
 
 function defaultHookScriptPath() {
-  return join(homedir(), '.quadtodo', 'claude-hooks', 'notify.js')
+  return join(DEFAULT_ROOT_DIR, 'claude-hooks', 'notify.js')
 }
 
 function defaultSettingsPath() {
@@ -38,7 +39,7 @@ function defaultTemplatePath() {
 }
 
 function defaultUninstallMarkerPath() {
-  return join(homedir(), '.quadtodo', 'claude-hooks', '.uninstalled')
+  return join(DEFAULT_ROOT_DIR, 'claude-hooks', '.uninstalled')
 }
 
 function parseHookVersion(content) {
@@ -213,7 +214,7 @@ export function inspectHooks({
 }
 
 /**
- * 把仓库内置的 notify.js 模板部署到 ~/.quadtodo/claude-hooks/notify.js。
+ * 把仓库内置的 notify.js 模板部署到 ~/.agentquad/claude-hooks/notify.js。
  *
  * 行为：
  *   - 目标不存在 → 直接写（action: 'installed'）

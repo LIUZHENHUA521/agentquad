@@ -1,8 +1,8 @@
 import { mkdirSync, writeFileSync, readFileSync, readdirSync, unlinkSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { homedir } from 'node:os'
+import { DEFAULT_ROOT_DIR } from './config.js'
 
-const DEFAULT_DIR = join(homedir(), '.quadtodo', 'codex-sessions')
+const DEFAULT_DIR = join(DEFAULT_ROOT_DIR, 'codex-sessions')
 
 export function createCodexSidecar({ baseDir = DEFAULT_DIR } = {}) {
   mkdirSync(baseDir, { recursive: true })

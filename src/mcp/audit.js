@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path'
 /**
  * 简单的 NDJSON 审计日志：每次破坏性 MCP 工具真执行后追加一行。
  *
- * rootDir 通常是 ~/.quadtodo；文件名固定为 mcp-audit.log。
+ * rootDir 通常是 ~/.agentquad；文件名固定为 mcp-audit.log。
  * 调用失败（磁盘只读等）不影响主流程——静默降级。
  */
 export function createAuditLog({ rootDir, filename = 'mcp-audit.log' } = {}) {

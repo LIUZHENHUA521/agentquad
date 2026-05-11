@@ -13,9 +13,9 @@
  */
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { homedir } from 'node:os'
+import { DEFAULT_ROOT_DIR } from './config.js'
 
-const DEFAULT_DIR = join(homedir(), '.quadtodo', 'lark-uploads')
+const DEFAULT_DIR = join(DEFAULT_ROOT_DIR, 'lark-uploads')
 
 const CONTENT_TYPE_TO_EXT = {
   'video/mp4': 'mp4',

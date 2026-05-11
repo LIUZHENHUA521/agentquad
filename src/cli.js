@@ -337,7 +337,7 @@ program.command('start')
       ? '0.0.0.0'
       : (cmdOpts.host || cfg.host || '127.0.0.1')
 
-    // ─── stdout/stderr 复制到 ~/.quadtodo/logs/quadtodo.log ───
+    // ─── stdout/stderr 复制到 ~/.agentquad/logs/agentquad.log ───
     // 保留正常 console 输出 + 同步追加到日志文件，方便诊断
     try {
       const logsDir = join(rootDir, 'logs')
