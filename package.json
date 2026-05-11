@@ -1,11 +1,13 @@
 {
-  "name": "quadtodo",
-  "version": "0.1.1",
-  "description": "Local four-quadrant todo CLI with embedded Claude Code / Codex terminal",
+  "name": "agentquad",
+  "version": "0.2.0",
+  "description": "AgentQuad — local four-quadrant AI task scheduler with embedded Claude Code / Codex terminals",
   "license": "MIT",
   "author": "LIUZHENHUA521",
   "keywords": [
     "cli",
+    "agent",
+    "agentquad",
     "todo",
     "quadrant",
     "claude-code",
@@ -14,14 +16,15 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+ssh://git@github.com/LIUZHENHUA521/quadtodo.git"
+    "url": "git+ssh://git@github.com/LIUZHENHUA521/agentquad.git"
   },
-  "homepage": "https://github.com/LIUZHENHUA521/quadtodo#readme",
+  "homepage": "https://github.com/LIUZHENHUA521/agentquad#readme",
   "bugs": {
-    "url": "https://github.com/LIUZHENHUA521/quadtodo/issues"
+    "url": "https://github.com/LIUZHENHUA521/agentquad/issues"
   },
   "type": "module",
   "bin": {
+    "agentquad": "src/cli.js",
     "quadtodo": "src/cli.js"
   },
   "files": [
