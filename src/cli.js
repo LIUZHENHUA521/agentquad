@@ -242,14 +242,23 @@ export async function doctorReport({ rootDir = DEFAULT_ROOT_DIR } = {}) {
     }
 
     // 3. AgentQuad skill 装好了吗（OpenClaw 端配置）
-    const skillFile = join(homedir(), '.openclaw', 'skills', 'quadtodo-claw', 'SKILL.md')
+    const skillFile = join(homedir(), '.openclaw', 'skills', 'agentquad-claw', 'SKILL.md')
     checks.push({
-      name: 'quadtodo-claw skill installed',
+      name: 'agentquad-claw skill installed',
       ok: existsSync(skillFile),
       detail: existsSync(skillFile)
         ? skillFile
         : '缺失：参考 docs/OPENCLAW.md',
     })
+    // 3b. legacy skill 目录还在？软警告（非 failing）
+    const legacySkillDir = join(homedir(), '.openclaw', 'skills', 'quadtodo-claw')
+    if (existsSync(legacySkillDir)) {
+      checks.push({
+        name: 'legacy openclaw skill folder',
+        ok: true,
+        detail: 'legacy ~/.openclaw/skills/quadtodo-claw/ still exists — safe to delete',
+      })
+    }
 
     // 4. Claude Code hook 安装状态（主动推送）
     try {
@@ -606,18 +615,19 @@ export function buildMcpServerEntry({ host, port } = {}) {
 }
 
 /**
- * Merge `quadtodo` 进 settings.json 的 mcpServers 段，不破坏现有条目。
+ * Merge `agentquad` 进 settings.json 的 mcpServers 段，不破坏现有条目。
  * - 如果 settings.json 不存在：创建一个只含 mcpServers 的新文件
  * - 如果存在且有效 JSON：merge
  * - 如果存在但不是 JSON：报错（让用户自己先修好）
+ * - 如果存在 legacy `quadtodo` entry 且其 url/command 指向 OUR 包 bin → 删除
  *
- * 返回 { path, action: 'created'|'updated'|'unchanged', entry }
+ * 返回 { path, action: 'created'|'updated'|'unchanged', entry, legacyRemoved }
  */
 export function installMcpIntoClaudeSettings({
   settingsPath = defaultClaudeSettingsPath(),
   host,
   port,
-  name = 'quadtodo',
+  name = 'agentquad',
 } = {}) {
   const entry = buildMcpServerEntry({ host, port })
   let settings = {}
@@ -639,14 +649,27 @@ export function installMcpIntoClaudeSettings({
   if (!settings.mcpServers || typeof settings.mcpServers !== 'object') {
     settings.mcpServers = {}
   }
+  // legacy 清理：如果有 quadtodo entry 且看起来是 OUR 包（http URL 指向 /mcp，或
+  // command 字段含 /quadtodo/ | /agentquad/），删掉它。
+  let legacyRemoved = false
+  const legacy = settings.mcpServers.quadtodo
+  if (legacy && name !== 'quadtodo') {
+    const isOurs =
+      (typeof legacy.url === 'string' && /\/mcp\/?$/.test(legacy.url)) ||
+      (typeof legacy.command === 'string' && /\/agentquad\/|\/quadtodo\//.test(legacy.command))
+    if (isOurs) {
+      delete settings.mcpServers.quadtodo
+      legacyRemoved = true
+    }
+  }
   const existing = settings.mcpServers[name]
   const same = existing && existing.type === entry.type && existing.url === entry.url
-  if (same) {
-    return { path: settingsPath, action: 'unchanged', entry }
+  if (same && !legacyRemoved) {
+    return { path: settingsPath, action: 'unchanged', entry, legacyRemoved }
   }
   settings.mcpServers[name] = entry
   writeFileSync(settingsPath, JSON.stringify(settings, null, 2))
-  return { path: settingsPath, action: existed ? 'updated' : 'created', entry }
+  return { path: settingsPath, action: existed ? 'updated' : 'created', entry, legacyRemoved }
 }
 
 const mcpCmd = program.command('mcp').description('Claude Code MCP: install / status')
@@ -664,7 +687,10 @@ mcpCmd.command('install')
       })
       const icon = out.action === 'unchanged' ? '=' : out.action === 'created' ? '+' : '~'
       console.log(`${icon} ${out.action} ${out.path}`)
-      console.log(`   mcpServers.quadtodo.url = ${out.entry.url}`)
+      if (out.legacyRemoved) {
+        console.log('   removed legacy mcpServers["quadtodo"] entry')
+      }
+      console.log(`   mcpServers.agentquad.url = ${out.entry.url}`)
       if (out.action === 'unchanged') {
         console.log('   (already configured)')
       } else {
@@ -709,7 +735,7 @@ openclawCmd.command('install-hook')
       console.log('')
       console.log('完成。新的 PTY 会话启动后会自动通过 hook 推送状态到微信。')
       console.log('注意：现存的 PTY 会话（重启前已经在跑的）env 已固定，不受影响；')
-      console.log('     新 quadtodo.start_ai_session 启动的 PTY 才会带 hook env。')
+      console.log('     新 agentquad.start_ai_session 启动的 PTY 才会带 hook env。')
     } catch (e) {
       console.error(`install-hook failed: ${e.message}`)
       if (e.code === 'malformed_settings') {

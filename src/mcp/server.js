@@ -8,7 +8,7 @@ import { registerOpenClawTools } from './tools/openclaw/index.js'
 import { createAuditLog } from './audit.js'
 import { createTranscriptScanner } from '../search/transcripts.js'
 
-const SERVER_NAME = 'quadtodo'
+const SERVER_NAME = 'agentquad'
 
 /**
  * 创建一个挂在 Express 下的 MCP Streamable HTTP 路由。
