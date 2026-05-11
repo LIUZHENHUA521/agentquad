@@ -165,6 +165,10 @@ const DOCK_STATUS_TIP: Record<Exclude<HistoryDockStatus, 'closed'>, string> = {
   popout: '已弹出为独立窗口',
 }
 
+// AI session 的"已结束"状态——只在这些状态下显示"未正常结束"标签，
+// 避免 running / pending_confirm 期间因为 nativeId 还没到位而误报。
+const TERMINAL_AI_STATUSES = new Set<string>(['done', 'failed', 'stopped'])
+
 function dockStatusOf(
   sessionId: string,
   openTabIds: Set<string>,
@@ -442,7 +446,7 @@ function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo = false,
                       <div className="todo-history-headline">
                         <span className="todo-history-tool">{toolDisplayName(session.tool)}</span>
                         <span className="todo-history-time">{formatSessionTime(session.startedAt || session.completedAt)}</span>
-                        {!nativeSessionId && (
+                        {!nativeSessionId && TERMINAL_AI_STATUSES.has(String(session.status)) && (
                           <Tooltip title="该会话未正常结束，没有拿到原生 session ID，无法 resume/fork。请在 AI 完成后在终端里按 Ctrl+D 或 /exit 正常退出。">
                             <Tag color="warning" style={{ marginLeft: 6 }}>未正常结束</Tag>
                           </Tooltip>
