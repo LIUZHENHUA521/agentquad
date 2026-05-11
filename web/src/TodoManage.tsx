@@ -344,7 +344,7 @@ function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo = false,
             <div className="todo-history-title">历史会话 ({historySessions.length})</div>
             <div className="todo-history-list">
               {historySessions.map((session) => {
-                const isPrimarySession = session.sessionId === sessionId
+                const isPrimarySession = session.sessionId === dockActiveTabId
                 const nativeSessionId = session.nativeSessionId || ''
                 const baseResumeCommand = session.tool === 'codex'
                   ? `codex resume ${nativeSessionId}`
@@ -1675,12 +1675,12 @@ export default function TodoManage() {
       })
       await fetchTodos()
       const warnings = result.warnings || []
-      if (warnings.includes('telegram_route_missing')) {
-        message.warning('已在本地 Terminal 中继续；当前会话没有 Telegram topic 路由，不会推送到 Telegram')
+      if (warnings.includes('route_missing')) {
+        message.warning('已在本地 Terminal 中继续；当前会话未绑定 IM 路由（飞书/Telegram），不会同步消息')
       } else if (warnings.includes('hooks_not_installed') || warnings.includes('hook_script_missing')) {
-        message.warning('已在本地 Terminal 中继续；Claude Code hooks 未安装或脚本缺失，Telegram 推送可能不可用')
+        message.warning('已在本地 Terminal 中继续；Claude Code hooks 未安装或脚本缺失，IM 推送可能不可用')
       } else {
-        message.success('已在本地 Terminal 中继续当前会话，Telegram 将接收后续回复')
+        message.success('已在本地 Terminal 中继续当前会话，IM 将接收后续回复')
       }
     } catch (e: any) {
       message.error(e?.message || '本地继续失败')

@@ -757,7 +757,7 @@ describe("server", () => {
 		});
 	});
 
-	it("POST /api/system/open-native-ai-resume warns when Claude session has no telegram route", async () => {
+	it("POST /api/system/open-native-ai-resume warns when Claude session has no IM route", async () => {
 		const todo = srv.db.createTodo({ title: "No route task", quadrant: 1, workDir: join(workRootDir, "client") });
 		srv.db.updateTodo(todo.id, {
 			aiSessions: [{
@@ -783,7 +783,8 @@ describe("server", () => {
 			});
 
 		expect(r.status).toBe(200);
-		expect(r.body.warnings).toContain("telegram_route_missing");
+		expect(r.body.warnings).toContain("route_missing");
+		expect(r.body.warnings).not.toContain("telegram_route_missing");
 		expect(nativeTerminalCalls[0].command).not.toContain("QUADTODO_SESSION_ID");
 		expect(nativeTerminalCalls[0].command).not.toContain("QUADTODO_TARGET_USER");
 	});
@@ -818,9 +819,105 @@ describe("server", () => {
 			});
 
 		expect(r.status).toBe(200);
-		expect(r.body.warnings).toContain("telegram_route_missing");
+		// 不完整的 telegram route 不能算作可用 IM 路由 → route_missing
+		expect(r.body.warnings).toContain("route_missing");
 		expect(nativeTerminalCalls[0].command).not.toContain("QUADTODO_TARGET_USER");
 		expect(srv.openclawBridge.hasExplicitRoute("ai-partial-route")).toBe(false);
+	});
+
+	it("POST /api/system/open-native-ai-resume injects hook env and registers route for Lark-bound Claude sessions", async () => {
+		const todo = srv.db.createTodo({ title: "Lark task", quadrant: 1, workDir: join(workRootDir, "client") });
+		srv.db.updateTodo(todo.id, {
+			aiSessions: [{
+				sessionId: "ai-lark-1",
+				tool: "claude",
+				nativeSessionId: "native-lark-cc",
+				cwd: join(workRootDir, "client"),
+				status: "done",
+				startedAt: 1,
+				completedAt: 2,
+				prompt: "p",
+				larkRoute: {
+					channel: "lark",
+					targetUserId: "oc_lark_chat",
+					rootMessageId: "om_root_local_resume",
+					topicName: "#t1 Lark task",
+				},
+			}],
+		});
+
+		const r = await request(srv.app)
+			.post("/api/system/open-native-ai-resume")
+			.send({
+				cwd: join(workRootDir, "client"),
+				tool: "claude",
+				nativeSessionId: "native-lark-cc",
+				todoId: todo.id,
+				sessionId: "ai-lark-1",
+			});
+
+		expect(r.status).toBe(200);
+		expect(r.body.warnings).not.toContain("route_missing");
+		expect(r.body.warnings).not.toContain("telegram_route_missing");
+		expect(nativeTerminalCalls[0].command).toContain("export QUADTODO_SESSION_ID='ai-lark-1';");
+		expect(nativeTerminalCalls[0].command).toContain(`export QUADTODO_TODO_ID='${todo.id}';`);
+		expect(nativeTerminalCalls[0].command).toContain("export QUADTODO_TODO_TITLE='Lark task';");
+		// Lark 不需要 QUADTODO_TARGET_USER —— server 端按 sessionId 反查 lark route
+		expect(nativeTerminalCalls[0].command).not.toContain("QUADTODO_TARGET_USER");
+		expect(nativeTerminalCalls[0].command).toContain("'--resume' 'native-lark-cc'");
+		expect(srv.openclawBridge.resolveRoute("ai-lark-1")).toMatchObject({
+			targetUserId: "oc_lark_chat",
+			rootMessageId: "om_root_local_resume",
+			channel: "lark",
+		});
+	});
+
+	it("POST /api/system/open-native-ai-resume prefers Lark route when both lark and telegram are bound", async () => {
+		const todo = srv.db.createTodo({ title: "Dual task", quadrant: 1, workDir: join(workRootDir, "client") });
+		srv.db.updateTodo(todo.id, {
+			aiSessions: [{
+				sessionId: "ai-dual",
+				tool: "claude",
+				nativeSessionId: "native-dual",
+				cwd: join(workRootDir, "client"),
+				status: "done",
+				startedAt: 1,
+				completedAt: 2,
+				prompt: "p",
+				telegramRoute: {
+					targetUserId: "-100123",
+					threadId: 42,
+					topicName: "#t1 Dual task",
+					channel: "telegram",
+				},
+				larkRoute: {
+					channel: "lark",
+					targetUserId: "oc_lark_chat",
+					rootMessageId: "om_root_dual",
+					topicName: "#t1 Dual task",
+				},
+			}],
+		});
+
+		const r = await request(srv.app)
+			.post("/api/system/open-native-ai-resume")
+			.send({
+				cwd: join(workRootDir, "client"),
+				tool: "claude",
+				nativeSessionId: "native-dual",
+				todoId: todo.id,
+				sessionId: "ai-dual",
+			});
+
+		expect(r.status).toBe(200);
+		// lark 优先 → env 不带 QUADTODO_TARGET_USER（与 rehydration 行为一致：lark 覆盖 telegram）
+		expect(nativeTerminalCalls[0].command).toContain("export QUADTODO_SESSION_ID='ai-dual';");
+		expect(nativeTerminalCalls[0].command).not.toContain("QUADTODO_TARGET_USER");
+		// bridge 内最终 route 是 lark（rehydration 顺序：telegram 先写 → lark 后写覆盖）
+		expect(srv.openclawBridge.resolveRoute("ai-dual")).toMatchObject({
+			channel: "lark",
+			rootMessageId: "om_root_dual",
+		});
 	});
 
 	it("POST /api/system/open-native-ai-resume ignores mismatched session context", async () => {

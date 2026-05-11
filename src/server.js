@@ -146,15 +146,37 @@ function findNativeResumeContext({ db, todoId, sessionId, nativeSessionId, tool 
 	return { todo, aiSession };
 }
 
-function isCompleteTelegramRoute(route) {
+export function isCompleteTelegramRoute(route) {
 	return Boolean(route?.targetUserId && route?.threadId);
 }
 
-function buildNativeResumeHookEnv({ tool, todo, aiSession, runtimeConfig, inspectHooks = inspectClaudeHooks } = {}) {
-	if (tool !== "claude" || !todo || !aiSession) return { env: {}, warnings: [] };
+// 与 src/openclaw-hook.js:normalizePersistedLarkRoute 对齐：lark route 完整
+// 至少需要 targetUserId + rootMessageId；channel 字段允许缺省（视为 lark）。
+export function isCompleteLarkRoute(route) {
+	if (!route?.targetUserId || !route?.rootMessageId) return false;
+	if (route.channel && route.channel !== "lark") return false;
+	return true;
+}
+
+// 选哪条 route 给本地 Terminal resume 用：lark 优先，与 server.js rehydration
+// 顺序（telegram 先注册 → lark 后注册覆盖）和 openclaw-hook.restorePersistedRoute
+// 的"优先 lark"一致。
+export function pickNativeResumeRoute(aiSession) {
+	if (isCompleteLarkRoute(aiSession?.larkRoute)) {
+		return { channel: "lark", route: aiSession.larkRoute };
+	}
+	if (isCompleteTelegramRoute(aiSession?.telegramRoute)) {
+		return { channel: "telegram", route: aiSession.telegramRoute };
+	}
+	return { channel: null, route: null };
+}
+
+export function buildNativeResumeHookEnv({ tool, todo, aiSession, runtimeConfig, inspectHooks = inspectClaudeHooks } = {}) {
+	if (tool !== "claude" || !todo || !aiSession) return { env: {}, warnings: [], channel: null };
 	const warnings = [];
-	const route = aiSession.telegramRoute || null;
-	if (!isCompleteTelegramRoute(route)) warnings.push("telegram_route_missing");
+	const picked = pickNativeResumeRoute(aiSession);
+
+	// hook 安装状态独立检查：即使 route 缺失也回报，前端按优先级展示
 	let hookStatus = null;
 	try {
 		hookStatus = inspectHooks();
@@ -163,16 +185,26 @@ function buildNativeResumeHookEnv({ tool, todo, aiSession, runtimeConfig, inspec
 	}
 	if (!hookStatus?.scriptExists) warnings.push("hook_script_missing");
 	if (!hookStatus?.installed) warnings.push("hooks_not_installed");
-	if (!isCompleteTelegramRoute(route)) return { env: {}, warnings };
+
+	if (!picked.route) {
+		warnings.push("route_missing");
+		return { env: {}, warnings, channel: null };
+	}
+
 	const port = runtimeConfig?.port || 5677;
 	const env = {
 		QUADTODO_SESSION_ID: aiSession.sessionId,
 		QUADTODO_TODO_ID: todo.id,
 		QUADTODO_TODO_TITLE: todo.title || aiSession.prompt || "",
 		QUADTODO_URL: `http://127.0.0.1:${port}`,
-		QUADTODO_TARGET_USER: String(route.targetUserId),
 	};
-	return { env, warnings };
+	// QUADTODO_TARGET_USER 是 telegram 推送脚本专用：notify.js 把它原样转发给
+	// server，telegram 推送链路用来定位 peer。Lark 推送靠 server 端按 sessionId
+	// 反查 larkRoute.rootMessageId，不需要 hook 脚本带这个 env。
+	if (picked.channel === "telegram") {
+		env.QUADTODO_TARGET_USER = String(picked.route.targetUserId);
+	}
+	return { env, warnings, channel: picked.channel };
 }
 
 function buildNativeResumeTitle(tool, nativeSessionId) {
@@ -931,8 +963,14 @@ export function createServer(opts = {}) {
 				tool,
 			});
 			const hook = buildNativeResumeHookEnv({ tool, todo, aiSession, runtimeConfig, inspectHooks });
+			// register 顺序与 server.js rehydration（line 1497-1510）一致：
+			// telegram 先写，lark 后写覆盖。openclawBridge.sessionRoutes 是单 Map，
+			// 同 sid 只能存一条；这里两条都跑也是 idempotent 的。
 			if (isCompleteTelegramRoute(aiSession?.telegramRoute)) {
 				openclawBridge.registerSessionRoute(aiSession.sessionId, aiSession.telegramRoute);
+			}
+			if (isCompleteLarkRoute(aiSession?.larkRoute)) {
+				openclawBridge.registerSessionRoute(aiSession.sessionId, aiSession.larkRoute);
 			}
 			const command = `${buildShellExports(hook.env)}${baseCommand}`;
 			const result = await openNativeTerminal({ cwd, command, title });
