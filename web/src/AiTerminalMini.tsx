@@ -148,6 +148,7 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
   const reconnectCountRef = useRef(0)
   const stopReconnectRef = useRef(false)
   const disposedRef = useRef(false)
+  const effectGenRef = useRef(0)
   const lastSentSizeRef = useRef<{ cols: number; rows: number } | null>(null)
   const resizeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const refitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -430,11 +431,18 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
 
     let cleanup: (() => void) | null = null
 
+    const myGen = ++effectGenRef.current
+    // IIFE so we can await container-ready + font-ready inside an effect
+    // (effect callback can't be async). After the await, both disposedRef AND
+    // the effect-generation token must be checked — stale IIFEs from a previous
+    // sessionId can survive into the next effect run because cleanup ran before
+    // they finished setup. DO NOT add new awaits below the guard without
+    // re-checking both refs after each await.
     void (async () => {
       const container = containerRef.current
       if (!container) return
       await waitTerminalReady(container)
-      if (disposedRef.current) return
+      if (disposedRef.current || myGen !== effectGenRef.current) return
 
       const term = new Terminal({
         fontSize: 13,
