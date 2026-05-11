@@ -12,10 +12,18 @@ import {
   getConfigValue,
   setConfigValue,
   resolveToolsConfig,
+  migrateLegacyHomeDirIfNeeded,
 } from './config.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
+
+// Run legacy-dir migration once per CLI invocation, before any config read.
+// Aborts the process if a legacy quadtodo service is still running.
+{
+  const result = migrateLegacyHomeDirIfNeeded()
+  if (result.action === 'abort') process.exit(1)
+}
 
 // Bin names verified via `npm view <pkg> bin`.
 export const TOOL_PACKAGES = {
@@ -40,7 +48,7 @@ function loadPkgVersion() {
 }
 
 function pidFile(rootDir = DEFAULT_ROOT_DIR) {
-  return join(rootDir, 'quadtodo.pid')
+  return join(rootDir, 'agentquad.pid')
 }
 
 function isAlive(pid) {
@@ -319,7 +327,7 @@ export async function doctorReport({ rootDir = DEFAULT_ROOT_DIR } = {}) {
 
 const program = new Command()
 program
-  .name('quadtodo')
+  .name('agentquad')
   .description('Local four-quadrant todo CLI with embedded Claude Code / Codex terminal')
   .version(loadPkgVersion())
 
@@ -342,7 +350,7 @@ program.command('start')
     try {
       const logsDir = join(rootDir, 'logs')
       if (!existsSync(logsDir)) mkdirSync(logsDir, { recursive: true })
-      const logFile = join(logsDir, 'quadtodo.log')
+      const logFile = join(logsDir, 'agentquad.log')
       // 启动时如果 log > 5MB 就截断到尾部 1MB
       try {
         const { statSync } = await import('node:fs')
@@ -355,7 +363,7 @@ program.command('start')
       } catch { /* file 不存在或读不了，忽略 */ }
       const { createWriteStream } = await import('node:fs')
       const logStream = createWriteStream(logFile, { flags: 'a' })
-      logStream.write(`\n=== quadtodo start ${new Date().toISOString()} pid=${process.pid} ===\n`)
+      logStream.write(`\n=== agentquad start ${new Date().toISOString()} pid=${process.pid} ===\n`)
       const wrap = (orig) => (...args) => {
         try {
           const line = args.map((a) => typeof a === 'string' ? a : JSON.stringify(a)).join(' ')
