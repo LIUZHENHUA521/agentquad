@@ -263,28 +263,36 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
     const superseded = Boolean(session.replacedBySessionId) || todoSessionMap.get(session.todoId) !== sessionId
     const todo = db.getTodo(session.todoId)
     if (todo) {
-      const newAi = {
-        ...((todo.aiSessions || []).find(item => item.sessionId === session.sessionId) || todo.aiSession || {}),
-        sessionId: session.sessionId,
-        tool: session.tool,
-        nativeSessionId: nativeId || session.nativeSessionId || null,
-        cwd: session.cwd || null,
-        status: aiStatus,
-        startedAt: session.startedAt,
-        completedAt: session.completedAt,
-        prompt: session.prompt,
+      const existingEntry = (todo.aiSessions || []).find(item => item.sessionId === session.sessionId)
+      // bypass 热重启的老 session：B 的 spawnSession 已通过 mergeTodoAiSessions
+      // 按 tool+nativeSessionId 把老 A 从 aiSessions 里剔除。这里别再 append 回去 ——
+      // 否则一次切"完全托管"会留下 2 条历史卡片（B running + A stopped）。
+      // session_log 仍由下方 insertSessionLog 写入，Dashboard 统计不会丢这次运行。
+      const skipHistoryWrite = superseded && !existingEntry
+      if (!skipHistoryWrite) {
+        const newAi = {
+          ...(existingEntry || todo.aiSession || {}),
+          sessionId: session.sessionId,
+          tool: session.tool,
+          nativeSessionId: nativeId || session.nativeSessionId || null,
+          cwd: session.cwd || null,
+          status: aiStatus,
+          startedAt: session.startedAt,
+          completedAt: session.completedAt,
+          prompt: session.prompt,
+        }
+        // 用户主动通过删/关 topic 触发的 stop：handleTopicEvent 已把 todo 标 done，
+        // 这里别用 stopped→'todo' 的默认逻辑覆写它。只更 aiSessions（记录会话退出状态）。
+        const updates = {
+          aiSessions: superseded
+            ? replaceTodoAiSessionInPlace(todo, newAi)
+            : mergeTodoAiSessions(todo, newAi),
+        }
+        if (session.userClosedReason !== 'topic_closed' && !superseded) {
+          updates.status = todoStatus
+        }
+        db.updateTodo(session.todoId, updates)
       }
-      // 用户主动通过删/关 topic 触发的 stop：handleTopicEvent 已把 todo 标 done，
-      // 这里别用 stopped→'todo' 的默认逻辑覆写它。只更 aiSessions（记录会话退出状态）。
-      const updates = {
-        aiSessions: superseded
-          ? replaceTodoAiSessionInPlace(todo, newAi)
-          : mergeTodoAiSessions(todo, newAi),
-      }
-      if (session.userClosedReason !== 'topic_closed' && !superseded) {
-        updates.status = todoStatus
-      }
-      db.updateTodo(session.todoId, updates)
     }
 
     writeFullLog(sessionId, fullLog)

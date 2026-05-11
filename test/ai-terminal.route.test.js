@@ -863,8 +863,11 @@ describe('routes/ai-terminal', () => {
     expect(updated.status).toBe('ai_running')
     expect(updated.aiSession.sessionId).toBe(ctx.pty.started[1].sessionId)
     expect(updated.aiSession.status).toBe('running')
+    // 老 session 已被 mergeTodoAiSessions 按 tool+nativeSessionId 去重剔除，
+    // pty.on('done') 不会再 append 回去 → 历史只保留新的 bypass session。
+    expect(updated.aiSessions).toHaveLength(1)
     expect(updated.aiSessions[0].sessionId).toBe(ctx.pty.started[1].sessionId)
-    expect(updated.aiSessions.find(s => s.sessionId === body.sessionId)?.status).toBe('stopped')
+    expect(updated.aiSessions.find(s => s.sessionId === body.sessionId)).toBeUndefined()
     expect(sent).toContainEqual({
       type: 'session_restarted',
       oldSessionId: body.sessionId,
@@ -897,8 +900,9 @@ describe('routes/ai-terminal', () => {
     const updated = ctx.db.getTodo(todo.id)
     expect(updated.status).toBe('ai_running')
     expect(updated.aiSession.sessionId).toBe(ctx.pty.started[1].sessionId)
+    expect(updated.aiSessions).toHaveLength(1)
     expect(updated.aiSessions[0].sessionId).toBe(ctx.pty.started[1].sessionId)
-    expect(updated.aiSessions.find(s => s.sessionId === body.sessionId)?.status).toBe('stopped')
+    expect(updated.aiSessions.find(s => s.sessionId === body.sessionId)).toBeUndefined()
   })
 
   it('runtime bypass restart failure restores old session state and warns browser', async () => {
