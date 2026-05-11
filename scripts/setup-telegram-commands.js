@@ -18,6 +18,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { dirname } from 'node:path'
 import { buildTelegramCommands } from '../src/telegram-commands.js'
+import { DEFAULT_ROOT_DIR } from '../src/config.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const PROJECT_ROOT = join(__dirname, '..')
@@ -25,7 +26,7 @@ const PROJECT_ROOT = join(__dirname, '..')
 const CLEAR = process.argv.includes('--clear')
 
 function readConfig() {
-  const path = join(homedir(), '.quadtodo', 'config.json')
+  const path = join(DEFAULT_ROOT_DIR, 'config.json')
   if (!existsSync(path)) return {}
   try { return JSON.parse(readFileSync(path, 'utf8')) } catch { return {} }
 }

@@ -296,7 +296,7 @@ export async function doctorReport({ rootDir = DEFAULT_ROOT_DIR } = {}) {
         : '空 = 拒所有：跑 `quadtodo config set telegram.allowedChatIds.0 <supergroup-id>`',
     })
 
-    // 7. token（从 ~/.quadtodo/config.json 读）
+    // 7. token（从 ~/.agentquad/config.json 读）
     try {
       const { readBotToken } = await import('./telegram-bot.js')
       const tok = readBotToken(() => cfg)
