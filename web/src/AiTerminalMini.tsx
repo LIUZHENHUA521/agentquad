@@ -62,6 +62,15 @@ function sendUnregisterSize(ws: WebSocket | null) {
   }
 }
 
+// Claude / Codex TUI 在重绘 task list / 状态栏期间会高频发 DECTCEM hide/show
+// (`\x1b[?25l` / `\x1b[?25h`)，xterm 聚焦态严格按指令切换 cursor 可见性，肉眼
+// 看到 cursor 在多个 ANSI 定位之间快速闪烁；失焦态画静态空心轮廓不响应这些指令，
+// 所以"聚焦才闪、失焦不闪"。剥掉这两个序列后 cursor 永远可见，并稳定在最新位置。
+const DECTCEM_HIDE_SHOW_RE = /\x1b\[\?25[lh]/g
+function stripCursorVisibility(data: string): string {
+  return data.replace(DECTCEM_HIDE_SHOW_RE, '')
+}
+
 // Wait until (a) the container has settled layout and is visible, AND
 // (b) the bundled JetBrains Mono font is loaded, before letting xterm measure
 // glyph width. Capped at 3 seconds; if it times out, proceed with whatever the
@@ -628,13 +637,13 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
             }
             switch (msg.type) {
               case 'output':
-                term.write(msg.data, () => {
+                term.write(stripCursorVisibility(msg.data), () => {
                   if (followTailRef.current) term.scrollToBottom()
                 })
                 break
               case 'replay':
                 if (Array.isArray(msg.chunks)) {
-                  for (const chunk of msg.chunks) term.write(chunk)
+                  for (const chunk of msg.chunks) term.write(stripCursorVisibility(chunk))
                   // 回放结束后强制 SGR reset，避免 TUI 在切片边界遗留 underline/颜色
                   term.write('\x1b[0m')
                   if (followTailRef.current) term.scrollToBottom()
