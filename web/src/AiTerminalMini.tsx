@@ -558,23 +558,37 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
           reconnectCountRef.current = 0
           setWsConnected(true)
           lastPongRef.current = Date.now()
-          // 新连接/重连都要强制把当前 cols/rows 重新发给后端：清掉"已发送"记录，
-          // 避免 doFit → scheduleResizeSend 看到尺寸没变就 early-return。
+          // 清掉 lastSent，让后续 ResizeObserver 即便测出同一 cols/rows 也不会被去重判成"无需重发"
           lastSentSizeRef.current = null
-          term.writeln('\x1b[36m--- Terminal connected ---\x1b[0m\r')
+
           if (!resumeTargetRef.current?.nativeSessionId && status === 'ai_running') {
             term.writeln('\x1b[90m--- 正在注入任务上下文，请稍候... ---\x1b[0m\r')
           }
-          // WS 打开后走 doFit 统一管路：guards + 稳定性去抖，
-          // 避免在 Chat tab 激活 / 终端折叠 时发出错误 cols（Claude 会按此折行污染 scrollback）
-          requestAnimationFrame(() => {
-            if (isHiddenRef.current) {
-              // 重连时仍处后台：只发 0/0 unregister，不上报真实尺寸
-              sendUnregisterSize(wsRef.current)
-              return
+
+          // ─── Size-first 握手 ───
+          // term.cols / term.rows 已经在 Task 5 的 waitTerminalReady 完成后由
+          // FitAddon 算好。直接以这两个值作为 init 上报，后端会按真实尺寸 spawn
+          // PTY（而不是默认 80×24 再 resize）。
+          const cols = term.cols
+          const rows = term.rows
+          if (isHiddenRef.current) {
+            // 后台 tab 也要发 init —— 否则后端 5 秒兜底兜不到 / 等到 init 这个 tab
+            // 再切回前台已经太晚（首屏 80 列 banner 已经画完了）。发完立刻补一条
+            // 0/0 unregister，把这个 tab 从聚合中踢出，避免后端按它的 cols 钳制 PTY。
+            if (Number.isFinite(cols) && Number.isFinite(rows) && cols >= MIN_VALID_COLS && rows > 0) {
+              ws.send(JSON.stringify({ type: 'init', cols, rows }))
             }
+            sendUnregisterSize(ws)
+          } else if (Number.isFinite(cols) && Number.isFinite(rows) && cols >= MIN_VALID_COLS && rows > 0) {
+            ws.send(JSON.stringify({ type: 'init', cols, rows }))
+            // 给 ResizeObserver 一个 baseline，避免它立刻又发一条 cols/rows 完全相同的 resize
+            lastSentSizeRef.current = { cols, rows }
+          } else {
+            // 极端 edge case：FitAddon 还没测出尺寸（不应该走到这里——StrictMode 双挂载
+            // 时可能发生）。退回老 doFit 路径，5 秒后端兜底会兜到。
             requestAnimationFrame(() => doFit())
-          })
+          }
+
           heartbeatTimer = setInterval(() => {
             if (ws.readyState === WebSocket.OPEN) {
               ws.send(JSON.stringify({ type: 'ping' }))
