@@ -521,7 +521,7 @@ function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo = false,
                       )}
                       <Popconfirm
                         title="删除这条历史会话？"
-                        description="只删除 quadtodo 中的记录，不影响 Claude/Codex 本地会话。"
+                        description="只删除 AgentQuad 中的记录，不影响 Claude/Codex 本地会话。"
                         onConfirm={() => onDeleteAiSession(todo, session, sessionId)}
                       >
                         <button

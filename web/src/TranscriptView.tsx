@@ -221,14 +221,17 @@ export default function TranscriptView({ todoId, sessionId, onFork, autoRefreshM
   const [liveOutput, setLiveOutput] = useState<string | null>(null)
   const [liveExpanded, setLiveExpanded] = useState<boolean>(() => {
     // 默认折叠；用户手动展开后 session 内保持选择
+    // rebrand: localStorage key kept for backward compatibility
     try { return localStorage.getItem('quadtodo.liveExpanded') === '1' } catch { return false }
   })
   useEffect(() => {
+    // rebrand: localStorage key kept for backward compatibility
     try { localStorage.setItem('quadtodo.liveExpanded', liveExpanded ? '1' : '0') } catch { /* ignore */ }
   }, [liveExpanded])
   const [fullscreen, setFullscreen] = useState(false)
   const [height, setHeight] = useState<number>(() => {
     try {
+      // rebrand: localStorage key kept for backward compatibility
       const raw = localStorage.getItem('quadtodo.transcriptHeight')
       const n = raw ? parseInt(raw, 10) : NaN
       if (Number.isFinite(n) && n >= MIN_HEIGHT && n <= MAX_HEIGHT) return n
@@ -278,6 +281,7 @@ export default function TranscriptView({ todoId, sessionId, onFork, autoRefreshM
   }, [height])
 
   useEffect(() => {
+    // rebrand: localStorage key kept for backward compatibility
     try { localStorage.setItem('quadtodo.transcriptHeight', String(height)) } catch { /* ignore */ }
   }, [height])
 

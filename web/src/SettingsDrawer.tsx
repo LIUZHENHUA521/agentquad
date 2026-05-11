@@ -101,6 +101,7 @@ export default function SettingsDrawer({ open, onClose }: Props) {
   const [pickingDefaultCwd, setPickingDefaultCwd] = useState(false)
   const [linkEditor, setLinkEditor] = useState<'trae-cn' | 'trae' | 'cursor'>(() => {
     try {
+      // rebrand: localStorage key kept for backward compatibility
       const v = localStorage.getItem('quadtodo.editor')
       return v === 'trae' || v === 'cursor' ? v : 'trae-cn'
     } catch { return 'trae-cn' }
@@ -511,6 +512,7 @@ export default function SettingsDrawer({ open, onClose }: Props) {
           onChange={(e) => {
             const v = e.target.value as 'trae-cn' | 'trae' | 'cursor'
             setLinkEditor(v)
+            // rebrand: localStorage key kept for backward compatibility
             try { localStorage.setItem('quadtodo.editor', v) } catch {}
           }}
         >
@@ -524,7 +526,7 @@ export default function SettingsDrawer({ open, onClose }: Props) {
         name="port"
         label="服务端口"
         rules={[{ required: true, message: '请输入服务端口' }]}
-        extra="端口会保存到配置文件，重启 quadtodo 后生效。"
+        extra="端口会保存到配置文件，重启 AgentQuad 后生效。"
       >
         <Input type="number" min={1} max={65535} />
       </Form.Item>
@@ -722,7 +724,7 @@ export default function SettingsDrawer({ open, onClose }: Props) {
           ),
           children: (
             <div
-              className="quadtodo-setup-guide"
+              className="agentquad-setup-guide"
               style={{
                 maxHeight: 460,
                 overflow: 'auto',
@@ -985,7 +987,7 @@ export default function SettingsDrawer({ open, onClose }: Props) {
         name="larkEventSubscribeEnabled"
         label="启用事件订阅，用于双向消息"
         valuePropName="checked"
-        extra="关闭后只能从 quadtodo 推送到 Lark，Lark 里的回复不会回到本地会话。"
+        extra="关闭后只能从 AgentQuad 推送到 Lark，Lark 里的回复不会回到本地会话。"
       >
         <Switch />
       </Form.Item>
@@ -1153,7 +1155,7 @@ export default function SettingsDrawer({ open, onClose }: Props) {
 
   return (
     <Drawer
-      title="quadtodo 设置"
+      title="AgentQuad 设置"
       open={open}
       onClose={onClose}
       width={560}
@@ -1198,7 +1200,7 @@ export default function SettingsDrawer({ open, onClose }: Props) {
       />
 
       <Paragraph type="secondary" style={{ marginTop: 16 }}>
-        配置文件位置：<Text code>~/.quadtodo/config.json</Text>
+        配置文件位置：<Text code>~/.agentquad/config.json</Text>
       </Paragraph>
     </Drawer>
   )

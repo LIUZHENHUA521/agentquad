@@ -33,6 +33,7 @@ interface DockState {
   setTodoTitle: (todoId: string, title: string) => void
 }
 
+// rebrand: localStorage keys kept for backward compatibility
 const WIDTH_KEY = 'quadtodo.dock.width'
 const COLLAPSED_KEY = 'quadtodo.dock.collapsed'
 const SESSION_KEY = 'quadtodo.dock.session'

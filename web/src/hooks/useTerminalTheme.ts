@@ -7,6 +7,7 @@ import {
   isValidColor,
 } from '../terminalThemes'
 
+// rebrand: localStorage keys kept for backward compatibility
 const STORAGE_KEY = 'quadtodo.terminalTheme'
 const CUSTOM_PRESETS_KEY = 'quadtodo.customTerminalPresets'
 const EVENT_NAME = 'quadtodo:terminalTheme'

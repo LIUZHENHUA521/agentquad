@@ -12,6 +12,7 @@
 
 import { create } from 'zustand'
 
+// rebrand: localStorage key kept for backward compatibility
 const STORAGE_KEY = 'quadtodo:sessionLastSeen'
 
 function loadFromStorage(): Map<string, number> {
