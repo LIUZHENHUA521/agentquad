@@ -15,8 +15,6 @@ import {
   MenuOutlined, MoreOutlined,
 } from '@ant-design/icons'
 import { useIsMobile } from './hooks/useIsMobile'
-import CmdPalette from './CmdPalette'
-import './CmdPalette.css'
 import {
   DndContext, closestCenter, PointerSensor, TouchSensor,
   useSensor, useSensors, DragOverlay, DragStartEvent,
@@ -444,25 +442,17 @@ function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo = false,
                       <div className="todo-history-headline">
                         <span className="todo-history-tool">{toolDisplayName(session.tool)}</span>
                         <span className="todo-history-time">{formatSessionTime(session.startedAt || session.completedAt)}</span>
-                      </div>
-                      <div className="todo-history-native-id" title={nativeSessionId || session.sessionId}>
-                        session id: {nativeSessionId || session.sessionId}
                         {!nativeSessionId && (
                           <Tooltip title="该会话未正常结束，没有拿到原生 session ID，无法 resume/fork。请在 AI 完成后在终端里按 Ctrl+D 或 /exit 正常退出。">
                             <Tag color="warning" style={{ marginLeft: 6 }}>未正常结束</Tag>
                           </Tooltip>
                         )}
+                        {nativeSessionId && !sessionCwd && (
+                          <Tooltip title="找不到此会话的原始 cwd，命令必须在创建该会话时所处的项目目录下执行，否则会报 'No conversation found'。">
+                            <Tag color="warning" style={{ marginLeft: 6 }}>缺少 cwd</Tag>
+                          </Tooltip>
+                        )}
                       </div>
-                      {nativeSessionId && (
-                        <div className="todo-history-command" title={terminalCommand}>
-                          {terminalCommand}
-                          {!sessionCwd && (
-                            <Tooltip title="找不到此会话的原始 cwd，命令必须在创建该会话时所处的项目目录下执行，否则会报 'No conversation found'。">
-                              <Tag color="warning" style={{ marginLeft: 6 }}>缺少 cwd</Tag>
-                            </Tooltip>
-                          )}
-                        </div>
-                      )}
                       {session.localResume?.openedAt && (
                         <div style={{ marginTop: 4 }}>
                           <Tag color="blue" style={{ marginInlineEnd: 0 }}>
@@ -805,7 +795,6 @@ export default function TodoManage() {
   const [, setUnboundTranscripts] = useState(0)
   const isMobile = useIsMobile()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
-  const [cmdPaletteOpen, setCmdPaletteOpen] = useState(false)
   const [viewMode] = useState<'list' | 'priority'>('list')
   const setLiveSessions = useAiSessionStore(s => s.setSessions)
   const [workDirOptions, setWorkDirOptions] = useState<{ label: string; value: string }[]>([])
@@ -813,15 +802,6 @@ export default function TodoManage() {
   const [workDirLoading, setWorkDirLoading] = useState(false)
   const [pickingWorkDir, setPickingWorkDir] = useState(false)
 
-  // AI 终端展开
-  const [autoFillPrompt, setAutoFillPrompt] = useState(() => {
-    const v = localStorage.getItem('quadtodo:autoFillPrompt')
-    return v === null ? true : v === '1'
-  })
-  const toggleAutoFillPrompt = useCallback((val: boolean) => {
-    setAutoFillPrompt(val)
-    localStorage.setItem('quadtodo:autoFillPrompt', val ? '1' : '0')
-  }, [])
   const [seenReplySessionIds, setSeenReplySessionIds] = useState<Set<string>>(() => {
     try { return parseSeenReplySessionIds(localStorage.getItem(SEEN_REPLY_STORAGE_KEY)) }
     catch { return new Set() }
@@ -1328,36 +1308,6 @@ export default function TodoManage() {
     listComments(todo.id).then(setComments).catch(() => {}).finally(() => setCommentsLoading(false))
   }
 
-  // 根据 id 定位并打开详情。先查当前已加载的 todos；找不到（比如搜到已归档或未加载的 todo）
-  // 就直接 listTodos 取完整列表再找一次。
-  const openTodoById = useCallback(async (id: string) => {
-    const foundLocal = todos.find((t) => t.id === id)
-      || Object.values(childrenByParentId).flat().find((t: any) => t.id === id)
-    if (foundLocal) { openDetail(foundLocal as Todo); return }
-    try {
-      const all = await listTodos({})
-      const hit = all.find((t) => t.id === id)
-      if (hit) openDetail(hit)
-      else message.warning('找不到这条 todo（可能已归档，先在 ⌘K 结果里也勾选 "已归档" 以排查）')
-    } catch { /* ignore */ }
-  }, [todos, childrenByParentId])
-
-  // ⌘K / Ctrl+K 全局快捷键
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      const isMac = navigator.platform.toLowerCase().includes('mac')
-      const combo = (isMac ? e.metaKey : e.ctrlKey) && e.key === 'k'
-      if (combo) {
-        e.preventDefault()
-        setCmdPaletteOpen((v) => !v)
-      } else if (e.key === 'Escape' && cmdPaletteOpen) {
-        setCmdPaletteOpen(false)
-      }
-    }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [cmdPaletteOpen])
-
   const handleMemorize = useCallback(async (todo: Todo, force = false) => {
     if (memorizing) return
     const already = todoCoverage[todo.id]
@@ -1414,7 +1364,7 @@ export default function TodoManage() {
 
   const handleAiExec = useCallback(async (todo: Todo, tool: AiTool, session?: Todo['aiSessions'][number]) => {
     try {
-      const prompt = session?.prompt || (autoFillPrompt ? buildTodoPrompt(todo, templates) : '')
+      const prompt = session?.prompt || buildTodoPrompt(todo, templates)
       // 读取用户上次选择的托管模式（持久化在 localStorage），
       // 这样新启动/恢复会话时能直接通过原生 CLI 标志生效，不依赖运行时的正则兜底。
       let permissionMode: string | null = null
@@ -1436,7 +1386,7 @@ export default function TodoManage() {
       }
       message.error(e?.message || 'AI 启动失败')
     }
-  }, [fetchTodos, autoFillPrompt, templates, handleOpenTerminalInDock])
+  }, [fetchTodos, templates, handleOpenTerminalInDock])
 
   const handleRequestFork = useCallback((todo: Todo, sessionId: string) => {
     setForkTarget({ todo, sessionId })
@@ -1713,14 +1663,6 @@ export default function TodoManage() {
         <Button type="primary" icon={<PlusOutlined />} size="small" onClick={handleCreate}>
           新建
         </Button>
-        <Tooltip title={isMobile ? '全局搜索' : '全局搜索 (⌘K)'}>
-          <Button
-            icon={<SearchOutlined />}
-            size="small"
-            onClick={() => setCmdPaletteOpen(true)}
-            title="全局搜索"
-          />
-        </Tooltip>
         {isMobile ? (
           <Button
             icon={<MenuOutlined />}
@@ -1730,11 +1672,6 @@ export default function TodoManage() {
           >菜单</Button>
         ) : (
           <>
-            <Tooltip title="启动 AI 终端时自动将标题和描述填入 prompt">
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#666' }}>
-                自动填入 <Switch size="small" checked={autoFillPrompt} onChange={toggleAutoFillPrompt} />
-              </span>
-            </Tooltip>
             <Button
               icon={<DashboardOutlined />}
               size="small"
@@ -2344,10 +2281,6 @@ export default function TodoManage() {
         onClose={() => setMobileMenuOpen(false)}
       >
         <div className="mobile-menu-actions">
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0 4px', color: '#666' }}>
-            <span>启动 AI 终端时自动填入 prompt</span>
-            <Switch size="small" checked={autoFillPrompt} onChange={toggleAutoFillPrompt} />
-          </div>
           <Button
             icon={<DashboardOutlined />}
             onClick={() => { setMobileMenuOpen(false); setDashboardOpen(true) }}
@@ -2385,12 +2318,6 @@ export default function TodoManage() {
           >设置</Button>
         </div>
       </Drawer>
-
-      <CmdPalette
-        open={cmdPaletteOpen}
-        onClose={() => setCmdPaletteOpen(false)}
-        onJumpToTodo={openTodoById}
-      />
 
       <SettingsDrawer open={settingsOpen} onClose={() => setSettingsOpen(false)} />
       <StatsDrawer open={statsOpen} onClose={() => setStatsOpen(false)} />
