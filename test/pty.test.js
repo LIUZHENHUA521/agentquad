@@ -517,4 +517,73 @@ describe('PtyManager', () => {
     factory.created[0]._emitData('Enter to select · Tab/Arrow keys to navigate · Esc to cancel')
     expect(events).toHaveLength(0)
   })
+
+  it('create() builds a session record but does not call the PTY factory', () => {
+    const factory = makeFakePty()
+    const pm = new PtyManager({ tools: tools(), ptyFactory: factory })
+    pm.create({ sessionId: 's1', tool: 'claude', prompt: null, cwd: '/tmp' })
+    expect(factory.created).toHaveLength(0)
+    expect(pm.has('s1')).toBe(true)
+  })
+
+  it('startWithSize() spawns the PTY at the given cols/rows on first call', () => {
+    const factory = makeFakePty()
+    const pm = new PtyManager({ tools: tools(), ptyFactory: factory })
+    pm.create({ sessionId: 's1', tool: 'claude', prompt: null, cwd: '/tmp' })
+    pm.startWithSize('s1', 120, 30)
+    expect(factory.created).toHaveLength(1)
+    expect(factory.created[0]._opts.cols).toBe(120)
+    expect(factory.created[0]._opts.rows).toBe(30)
+  })
+
+  it('startWithSize() called twice does not re-spawn — second call is a resize', () => {
+    const factory = makeFakePty()
+    const pm = new PtyManager({ tools: tools(), ptyFactory: factory })
+    pm.create({ sessionId: 's1', tool: 'claude', prompt: null, cwd: '/tmp' })
+    pm.startWithSize('s1', 120, 30)
+    pm.startWithSize('s1', 100, 25)
+    expect(factory.created).toHaveLength(1)
+    expect(factory.created[0].resize).toHaveBeenCalledWith(100, 25)
+  })
+
+  it('start() still works as a backward-compat wrapper (create + startWithSize 80×24)', () => {
+    const factory = makeFakePty()
+    const pm = new PtyManager({ tools: tools(), ptyFactory: factory })
+    pm.start({ sessionId: 's1', tool: 'claude', prompt: null, cwd: '/tmp' })
+    expect(factory.created).toHaveLength(1)
+    expect(factory.created[0]._opts.cols).toBe(80)
+    expect(factory.created[0]._opts.rows).toBe(24)
+  })
+
+  it('startWithSize() failure deletes the stranded session record', () => {
+    const factory = () => { throw new Error('boom') }
+    const pm = new PtyManager({ tools: tools(), ptyFactory: factory })
+    pm.create({ sessionId: 's-fail', tool: 'claude', prompt: null, cwd: '/tmp' })
+    expect(pm.has('s-fail')).toBe(true)
+    expect(() => pm.startWithSize('s-fail', 80, 24)).toThrow(/PTY spawn failed/)
+    expect(pm.has('s-fail')).toBe(false)
+  })
+
+  it('stop() on a created-but-not-spawned session removes it from the map', () => {
+    const factory = makeFakePty()
+    const pm = new PtyManager({ tools: tools(), ptyFactory: factory })
+    pm.create({ sessionId: 's-pending', tool: 'claude', prompt: null, cwd: '/tmp' })
+    expect(pm.has('s-pending')).toBe(true)
+    pm.stop('s-pending')
+    expect(pm.has('s-pending')).toBe(false)
+    expect(factory.created).toHaveLength(0) // no PTY was ever spawned
+  })
+
+  it('stop() on a created-but-not-spawned session emits a synthetic done event', () => {
+    const factory = makeFakePty()
+    const pm = new PtyManager({ tools: tools(), ptyFactory: factory })
+    const events = []
+    pm.on('done', (payload) => events.push(payload))
+    pm.create({ sessionId: 's-pending', tool: 'claude', prompt: null, cwd: '/tmp' })
+    pm.stop('s-pending')
+    expect(events).toEqual([
+      expect.objectContaining({ sessionId: 's-pending', stopped: true, exitCode: 0 }),
+    ])
+    expect(pm.has('s-pending')).toBe(false)
+  })
 })

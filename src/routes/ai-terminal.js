@@ -397,6 +397,8 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
       lastTurnDoneAt: null,
       outputBytesTotal: 0,
       awaitingReply: false,
+      spawned: false,
+      spawnFallbackTimer: null,
     }
     sessions.set(sessionId, session)
     todoSessionMap.set(todoId, sessionId)
@@ -428,7 +430,7 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
         QUADTODO_TODO_ID: String(todoId),
         QUADTODO_TODO_TITLE: String(todo.title || ''),
       }
-      pty.start({
+      pty.create({
         sessionId,
         todoId,
         tool,
@@ -438,6 +440,22 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
         permissionMode: permissionMode || null,
         extraEnv: { ...(extraEnv || {}), ...autoEnv },
       })
+      // 5s 兜底：前端如果一直没发合法 init（极少见 — /exec 返回后 WS 还没连上），
+      // 用老的 80×24 兜底 spawn，避免 session 永远卡在 create 状态。
+      session.spawnFallbackTimer = setTimeout(() => {
+        // Always clear the pointer first so the "is pending" state is accurate
+        // the moment the timer fires, even if init won the race and we return early.
+        session.spawnFallbackTimer = null
+        if (session.spawned) return
+        console.warn(`[ai-terminal] spawn fallback fired session=${sessionId} (no init within 5s)`)
+        try {
+          pty.startWithSize(sessionId, 80, 24)
+          session.spawned = true
+        } catch (e) {
+          console.warn(`[ai-terminal] spawn fallback failed: ${e.message}`)
+        }
+      }, 5000)
+      session.spawnFallbackTimer.unref?.()
     } catch (error) {
       sessions.delete(sessionId)
       if (todoSessionMap.get(todoId) === sessionId) todoSessionMap.delete(todoId)
@@ -787,6 +805,35 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
       // 直到下一次 Stop。
       if (session && isPendingClearingInput(msg.data)) session.awaitingReply = false
       pty.write(sessionId, msg.data)
+    } else if (msg.type === 'init') {
+      const cols = Number(msg.cols)
+      const rows = Number(msg.rows)
+      const session = sessions.get(sessionId)
+      if (!session) return
+      if (!isValidResizeSize(cols, rows)) return
+      if (!session.spawned) {
+        // WS init won the race — cancel the 5s fallback timer and spawn at the
+        // real cols/rows the frontend just measured.
+        if (session.spawnFallbackTimer) {
+          clearTimeout(session.spawnFallbackTimer)
+          session.spawnFallbackTimer = null
+        }
+        try {
+          pty.startWithSize(sessionId, clampPtyCols(cols), rows)
+          session.spawned = true
+          session.lastAppliedCols = clampPtyCols(cols)
+          session.lastAppliedRows = rows
+        } catch (e) {
+          console.warn(`[ai-terminal] startWithSize failed for ${sessionId}: ${e.message}`)
+          return
+        }
+      }
+      // Register this WS's size into the aggregation map either way (covers
+      // both the spawned-by-this-init case and the spawned-earlier reconnect case).
+      if (ws && session.browsers.has(ws)) {
+        ws.__quadtodoSize = { cols, rows }
+        applyAggregatedResize(session)
+      }
     } else if (msg.type === 'resize') {
       const cols = Number(msg.cols)
       const rows = Number(msg.rows)
