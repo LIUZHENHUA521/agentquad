@@ -470,7 +470,7 @@ program.command('start')
 program.command('stop')
   .action(async () => {
     const pf = pidFile()
-    if (!existsSync(pf)) { console.log('agentquad is not running (no pid file)'); return }
+    if (!existsSync(pf)) { console.log('AgentQuad is not running (no pid file)'); return }
     const pid = Number(readFileSync(pf, 'utf8'))
     if (!pid || !isAlive(pid)) {
       console.log('stale pid file, removing')
@@ -482,12 +482,12 @@ program.command('stop')
     while (Date.now() < deadline) {
       if (!isAlive(pid)) {
         try { unlinkSync(pf) } catch { /* ignore */ }
-        console.log('agentquad stopped')
+        console.log('AgentQuad stopped')
         return
       }
       await new Promise(r => setTimeout(r, 100))
     }
-    console.log('agentquad did not exit in 3s, sending SIGKILL')
+    console.log('AgentQuad did not exit in 3s, sending SIGKILL')
     try { process.kill(pid, 'SIGKILL') } catch { /* ignore */ }
     try { unlinkSync(pf) } catch { /* ignore */ }
   })

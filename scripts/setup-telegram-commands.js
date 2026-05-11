@@ -71,13 +71,13 @@ async function main() {
   const cfg = readConfig()
   const token = readBotToken(cfg)
   if (!token) {
-    console.error('❌ no bot token found in ~/.agentquad/config.json or ~/.openclaw/openclaw.json')
+    console.error(`❌ no bot token found in ${join(DEFAULT_ROOT_DIR, 'config.json')} or ~/.openclaw/openclaw.json`)
     process.exit(1)
   }
   const chatId = cfg?.telegram?.defaultSupergroupId
     || (Array.isArray(cfg?.telegram?.allowedChatIds) ? cfg.telegram.allowedChatIds[0] : null)
   if (!chatId) {
-    console.error('❌ no telegram.defaultSupergroupId / allowedChatIds[0] in ~/.agentquad/config.json')
+    console.error(`❌ no telegram.defaultSupergroupId / allowedChatIds[0] in ${join(DEFAULT_ROOT_DIR, 'config.json')}`)
     process.exit(1)
   }
   const scope = { type: 'chat', chat_id: Number(chatId) || chatId }
