@@ -346,11 +346,20 @@ function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo = false,
               {historySessions.map((session) => {
                 const isPrimarySession = session.sessionId === sessionId
                 const nativeSessionId = session.nativeSessionId || ''
-                const terminalCommand = session.tool === 'codex'
+                const baseResumeCommand = session.tool === 'codex'
                   ? `codex resume ${nativeSessionId}`
                   : session.tool === 'cursor'
                     ? `cursor-agent --resume ${nativeSessionId}`
                     : `claude --resume ${nativeSessionId}`
+                // resume 命令必须在原 cwd 下执行，否则 ~/.claude/projects/<encoded-cwd>/ 找不到 jsonl
+                // 会立刻报 "No conversation found"。这里把 cd 拼进去，复制即可在任意终端运行。
+                const sessionCwd = session.cwd || todo.workDir || ''
+                const shellQuoted = sessionCwd
+                  ? `'${sessionCwd.replace(/'/g, `'\\''`)}'`
+                  : ''
+                const terminalCommand = sessionCwd
+                  ? `cd ${shellQuoted} && ${baseResumeCommand}`
+                  : baseResumeCommand
                 const dockStatus = dockStatusOf(
                   session.sessionId,
                   dockOpenTabIdSet,
@@ -446,6 +455,11 @@ function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo = false,
                       {nativeSessionId && (
                         <div className="todo-history-command" title={terminalCommand}>
                           {terminalCommand}
+                          {!sessionCwd && (
+                            <Tooltip title="找不到此会话的原始 cwd，命令必须在创建该会话时所处的项目目录下执行，否则会报 'No conversation found'。">
+                              <Tag color="warning" style={{ marginLeft: 6 }}>缺少 cwd</Tag>
+                            </Tooltip>
+                          )}
                         </div>
                       )}
                       {session.localResume?.openedAt && (

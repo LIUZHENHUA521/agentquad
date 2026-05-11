@@ -11,6 +11,12 @@
 const QUEUE_LIMIT = 20
 const STALE_MS = 5 * 60 * 1000
 const SOFT_INTERRUPT_DELAY_MS = 250
+// 安全网：awaitingReply=false 但 PTY 已经 N 毫秒没 output → 视为 idle，直接写。
+// 历史 bug：浏览器 / REST 上无关的 input 把 awaitingReply 推回 false 后，dispatcher
+// 把 IM 消息全部 queue，必须等下次 Stop hook 才会 flush；如果 Claude 没新输入就一直卡。
+// 这里给 dispatcher 一个 "Claude 大概率在 idle prompt" 的兜底判断（PTY busy 时是连续
+// 输出 spinner / token，3s 静默基本不可能是真 busy）。
+const IDLE_GRACE_MS = 3000
 
 export function parseTrigger(rawText) {
   const text = String(rawText || '').trim()
@@ -90,7 +96,21 @@ export function createSessionInputDispatcher({ pty, aiTerminal, callbacks = {}, 
       return { action: 'session_ended', sessionId }
     }
     const { mode, stripped } = parseTrigger(text)
-    const idle = aiTerminal.isSessionAwaitingReply(sessionId)
+    let idle = aiTerminal.isSessionAwaitingReply(sessionId)
+
+    // 兜底：awaitingReply=false 但 PTY 已经静默 ≥ IDLE_GRACE_MS → 视为 idle 直发。
+    // 不动 hard_cancel —— 那一档不依赖 idle 状态（无条件发 \x03 中断），
+    // 这里加 grace 反而会让 idle 走 noop_idle 分支吞掉用户的 /stop。
+    if (!idle && mode !== 'hard_cancel') {
+      try {
+        const sess = aiTerminal?.sessions?.get?.(sessionId)
+        const lastOut = sess?.lastOutputAt || 0
+        if (lastOut > 0 && (Date.now() - lastOut) >= IDLE_GRACE_MS) {
+          logger?.info?.(`[dispatcher] idle-grace promote sid=${sessionId} silent_for_ms=${Date.now() - lastOut} (awaitingReply=${sess?.awaitingReply})`)
+          idle = true
+        }
+      } catch { /* ignore */ }
+    }
 
     if (idle) {
       if (mode === 'hard_cancel') {
@@ -104,6 +124,14 @@ export function createSessionInputDispatcher({ pty, aiTerminal, callbacks = {}, 
     }
 
     if (mode === 'queue_or_send') {
+      // 诊断：busy 判定 = aiTerminal.isSessionAwaitingReply(sid) 返回 false。Stop hook
+      // 应该已经把 awaitingReply 置 true 了，跑到这里说明 (a) hook 没 fire (b) markS... no-op
+      // (c) 中间被 web UI / REST input / PTY exit 重置回去了。把当前快照打出来，便于排查
+      // "飞书发消息一直被排队"这类卡死。
+      try {
+        const sess = aiTerminal?.sessions?.get?.(sessionId)
+        logger?.warn?.(`[dispatcher] queueing (idle=false) sid=${sessionId} sessionExists=${!!sess} status=${sess?.status || 'null'} awaitingReply=${sess?.awaitingReply} text=${String(stripped || '').slice(0, 40)}`)
+      } catch { /* ignore diag */ }
       const r = await enqueue({ sessionId, stripped, imagePaths, channel, echoTarget })
       if (r.full) return { action: 'queue_full', queueSize: r.queueSize, sessionId }
       return { action: 'queued', queueSize: r.queueSize, sessionId }

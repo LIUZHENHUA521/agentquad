@@ -605,7 +605,11 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
         return
       }
       clearPendingConfirm(session)
-      session.awaitingReply = false
+      // 只在真正"提交"按键（Enter / Ctrl+C / Ctrl+D）时翻 awaitingReply=false。
+      // 普通字符 / 焦点 ANSI 序列 / 粘贴中间态都不算 Claude 正式 busy ——
+      // 如果在这里无条件翻 false，dispatcher 会把同一 chat 后续的 IM 消息全部 queue，
+      // 而队列只能等下一次 Stop hook 才会 flush，导致飞书消息延迟数分钟才送达。
+      if (isPendingClearingInput(data)) session.awaitingReply = false
       pty.write(sessionId, data)
       res.json({ ok: true })
     } catch (e) {
@@ -770,7 +774,10 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
       // 浏览器侧每次按键都收到 pending_cleared → pending_confirm 一对消息，导致前端 border
       // 在 1px ↔ 2px 之间反复，肉眼上就是"打字时终端布局抖动"。
       if (isPendingClearingInput(msg.data)) clearPendingConfirm(session)
-      if (session) session.awaitingReply = false
+      // 同 REST /input：只在真正的"提交"键才翻 false，避免普通字符 / 焦点序列 / 粘贴
+      // 中间态把 awaitingReply 推回 false，导致 dispatcher 把 IM 消息死锁在队列里
+      // 直到下一次 Stop。
+      if (session && isPendingClearingInput(msg.data)) session.awaitingReply = false
       pty.write(sessionId, msg.data)
     } else if (msg.type === 'resize') {
       const cols = Number(msg.cols)

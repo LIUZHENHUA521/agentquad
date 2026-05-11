@@ -112,6 +112,77 @@ describe('send: busy + queue', () => {
     expect(onMore).not.toHaveBeenCalled()
   })
 
+  it('idle-grace 兜底：awaitingReply=false 但 PTY 已静默 ≥3s → 直发，不 queue', async () => {
+    // 回归：dispatcher 之前死锁等 Stop hook，被卡分钟级延迟。
+    vi.useFakeTimers()
+    const writes = []
+    const pty = { write: (sid, data) => writes.push({ sid, data }), has: () => true }
+    const sess = { lastOutputAt: Date.now() - 5000, awaitingReply: false }
+    const aiTerminal = {
+      isSessionAwaitingReply: () => false,
+      sessions: new Map([['sid1', sess]]),
+      markSessionAwaitingReply: vi.fn(),
+    }
+    const onFirst = vi.fn().mockResolvedValue()
+    const d = createSessionInputDispatcher({
+      pty, aiTerminal,
+      callbacks: { onQueueFirstEnqueue: onFirst },
+    })
+    const r = await d.send({ sessionId: 'sid1', text: 'hello' })
+    await vi.advanceTimersByTimeAsync(100)
+    expect(r).toMatchObject({ action: 'sent' })
+    expect(onFirst).not.toHaveBeenCalled()
+    expect(writes[0]).toEqual({ sid: 'sid1', data: 'hello' })
+    vi.useRealTimers()
+  })
+
+  it('idle-grace 不滥用：PTY 最近 1s 内有 output → 仍当 busy → queue', async () => {
+    const pty = { write: vi.fn(), has: () => true }
+    const sess = { lastOutputAt: Date.now() - 500, awaitingReply: false }
+    const aiTerminal = {
+      isSessionAwaitingReply: () => false,
+      sessions: new Map([['sid1', sess]]),
+    }
+    const d = createSessionInputDispatcher({
+      pty, aiTerminal,
+      callbacks: { onQueueFirstEnqueue: async () => undefined },
+    })
+    const r = await d.send({ sessionId: 'sid1', text: 'hello' })
+    expect(r).toMatchObject({ action: 'queued' })
+    expect(pty.write).not.toHaveBeenCalled()
+  })
+
+  it('idle-grace 不滥用：lastOutputAt=0（session 刚 spawn 没收到过 output）→ 不 promote → queue', async () => {
+    const pty = { write: vi.fn(), has: () => true }
+    const sess = { lastOutputAt: 0, awaitingReply: false }
+    const aiTerminal = {
+      isSessionAwaitingReply: () => false,
+      sessions: new Map([['sid1', sess]]),
+    }
+    const d = createSessionInputDispatcher({
+      pty, aiTerminal,
+      callbacks: { onQueueFirstEnqueue: async () => undefined },
+    })
+    const r = await d.send({ sessionId: 'sid1', text: 'hello' })
+    expect(r).toMatchObject({ action: 'queued' })
+  })
+
+  it('idle-grace 不影响 hard_cancel：busy + !! 仍然走 hard_cancel 发 \\x03', async () => {
+    // !! 的语义是 "不管 idle 与否都打断"。idle-grace 不能把 !! 推进 idle 分支，
+    // 否则会落到 noop_idle，吞掉用户的中断意图。
+    const writes = []
+    const pty = { write: (sid, data) => writes.push({ sid, data }), has: () => true }
+    const sess = { lastOutputAt: Date.now() - 60000, awaitingReply: false }
+    const aiTerminal = {
+      isSessionAwaitingReply: () => false,
+      sessions: new Map([['sid1', sess]]),
+    }
+    const d = createSessionInputDispatcher({ pty, aiTerminal })
+    const r = await d.send({ sessionId: 'sid1', text: '!!stop' })
+    expect(r).toMatchObject({ action: 'hard_cancelled' })
+    expect(writes).toContainEqual({ sid: 'sid1', data: '\x03' })
+  })
+
   it('busy + 连续 3 条 → 第 2/3 条触发 onQueueAdditionalEnqueue', async () => {
     const { pty, aiTerminal } = makeDeps({ awaitingReply: false })
     const onFirst = vi.fn().mockResolvedValue()

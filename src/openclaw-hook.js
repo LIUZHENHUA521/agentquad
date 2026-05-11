@@ -416,19 +416,36 @@ export function createOpenClawHookHandler(deps = {}) {
     }
   }
 
+  function normalizePersistedLarkRoute(route) {
+    const targetUserId = String(route?.targetUserId ?? '').trim()
+    if (!targetUserId) return null
+    if (route.channel && route.channel !== 'lark') return null
+    const rootMessageId = String(route?.rootMessageId ?? '').trim()
+    if (!rootMessageId) return null
+    return { ...route, targetUserId, rootMessageId, channel: 'lark' }
+  }
+
   function restorePersistedRoute(sessionId, todoId) {
     if (!sessionId || !todoId || !openclaw?.registerSessionRoute || !db?.getTodo) return false
     if (openclaw.hasExplicitRoute?.(sessionId)) return false
     try {
       const todo = db.getTodo(todoId)
       const aiSession = (todo?.aiSessions || []).find((item) => item?.sessionId === sessionId)
-      const route = normalizePersistedTelegramRoute(aiSession?.telegramRoute)
-      if (!route) return false
-      openclaw.registerSessionRoute(sessionId, route)
-      logger.info?.(`[openclaw-hook] restored telegram route for sid=${sessionId} threadId=${route.threadId}`)
+      // 优先 lark：纯飞书用户 telegramRoute 永远是空，用旧逻辑会无声跳过 → 重启后 hook
+      // 拿不到 route → push 失败到飞书。lark 校验通过就走它，否则再尝试 telegram。
+      const larkRoute = normalizePersistedLarkRoute(aiSession?.larkRoute)
+      if (larkRoute) {
+        openclaw.registerSessionRoute(sessionId, larkRoute)
+        logger.info?.(`[openclaw-hook] restored lark route for sid=${sessionId} root=${larkRoute.rootMessageId}`)
+        return true
+      }
+      const tgRoute = normalizePersistedTelegramRoute(aiSession?.telegramRoute)
+      if (!tgRoute) return false
+      openclaw.registerSessionRoute(sessionId, tgRoute)
+      logger.info?.(`[openclaw-hook] restored telegram route for sid=${sessionId} threadId=${tgRoute.threadId}`)
       return true
     } catch (e) {
-      logger.warn?.(`[openclaw-hook] restore telegram route failed: ${e.message}`)
+      logger.warn?.(`[openclaw-hook] restore route failed: ${e.message}`)
       return false
     }
   }
@@ -812,8 +829,16 @@ export function createOpenClawHookHandler(deps = {}) {
     //   - 推送失败（route 缺失、TG 限流、网络错）一旦把这两步吞掉，dispatcher 就永远以为
     //     busy，后续用户消息全部回 "🔄 已排队"，队列也不 flush，直到进程重启都不能恢复。
     if (evt === 'stop' && sessionId && aiTerminal?.markSessionAwaitingReply) {
-      try { aiTerminal.markSessionAwaitingReply(sessionId, true) }
-      catch (e) { logger.warn?.(`[openclaw-hook] markSessionAwaitingReply failed: ${e.message}`) }
+      try {
+        const ok = aiTerminal.markSessionAwaitingReply(sessionId, true)
+        // mark 返回 false = no-op：session 不在 ait.sessions / status 不是 running|pending_confirm
+        // / 已经是目标值。出现这种情况说明之后 dispatcher 会把后续用户消息一直 queue 不投递
+        // → 显式 warn 让 ops 知道 root cause（session lifecycle 跟 hook 不一致）。
+        if (!ok) {
+          const sess = aiTerminal?.sessions?.get?.(sessionId)
+          logger.warn?.(`[openclaw-hook] markSessionAwaitingReply(true) NO-OP sid=${sessionId} sessionExists=${!!sess} status=${sess?.status || 'null'} awaitingReply=${sess?.awaitingReply}`)
+        }
+      } catch (e) { logger.warn?.(`[openclaw-hook] markSessionAwaitingReply failed: ${e.message}`) }
     }
     // 顺序：上面已 markSessionAwaitingReply(true) 让 dispatcher 看到 idle，再 flush
     if (evt === 'stop' && sessionId && sessionInputDispatcher?.onSessionIdle) {

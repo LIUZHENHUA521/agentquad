@@ -507,6 +507,45 @@ describe('routes/ai-terminal', () => {
     expect(ctx.pty.writes).toContainEqual({ id: exec.body.sessionId, data: 'continue\r' })
   })
 
+  it('POST /input 普通字符不翻 awaitingReply（防止 IM 消息死锁在队列里）', async () => {
+    // 回归：之前 /input 无条件 session.awaitingReply = false，导致 web 终端打字时把
+    // 同一 session 的飞书/Telegram 消息全部 queue 死，必须等下次 Stop hook 才 flush。
+    const todo = ctx.db.createTodo({ title: 'T', quadrant: 1 })
+    const exec = await request(ctx.app).post('/api/ai-terminal/exec')
+      .send({ todoId: todo.id, prompt: 'hi', tool: 'claude' })
+    const sid = exec.body.sessionId
+    ctx.ait.markSessionAwaitingReply(sid, true)
+    expect(ctx.ait.isSessionAwaitingReply(sid)).toBe(true)
+
+    // 普通字符 + xterm focus 转义都不该影响 idle 状态
+    await request(ctx.app).post('/api/ai-terminal/input').send({ sessionId: sid, data: 'h' })
+    expect(ctx.ait.isSessionAwaitingReply(sid)).toBe(true)
+    await request(ctx.app).post('/api/ai-terminal/input').send({ sessionId: sid, data: '\x1b[I' })
+    expect(ctx.ait.isSessionAwaitingReply(sid)).toBe(true)
+
+    // Enter / Ctrl+C / Ctrl+D 才视为真正提交
+    await request(ctx.app).post('/api/ai-terminal/input').send({ sessionId: sid, data: '\r' })
+    expect(ctx.ait.isSessionAwaitingReply(sid)).toBe(false)
+  })
+
+  it('handleBrowserMessage input 普通字符不翻 awaitingReply（同上的 WS 路径）', async () => {
+    const todo = ctx.db.createTodo({ title: 'T', quadrant: 1 })
+    const exec = await request(ctx.app).post('/api/ai-terminal/exec')
+      .send({ todoId: todo.id, prompt: 'hi', tool: 'claude' })
+    const sid = exec.body.sessionId
+    ctx.ait.markSessionAwaitingReply(sid, true)
+    expect(ctx.ait.isSessionAwaitingReply(sid)).toBe(true)
+
+    const fakeWs = { readyState: 1, OPEN: 1, send() {}, close() {} }
+    ctx.ait.handleBrowserMessage(sid, { type: 'input', data: 'h' }, fakeWs)
+    expect(ctx.ait.isSessionAwaitingReply(sid)).toBe(true)
+    ctx.ait.handleBrowserMessage(sid, { type: 'input', data: '\x1b[I' }, fakeWs)
+    expect(ctx.ait.isSessionAwaitingReply(sid)).toBe(true)
+
+    ctx.ait.handleBrowserMessage(sid, { type: 'input', data: '\r' }, fakeWs)
+    expect(ctx.ait.isSessionAwaitingReply(sid)).toBe(false)
+  })
+
   it('broadcastToSession sends to all ws browsers for that session', async () => {
     const todo = ctx.db.createTodo({ title: 'T', quadrant: 1 })
     const { body } = await request(ctx.app).post('/api/ai-terminal/exec')
