@@ -428,7 +428,7 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
       })
       // 2. 读出 preset nativeId（claude 新会话 = randomUUID, resume = resumeNativeId, codex 新 = null）。
       //    这是让"首屏即正确"成立的核心：先于 db.updateTodo 拿到值。
-      const presetNativeId = pty.getNativeId?.(sessionId) ?? null
+      const presetNativeId = pty.getNativeId(sessionId)
       session.nativeSessionId = presetNativeId
       if (presetNativeId && !resumeNativeId) {
         // resume 路径上面已经 set 过；新会话首次得到 nativeId 时补一次。
@@ -452,6 +452,8 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
       // 4. 5s 兜底：前端如果一直没发合法 init（极少见 — /exec 返回后 WS 还没连上），
       // 用老的 80×24 兜底 spawn，避免 session 永远卡在 create 状态。
       session.spawnFallbackTimer = setTimeout(() => {
+        // Always clear the pointer first so the "is pending" state is accurate
+        // the moment the timer fires, even if init won the race and we return early.
         session.spawnFallbackTimer = null
         if (session.spawned) return
         console.warn(`[ai-terminal] spawn fallback fired session=${sessionId} (no init within 5s)`)
@@ -470,8 +472,13 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
         const nativeKey = `${tool}:${resumeNativeId}`
         if (nativeSessionMap.get(nativeKey) === sessionId) nativeSessionMap.delete(nativeKey)
       }
+      // 新会话的 preset nativeSessionMap 也要清掉（resume 路径在上一个 if 已处理）。
+      if (session.nativeSessionId && session.nativeSessionId !== resumeNativeId) {
+        const nativeKey = `${tool}:${session.nativeSessionId}`
+        if (nativeSessionMap.get(nativeKey) === sessionId) nativeSessionMap.delete(nativeKey)
+      }
       // 顺手补：如果 pty.create 已经把 session 占位写进 pty.sessions、但后续步骤抛错，要清掉。
-      try { if (pty.has?.(sessionId)) pty.stop?.(sessionId) } catch { /* ignore */ }
+      try { pty.stop(sessionId) } catch { /* ignore */ }
       throw error
     }
 
