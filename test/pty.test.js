@@ -517,4 +517,41 @@ describe('PtyManager', () => {
     factory.created[0]._emitData('Enter to select · Tab/Arrow keys to navigate · Esc to cancel')
     expect(events).toHaveLength(0)
   })
+
+  it('create() builds a session record but does not call the PTY factory', () => {
+    const factory = makeFakePty()
+    const pm = new PtyManager({ tools: tools(), ptyFactory: factory })
+    pm.create({ sessionId: 's1', tool: 'claude', prompt: null, cwd: '/tmp' })
+    expect(factory.created).toHaveLength(0)
+    expect(pm.has('s1')).toBe(true)
+  })
+
+  it('startWithSize() spawns the PTY at the given cols/rows on first call', () => {
+    const factory = makeFakePty()
+    const pm = new PtyManager({ tools: tools(), ptyFactory: factory })
+    pm.create({ sessionId: 's1', tool: 'claude', prompt: null, cwd: '/tmp' })
+    pm.startWithSize('s1', 120, 30)
+    expect(factory.created).toHaveLength(1)
+    expect(factory.created[0]._opts.cols).toBe(120)
+    expect(factory.created[0]._opts.rows).toBe(30)
+  })
+
+  it('startWithSize() called twice does not re-spawn — second call is a resize', () => {
+    const factory = makeFakePty()
+    const pm = new PtyManager({ tools: tools(), ptyFactory: factory })
+    pm.create({ sessionId: 's1', tool: 'claude', prompt: null, cwd: '/tmp' })
+    pm.startWithSize('s1', 120, 30)
+    pm.startWithSize('s1', 100, 25)
+    expect(factory.created).toHaveLength(1)
+    expect(factory.created[0].resize).toHaveBeenCalledWith(100, 25)
+  })
+
+  it('start() still works as a backward-compat wrapper (create + startWithSize 80×24)', () => {
+    const factory = makeFakePty()
+    const pm = new PtyManager({ tools: tools(), ptyFactory: factory })
+    pm.start({ sessionId: 's1', tool: 'claude', prompt: null, cwd: '/tmp' })
+    expect(factory.created).toHaveLength(1)
+    expect(factory.created[0]._opts.cols).toBe(80)
+    expect(factory.created[0]._opts.rows).toBe(24)
+  })
 })

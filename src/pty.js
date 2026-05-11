@@ -408,7 +408,13 @@ export class PtyManager extends EventEmitter {
     }
   }
 
-  start({ sessionId, tool, prompt, cwd, resumeNativeId, permissionMode, extraEnv }) {
+  /**
+   * 两段式 spawn：create() 只构造 session 记录（不开子进程），
+   * startWithSize() 才真正调 ptyFactory 把 PTY 拉起来。WS init 握手在
+   * 会话建立时调 create()、收到前端真实 cols/rows 后再调 startWithSize()，
+   * 这样 PTY 永远不会在默认 80×24 上 spawn 一次再 resize。
+   */
+  create({ sessionId, tool, prompt, cwd, resumeNativeId, permissionMode, extraEnv }) {
     const toolCfg = this.tools[tool]
     if (!toolCfg) throw new Error(`unknown tool: ${tool}`)
     const baseArgs = toolCfg.args || []
@@ -468,33 +474,17 @@ export class PtyManager extends EventEmitter {
       }
     }
 
-    console.log(`[pty] starting ${tool} bin=${toolCfg.bin} cwd=${effectiveCwd} args=${JSON.stringify(args)}`)
-
-    let proc
-    try {
-      const env = {
-        ...process.env,
-        TERM: 'xterm-256color',
-        TZ: process.env.TZ || 'America/Los_Angeles',
-        FORCE_COLOR: '1',
-        ...(extraEnv && typeof extraEnv === 'object' ? extraEnv : {}),
-      }
-      env.PATH = buildChildPath(toolCfg.bin, env.PATH || '')
-
-      proc = this.ptyFactory(toolCfg.bin, args, {
-        name: 'xterm-256color',
-        cols: 80,
-        rows: 24,
-        cwd: effectiveCwd,
-        env,
-      })
-    } catch (error) {
-      error.message = `PTY spawn failed for ${tool} (bin=${toolCfg.bin}, cwd=${effectiveCwd}, args=${JSON.stringify(args)}): ${error.message}`
-      throw error
+    const env = {
+      ...process.env,
+      TERM: 'xterm-256color',
+      TZ: process.env.TZ || 'America/Los_Angeles',
+      FORCE_COLOR: '1',
+      ...(extraEnv && typeof extraEnv === 'object' ? extraEnv : {}),
     }
+    env.PATH = buildChildPath(toolCfg.bin, env.PATH || '')
 
     const session = {
-      proc,
+      proc: null,
       tool,
       sessionId,
       cwd: effectiveCwd,
@@ -511,8 +501,51 @@ export class PtyManager extends EventEmitter {
       eventEmitter: null,
       detector: null,
       lastTuiAlertAt: 0,
+      spawnSpec: {
+        args,
+        env,
+        effectiveCwd,
+        toolCfg,
+        tool,
+        resumeNativeId: resumeNativeId || null,
+      },
     }
     this.sessions.set(sessionId, session)
+  }
+
+  /**
+   * 用真实 cols/rows 把 PTY 拉起来；第二次及之后调用会降级为 resize()。
+   * 必须先经过 create()。
+   */
+  startWithSize(sessionId, cols, rows) {
+    const session = this.sessions.get(sessionId)
+    if (!session) throw new Error(`no session ${sessionId}`)
+    if (session.proc) {
+      // 已经 spawn 过了 —— 当 resize 处理，避免重复拉起子进程
+      try { session.proc.resize(cols, rows) } catch { /* ignore */ }
+      return
+    }
+    const spec = session.spawnSpec
+    if (!spec) throw new Error(`session ${sessionId} has no spawnSpec (was it created?)`)
+    const { args, env, effectiveCwd, toolCfg, tool } = spec
+    const { resumeNativeId } = spec
+
+    console.log(`[pty] starting ${tool} bin=${toolCfg.bin} cwd=${effectiveCwd} args=${JSON.stringify(args)} cols=${cols} rows=${rows}`)
+
+    let proc
+    try {
+      proc = this.ptyFactory(toolCfg.bin, args, {
+        name: 'xterm-256color',
+        cols,
+        rows,
+        cwd: effectiveCwd,
+        env,
+      })
+    } catch (error) {
+      error.message = `PTY spawn failed for ${tool} (bin=${toolCfg.bin}, cwd=${effectiveCwd}, args=${JSON.stringify(args)}): ${error.message}`
+      throw error
+    }
+    session.proc = proc
 
     // Codex 专属：stdout 提示词检测器（接 [Y/n] / apply patch? 之类的兜底权限弹窗）。
     // emitter 用迟绑定 getter 包装：detector 创建在 _setNativeId 之前，eventEmitter 还是 null。
@@ -611,14 +644,16 @@ export class PtyManager extends EventEmitter {
       this.emit('output', { sessionId, data })
     })
 
-    // 兜底：5 秒内 resize 没到就直接发 prompt
+    // size-first 路径：spawn 时已经是真实尺寸，prompt 不再依赖 resize 触发，
+    // 直接按 promptDelayMs（默认 ~300ms）发送即可。
     if (session.pendingPrompt) {
       session.promptTimer = setTimeout(() => {
         if (session.pendingPrompt) {
           proc.write(session.pendingPrompt + '\r')
           session.pendingPrompt = null
         }
-      }, 5000)
+      }, this.promptDelayMs)
+      session.resized = true // 标记 prompt 路径已被 startWithSize 接管，不再由 resize() 驱动
     }
 
     proc.onExit(({ exitCode }) => {
@@ -654,6 +689,19 @@ export class PtyManager extends EventEmitter {
         stopped: session.stopped,
       })
     })
+
+    // 释放对 args/env 等较大对象的引用（已经被 ptyFactory 闭包持有了）。
+    session.spawnSpec = null
+  }
+
+  /**
+   * 向后兼容入口：把老 start() 的语义维持成 create() + startWithSize(80, 24)。
+   * 现有的 route / 测试 / CLI 调用不需要改，只是 PTY 会先在 80×24 上开。
+   * size-first 握手路径请改用 create() + startWithSize(realCols, realRows)。
+   */
+  start(opts) {
+    this.create(opts)
+    this.startWithSize(opts.sessionId, 80, 24)
   }
 
   startShell({ sessionId, shell, cwd }) {
