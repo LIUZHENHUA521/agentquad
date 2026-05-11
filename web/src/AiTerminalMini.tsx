@@ -62,6 +62,38 @@ function sendUnregisterSize(ws: WebSocket | null) {
   }
 }
 
+// Wait until (a) the container has settled layout and is visible, AND
+// (b) the bundled JetBrains Mono font is loaded, before letting xterm measure
+// glyph width. Capped at 3 seconds; if it times out, proceed with whatever the
+// browser has — at worst we fall back to system monospace and the user sees a
+// brief font-swap reflow on first paint, which is strictly better than the old
+// "fit at 0 width / cached metrics" failure modes.
+async function waitTerminalReady(container: HTMLDivElement): Promise<void> {
+  const start = Date.now()
+  const TIMEOUT_MS = 3000
+
+  // (a) container layout
+  while (Date.now() - start < TIMEOUT_MS) {
+    if (container.offsetParent !== null && container.clientWidth >= MIN_CONTAINER_WIDTH) break
+    await new Promise(r => setTimeout(r, 50))
+  }
+
+  // (b) fonts
+  try {
+    await Promise.race([
+      Promise.all([
+        document.fonts.ready,
+        // Trigger the font face if it hasn't been used yet
+        (document.fonts as any).load?.('13px "JetBrains Mono"') ?? Promise.resolve(),
+      ]),
+      new Promise(r => setTimeout(r, Math.max(0, TIMEOUT_MS - (Date.now() - start)))),
+    ])
+  } catch { /* font API can throw on older Safari; ignore */ }
+
+  // One frame to let layout + font swap apply
+  await new Promise<void>(r => requestAnimationFrame(() => r()))
+}
+
 export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeTarget, onSessionRecovered, onSessionSwitch, onClose, onDone, onStatusChange, fillHeight }: Props) {
   void onClose
   const { theme, preset, override, customPresets, setPreset, setOverride, resetOverride, saveCustomPreset, deleteCustomPreset } = useTerminalTheme()
@@ -396,320 +428,435 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
     setSessionExpired(false)
     setWsConnected(false)
 
-    const term = new Terminal({
-      fontSize: 13,
-      fontFamily: 'Menlo, Monaco, "Courier New", monospace',
-      theme: themeRef.current,
-      cursorBlink: true,
-      convertEol: true,
-      scrollback: 5000,
-      disableStdin: false,
-    })
-    const fit = new FitAddon()
-    term.loadAddon(fit)
-    term.open(containerRef.current)
-    // Canvas 渲染器：移动端长 scrollback 滚动比默认 DOM 渲染器流畅得多。
-    // 装载失败也不影响核心功能，DOM 渲染会自动兜底。
-    try { term.loadAddon(new CanvasAddon()) } catch { /* 老浏览器回退 DOM */ }
-    termRef.current = term
-    fitRef.current = fit
+    let cleanup: (() => void) | null = null
 
-    // IME 输入法兼容：组合期间屏蔽键盘事件，防止回车选词被当作 \r 发送
-    let imeComposing = false
-    const textarea = term.textarea
-    if (textarea) {
-      textarea.addEventListener('compositionstart', () => { imeComposing = true })
-      textarea.addEventListener('compositionend', () => {
-        // 延迟重置：部分浏览器 compositionend 先于 keydown(Enter) 触发
-        setTimeout(() => { imeComposing = false }, 80)
+    void (async () => {
+      const container = containerRef.current
+      if (!container) return
+      await waitTerminalReady(container)
+      if (disposedRef.current) return
+
+      const term = new Terminal({
+        fontSize: 13,
+        fontFamily: '"JetBrains Mono", Menlo, Monaco, "Courier New", monospace',
+        theme: themeRef.current,
+        cursorBlink: true,
+        convertEol: true,
+        scrollback: 5000,
+        disableStdin: false,
       })
-    }
-    term.attachCustomKeyEventHandler((ev: KeyboardEvent) => {
-      if (imeComposing || ev.isComposing || ev.keyCode === 229) return false
-      if (ev.type === 'keydown' && ev.ctrlKey && ev.key === 'End') {
-        term.scrollToBottom()
-        setFollowTail(true)
-        try { localStorage.setItem('quadtodo.followTail', '1') } catch { /* ignore */ }
-        return false
-      }
-      return true
-    })
+      const fit = new FitAddon()
+      term.loadAddon(fit)
+      term.open(container)
+      // Canvas 渲染器：移动端长 scrollback 滚动比默认 DOM 渲染器流畅得多。
+      // 装载失败也不影响核心功能，DOM 渲染会自动兜底。
+      try { term.loadAddon(new CanvasAddon()) } catch { /* 老浏览器回退 DOM */ }
+      termRef.current = term
+      fitRef.current = fit
 
-    // 注册文件路径链接：hover 显示下划线，点击用用户选择的编辑器打开
-    // 仅在有 cwd 时启用，避免相对路径无处解析
-    if (cwdRef.current) {
-      const linkProvider = term.registerLinkProvider({
-        provideLinks(bufferLineNumber, callback) {
-          try {
-            const line = term.buffer.active.getLine(bufferLineNumber - 1)
-            if (!line) { callback(undefined); return }
-            const text = line.translateToString(true)
-            // 预过滤：没有 '/' 一定不是路径
-            if (!text || text.indexOf('/') < 0) { callback(undefined); return }
-            const links: Array<{ range: { start: { x: number; y: number }; end: { x: number; y: number } }; text: string; activate: (_e: MouseEvent, t: string) => void }> = []
-            FILE_LINK_RE.lastIndex = 0
-            let m: RegExpExecArray | null
-            let count = 0
-            while ((m = FILE_LINK_RE.exec(text)) && count < MAX_LINKS_PER_LINE) {
-              count++
-              const start = m.index
-              const end = start + m[0].length
-              links.push({
-                text: m[0],
-                range: {
-                  start: { x: start + 1, y: bufferLineNumber },
-                  end: { x: end, y: bufferLineNumber },
-                },
-                activate: (_ev, hit) => {
-                  const base = cwdRef.current || ''
-                  if (!base) return
-                  let editor: EditorKind = 'trae-cn'
-                  try {
-                    const saved = localStorage.getItem('quadtodo.editor') as EditorKind | null
-                    if (saved === 'trae' || saved === 'trae-cn' || saved === 'cursor') editor = saved
-                  } catch {}
-                  openTraeCN(base, editor, hit, sessionId).catch((err) => {
-                    console.warn('[AiTerminalMini] open link failed:', err)
-                  })
-                },
-              })
-            }
-            callback(links.length ? links : undefined)
-          } catch (e) {
-            console.warn('[AiTerminalMini] link provider error:', e)
-            callback(undefined)
-          }
-        },
-      })
-      linkProviderRef.current = linkProvider
-    }
-
-    requestAnimationFrame(() => { try { fit.fit() } catch {} })
-
-    function connectWs() {
-      if (disposedRef.current || stopReconnectRef.current) return
-
-      // 关闭已有连接（防止多个 WS 并存互相干扰）
-      const prev = wsRef.current
-      if (prev) {
-        try { prev.close() } catch {}
-        wsRef.current = null
-      }
-
-      const wsUrl = getTerminalWsUrl(sessionId)
-      const ws = new WebSocket(wsUrl)
-      wsRef.current = ws
-
-      let heartbeatTimer: ReturnType<typeof setInterval> | null = null
-
-      ws.onopen = () => {
-        // 如果已被更新的连接取代，关掉自己
-        if (wsRef.current !== ws) { ws.close(); return }
-
-        reconnectDelayRef.current = INITIAL_RECONNECT_DELAY
-        reconnectCountRef.current = 0
-        setWsConnected(true)
-        lastPongRef.current = Date.now()
-        // 新连接/重连都要强制把当前 cols/rows 重新发给后端：清掉"已发送"记录，
-        // 避免 doFit → scheduleResizeSend 看到尺寸没变就 early-return。
-        lastSentSizeRef.current = null
-        term.writeln('\x1b[36m--- Terminal connected ---\x1b[0m\r')
-        if (!resumeTargetRef.current?.nativeSessionId && status === 'ai_running') {
-          term.writeln('\x1b[90m--- 正在注入任务上下文，请稍候... ---\x1b[0m\r')
-        }
-        // WS 打开后走 doFit 统一管路：guards + 稳定性去抖，
-        // 避免在 Chat tab 激活 / 终端折叠 时发出错误 cols（Claude 会按此折行污染 scrollback）
-        requestAnimationFrame(() => {
-          if (isHiddenRef.current) {
-            // 重连时仍处后台：只发 0/0 unregister，不上报真实尺寸
-            sendUnregisterSize(wsRef.current)
-            return
-          }
-          requestAnimationFrame(() => doFit())
+      // IME 输入法兼容：组合期间屏蔽键盘事件，防止回车选词被当作 \r 发送
+      let imeComposing = false
+      const textarea = term.textarea
+      if (textarea) {
+        textarea.addEventListener('compositionstart', () => { imeComposing = true })
+        textarea.addEventListener('compositionend', () => {
+          // 延迟重置：部分浏览器 compositionend 先于 keydown(Enter) 触发
+          setTimeout(() => { imeComposing = false }, 80)
         })
-        heartbeatTimer = setInterval(() => {
-          if (ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ type: 'ping' }))
-          }
-        }, HEARTBEAT_INTERVAL)
       }
-
-      ws.onmessage = (e) => {
-        try {
-          const msg = JSON.parse(e.data)
-          if (msg.type === 'pong') { lastPongRef.current = Date.now(); return }
-          if (msg.type === 'ping') {
-            if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'pong' }))
-            return
-          }
-          if (msg.type === 'error') {
-            if (msg.error === 'session_not_found') {
-              void tryAutoRecover().then((recovered) => {
-                if (!recovered) {
-                  stopReconnectRef.current = true
-                  setSessionExpired(true)
-                  term.writeln('\r\n\x1b[31m--- 会话已过期（服务端重启或已清理） ---\x1b[0m\r')
-                }
-              })
-            }
-            return
-          }
-          switch (msg.type) {
-            case 'output':
-              term.write(msg.data, () => {
-                if (followTailRef.current) term.scrollToBottom()
-              })
-              break
-            case 'replay':
-              if (Array.isArray(msg.chunks)) {
-                for (const chunk of msg.chunks) term.write(chunk)
-                // 回放结束后强制 SGR reset，避免 TUI 在切片边界遗留 underline/颜色
-                term.write('\x1b[0m')
-                if (followTailRef.current) term.scrollToBottom()
-              }
-              break
-            case 'pending_confirm':
-              setSessionStatus('ai_pending')
-              break
-            case 'pending_cleared':
-              setSessionStatus('ai_running')
-              break
-            case 'auto_mode':
-              setAutoMode(msg.autoMode || null)
-              break
-            case 'session_restarted':
-              if (typeof msg.newSessionId === 'string' && msg.newSessionId) {
-                message.info(msg.message || '已切换到恢复后的全托管会话')
-                onSessionSwitchRef.current?.(msg.newSessionId)
-              }
-              break
-            case 'auto_mode_notice':
-              if (msg.message) message.warning(msg.message)
-              break
-            case 'turn_done': {
-              showTurnDoneReminder()
-              // 用户当前正盯着这个会话（dock 可见、页面在前台）— turn_done 一到就标已读，
-              // 避免红点闪一下又消失带来的视觉干扰。
-              const dock = useTerminalDockStore.getState()
-              const docVisible = typeof document === 'undefined' || document.visibilityState === 'visible'
-              const tabVisible = !dock.isCollapsed && !dock.poppedOutTabIds.includes(sessionId)
-                && (dock.activeTabId === sessionId || dock.splitSecondaryTabId === sessionId)
-              if (docVisible && tabVisible) markSeen(sessionId)
-              break
-            }
-            case 'done':
-              setSessionStatus(msg.status === 'done' ? 'ai_done' : 'todo')
-              term.writeln(`\r\n\x1b[${msg.exitCode === 0 ? '32' : '31'}m=== ${msg.status === 'done' ? 'AI 任务已结束' : '任务失败'} ===\x1b[0m\r`)
-              onDone?.({ status: msg.status, exitCode: msg.exitCode })
-              break
-            case 'stopped':
-              setSessionStatus('todo')
-              term.writeln('\r\n\x1b[33m=== 已中止 ===\x1b[0m\r')
-              break
-          }
-        } catch (err) {
-          console.warn('[AiTerminalMini] message parse error:', err)
+      term.attachCustomKeyEventHandler((ev: KeyboardEvent) => {
+        if (imeComposing || ev.isComposing || ev.keyCode === 229) return false
+        if (ev.type === 'keydown' && ev.ctrlKey && ev.key === 'End') {
+          term.scrollToBottom()
+          setFollowTail(true)
+          try { localStorage.setItem('quadtodo.followTail', '1') } catch { /* ignore */ }
+          return false
         }
+        return true
+      })
+
+      // 注册文件路径链接：hover 显示下划线，点击用用户选择的编辑器打开
+      // 仅在有 cwd 时启用，避免相对路径无处解析
+      if (cwdRef.current) {
+        const linkProvider = term.registerLinkProvider({
+          provideLinks(bufferLineNumber, callback) {
+            try {
+              const line = term.buffer.active.getLine(bufferLineNumber - 1)
+              if (!line) { callback(undefined); return }
+              const text = line.translateToString(true)
+              // 预过滤：没有 '/' 一定不是路径
+              if (!text || text.indexOf('/') < 0) { callback(undefined); return }
+              const links: Array<{ range: { start: { x: number; y: number }; end: { x: number; y: number } }; text: string; activate: (_e: MouseEvent, t: string) => void }> = []
+              FILE_LINK_RE.lastIndex = 0
+              let m: RegExpExecArray | null
+              let count = 0
+              while ((m = FILE_LINK_RE.exec(text)) && count < MAX_LINKS_PER_LINE) {
+                count++
+                const start = m.index
+                const end = start + m[0].length
+                links.push({
+                  text: m[0],
+                  range: {
+                    start: { x: start + 1, y: bufferLineNumber },
+                    end: { x: end, y: bufferLineNumber },
+                  },
+                  activate: (_ev, hit) => {
+                    const base = cwdRef.current || ''
+                    if (!base) return
+                    let editor: EditorKind = 'trae-cn'
+                    try {
+                      const saved = localStorage.getItem('quadtodo.editor') as EditorKind | null
+                      if (saved === 'trae' || saved === 'trae-cn' || saved === 'cursor') editor = saved
+                    } catch {}
+                    openTraeCN(base, editor, hit, sessionId).catch((err) => {
+                      console.warn('[AiTerminalMini] open link failed:', err)
+                    })
+                  },
+                })
+              }
+              callback(links.length ? links : undefined)
+            } catch (e) {
+              console.warn('[AiTerminalMini] link provider error:', e)
+              callback(undefined)
+            }
+          },
+        })
+        linkProviderRef.current = linkProvider
       }
 
-      ws.onclose = (ev) => {
-        if (heartbeatTimer) { clearInterval(heartbeatTimer); heartbeatTimer = null }
+      requestAnimationFrame(() => { try { fit.fit() } catch {} })
 
-        // 核心：如果这个 WS 已被新连接取代，不做任何状态更新
-        if (wsRef.current !== ws) return
-
-        setWsConnected(false)
+      function connectWs() {
         if (disposedRef.current || stopReconnectRef.current) return
 
-        if (ev.code === 4004) {
-          void tryAutoRecover().then((recovered) => {
-            if (!recovered) {
-              stopReconnectRef.current = true
-              setSessionExpired(true)
-              term.writeln('\r\n\x1b[31m--- 会话已过期 ---\x1b[0m\r')
+        // 关闭已有连接（防止多个 WS 并存互相干扰）
+        const prev = wsRef.current
+        if (prev) {
+          try { prev.close() } catch {}
+          wsRef.current = null
+        }
+
+        const wsUrl = getTerminalWsUrl(sessionId)
+        const ws = new WebSocket(wsUrl)
+        wsRef.current = ws
+
+        let heartbeatTimer: ReturnType<typeof setInterval> | null = null
+
+        ws.onopen = () => {
+          // 如果已被更新的连接取代，关掉自己
+          if (wsRef.current !== ws) { ws.close(); return }
+
+          reconnectDelayRef.current = INITIAL_RECONNECT_DELAY
+          reconnectCountRef.current = 0
+          setWsConnected(true)
+          lastPongRef.current = Date.now()
+          // 新连接/重连都要强制把当前 cols/rows 重新发给后端：清掉"已发送"记录，
+          // 避免 doFit → scheduleResizeSend 看到尺寸没变就 early-return。
+          lastSentSizeRef.current = null
+          term.writeln('\x1b[36m--- Terminal connected ---\x1b[0m\r')
+          if (!resumeTargetRef.current?.nativeSessionId && status === 'ai_running') {
+            term.writeln('\x1b[90m--- 正在注入任务上下文，请稍候... ---\x1b[0m\r')
+          }
+          // WS 打开后走 doFit 统一管路：guards + 稳定性去抖，
+          // 避免在 Chat tab 激活 / 终端折叠 时发出错误 cols（Claude 会按此折行污染 scrollback）
+          requestAnimationFrame(() => {
+            if (isHiddenRef.current) {
+              // 重连时仍处后台：只发 0/0 unregister，不上报真实尺寸
+              sendUnregisterSize(wsRef.current)
+              return
             }
+            requestAnimationFrame(() => doFit())
           })
-          return
+          heartbeatTimer = setInterval(() => {
+            if (ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({ type: 'ping' }))
+            }
+          }, HEARTBEAT_INTERVAL)
         }
 
-        if (reconnectCountRef.current >= MAX_RECONNECT_ATTEMPTS) {
-          term.writeln('\r\n\x1b[31m--- 重连失败次数过多，已停止重连 ---\x1b[0m\r')
-          return
+        ws.onmessage = (e) => {
+          try {
+            const msg = JSON.parse(e.data)
+            if (msg.type === 'pong') { lastPongRef.current = Date.now(); return }
+            if (msg.type === 'ping') {
+              if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'pong' }))
+              return
+            }
+            if (msg.type === 'error') {
+              if (msg.error === 'session_not_found') {
+                void tryAutoRecover().then((recovered) => {
+                  if (!recovered) {
+                    stopReconnectRef.current = true
+                    setSessionExpired(true)
+                    term.writeln('\r\n\x1b[31m--- 会话已过期（服务端重启或已清理） ---\x1b[0m\r')
+                  }
+                })
+              }
+              return
+            }
+            switch (msg.type) {
+              case 'output':
+                term.write(msg.data, () => {
+                  if (followTailRef.current) term.scrollToBottom()
+                })
+                break
+              case 'replay':
+                if (Array.isArray(msg.chunks)) {
+                  for (const chunk of msg.chunks) term.write(chunk)
+                  // 回放结束后强制 SGR reset，避免 TUI 在切片边界遗留 underline/颜色
+                  term.write('\x1b[0m')
+                  if (followTailRef.current) term.scrollToBottom()
+                }
+                break
+              case 'pending_confirm':
+                setSessionStatus('ai_pending')
+                break
+              case 'pending_cleared':
+                setSessionStatus('ai_running')
+                break
+              case 'auto_mode':
+                setAutoMode(msg.autoMode || null)
+                break
+              case 'session_restarted':
+                if (typeof msg.newSessionId === 'string' && msg.newSessionId) {
+                  message.info(msg.message || '已切换到恢复后的全托管会话')
+                  onSessionSwitchRef.current?.(msg.newSessionId)
+                }
+                break
+              case 'auto_mode_notice':
+                if (msg.message) message.warning(msg.message)
+                break
+              case 'turn_done': {
+                showTurnDoneReminder()
+                // 用户当前正盯着这个会话（dock 可见、页面在前台）— turn_done 一到就标已读，
+                // 避免红点闪一下又消失带来的视觉干扰。
+                const dock = useTerminalDockStore.getState()
+                const docVisible = typeof document === 'undefined' || document.visibilityState === 'visible'
+                const tabVisible = !dock.isCollapsed && !dock.poppedOutTabIds.includes(sessionId)
+                  && (dock.activeTabId === sessionId || dock.splitSecondaryTabId === sessionId)
+                if (docVisible && tabVisible) markSeen(sessionId)
+                break
+              }
+              case 'done':
+                setSessionStatus(msg.status === 'done' ? 'ai_done' : 'todo')
+                term.writeln(`\r\n\x1b[${msg.exitCode === 0 ? '32' : '31'}m=== ${msg.status === 'done' ? 'AI 任务已结束' : '任务失败'} ===\x1b[0m\r`)
+                onDone?.({ status: msg.status, exitCode: msg.exitCode })
+                break
+              case 'stopped':
+                setSessionStatus('todo')
+                term.writeln('\r\n\x1b[33m=== 已中止 ===\x1b[0m\r')
+                break
+            }
+          } catch (err) {
+            console.warn('[AiTerminalMini] message parse error:', err)
+          }
         }
 
-        term.writeln(`\r\n\x1b[33m--- 连接断开 (code ${ev.code})，正在重连 (${reconnectCountRef.current + 1}/${MAX_RECONNECT_ATTEMPTS}) ---\x1b[0m\r`)
-        scheduleReconnect()
+        ws.onclose = (ev) => {
+          if (heartbeatTimer) { clearInterval(heartbeatTimer); heartbeatTimer = null }
+
+          // 核心：如果这个 WS 已被新连接取代，不做任何状态更新
+          if (wsRef.current !== ws) return
+
+          setWsConnected(false)
+          if (disposedRef.current || stopReconnectRef.current) return
+
+          if (ev.code === 4004) {
+            void tryAutoRecover().then((recovered) => {
+              if (!recovered) {
+                stopReconnectRef.current = true
+                setSessionExpired(true)
+                term.writeln('\r\n\x1b[31m--- 会话已过期 ---\x1b[0m\r')
+              }
+            })
+            return
+          }
+
+          if (reconnectCountRef.current >= MAX_RECONNECT_ATTEMPTS) {
+            term.writeln('\r\n\x1b[31m--- 重连失败次数过多，已停止重连 ---\x1b[0m\r')
+            return
+          }
+
+          term.writeln(`\r\n\x1b[33m--- 连接断开 (code ${ev.code})，正在重连 (${reconnectCountRef.current + 1}/${MAX_RECONNECT_ATTEMPTS}) ---\x1b[0m\r`)
+          scheduleReconnect()
+        }
+
+        ws.onerror = () => {
+          console.warn('[AiTerminalMini] WebSocket error')
+        }
       }
 
-      ws.onerror = () => {
-        console.warn('[AiTerminalMini] WebSocket error')
+      function scheduleReconnect() {
+        if (disposedRef.current || stopReconnectRef.current) return
+        if (reconnectTimerRef.current) return
+
+        reconnectCountRef.current++
+        const delay = reconnectDelayRef.current
+        reconnectTimerRef.current = setTimeout(() => {
+          reconnectTimerRef.current = null
+          reconnectDelayRef.current = Math.min(delay * 1.5, MAX_RECONNECT_DELAY)
+          connectWs()
+        }, delay)
       }
-    }
 
-    function scheduleReconnect() {
-      if (disposedRef.current || stopReconnectRef.current) return
-      if (reconnectTimerRef.current) return
+      /** 检测连接是否已失效（半死连接 / 已断开） */
+      function isWsStale() {
+        const ws = wsRef.current
+        if (!ws || ws.readyState !== WebSocket.OPEN) return true
+        return Date.now() - lastPongRef.current > STALE_THRESHOLD
+      }
 
-      reconnectCountRef.current++
-      const delay = reconnectDelayRef.current
-      reconnectTimerRef.current = setTimeout(() => {
-        reconnectTimerRef.current = null
-        reconnectDelayRef.current = Math.min(delay * 1.5, MAX_RECONNECT_DELAY)
+      /** 强制重连（connectWs 内部会关闭旧连接，不会竞态） */
+      let lastForceReconnectAt = 0
+      function forceReconnect(reason: string) {
+        if (disposedRef.current || stopReconnectRef.current) return
+        const now = Date.now()
+        if (now - lastForceReconnectAt < 1000) return
+        lastForceReconnectAt = now
+
+        reconnectCountRef.current = 0
+        reconnectDelayRef.current = INITIAL_RECONNECT_DELAY
+        term.writeln(`\r\n\x1b[33m--- ${reason}，正在重新连接... ---\x1b[0m\r`)
+        if (reconnectTimerRef.current) {
+          clearTimeout(reconnectTimerRef.current)
+          reconnectTimerRef.current = null
+        }
         connectWs()
-      }, delay)
-    }
-
-    /** 检测连接是否已失效（半死连接 / 已断开） */
-    function isWsStale() {
-      const ws = wsRef.current
-      if (!ws || ws.readyState !== WebSocket.OPEN) return true
-      return Date.now() - lastPongRef.current > STALE_THRESHOLD
-    }
-
-    /** 强制重连（connectWs 内部会关闭旧连接，不会竞态） */
-    let lastForceReconnectAt = 0
-    function forceReconnect(reason: string) {
-      if (disposedRef.current || stopReconnectRef.current) return
-      const now = Date.now()
-      if (now - lastForceReconnectAt < 1000) return
-      lastForceReconnectAt = now
-
-      reconnectCountRef.current = 0
-      reconnectDelayRef.current = INITIAL_RECONNECT_DELAY
-      term.writeln(`\r\n\x1b[33m--- ${reason}，正在重新连接... ---\x1b[0m\r`)
-      if (reconnectTimerRef.current) {
-        clearTimeout(reconnectTimerRef.current)
-        reconnectTimerRef.current = null
       }
+
       connectWs()
-    }
 
-    connectWs()
-
-    // 输入通道：xterm onData → WebSocket → Agent PTY
-    let warnedDisconnect = false
-    term.onData((data) => {
-      const ws = wsRef.current
-      if (ws && ws.readyState === WebSocket.OPEN && !isWsStale()) {
-        ws.send(JSON.stringify({ type: 'input', data }))
-        warnedDisconnect = false
-      } else {
-        if (!warnedDisconnect) {
-          warnedDisconnect = true
-          term.writeln('\r\n\x1b[31m⚠ 连接已断开，正在自动重连...\x1b[0m\r')
+      // 输入通道：xterm onData → WebSocket → Agent PTY
+      let warnedDisconnect = false
+      term.onData((data) => {
+        const ws = wsRef.current
+        if (ws && ws.readyState === WebSocket.OPEN && !isWsStale()) {
+          ws.send(JSON.stringify({ type: 'input', data }))
+          warnedDisconnect = false
+        } else {
+          if (!warnedDisconnect) {
+            warnedDisconnect = true
+            term.writeln('\r\n\x1b[31m⚠ 连接已断开，正在自动重连...\x1b[0m\r')
+          }
+          forceReconnect('检测到连接失效')
         }
-        forceReconnect('检测到连接失效')
-      }
-    })
+      })
 
-    // 标签页切回时：检查 WS 健康，死连接立即重连 + 重新聚焦终端
-    function handleVisibilityChange() {
-      if (disposedRef.current || stopReconnectRef.current) return
-      const hidden = document.visibilityState !== 'visible'
-      if (hidden) {
-        // 同 session 多 tab 时，PTY 尺寸取所有连接的 min。后台 tab 不应继续约束尺寸：
-        // 取消 pending fit，发 0/0 让后端 unregister 我们这一份，并屏蔽后续后台触发。
-        isHiddenRef.current = true
+      // 标签页切回时：检查 WS 健康，死连接立即重连 + 重新聚焦终端
+      function handleVisibilityChange() {
+        if (disposedRef.current || stopReconnectRef.current) return
+        const hidden = document.visibilityState !== 'visible'
+        if (hidden) {
+          // 同 session 多 tab 时，PTY 尺寸取所有连接的 min。后台 tab 不应继续约束尺寸：
+          // 取消 pending fit，发 0/0 让后端 unregister 我们这一份，并屏蔽后续后台触发。
+          isHiddenRef.current = true
+          if (resizeTimerRef.current) {
+            clearTimeout(resizeTimerRef.current)
+            resizeTimerRef.current = null
+          }
+          if (refitTimerRef.current) {
+            clearTimeout(refitTimerRef.current)
+            refitTimerRef.current = null
+          }
+          if (pendingResizeRef.current?.timer) {
+            clearTimeout(pendingResizeRef.current.timer)
+          }
+          pendingResizeRef.current = null
+          sendUnregisterSize(wsRef.current)
+          // 重置已发送记录，等可见时重新发当前真实尺寸（不会被去抖跳过）
+          lastSentSizeRef.current = null
+          return
+        }
+        // 切回前台
+        isHiddenRef.current = false
+        lastPongRef.current = Date.now()
+        const ws = wsRef.current
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
+          forceReconnect('标签页切回，连接已断开')
+        } else {
+          ws.send(JSON.stringify({ type: 'ping' }))
+        }
+        // 清掉 lastSent 后立即 refit，重新把当前 cols/rows 加回聚合
+        lastSentSizeRef.current = null
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => doFit())
+        })
+        term.focus()
+      }
+      document.addEventListener('visibilitychange', handleVisibilityChange)
+
+      // 终端获焦时：发 ping 探活，超时无 pong 则强制重连
+      let focusProbeTimer: ReturnType<typeof setTimeout> | null = null
+      function handleTermFocus() {
+        if (disposedRef.current || stopReconnectRef.current) return
+        const ws = wsRef.current
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
+          forceReconnect('聚焦时发现连接断开')
+          return
+        }
+        const beforePing = lastPongRef.current
+        ws.send(JSON.stringify({ type: 'ping' }))
+        if (focusProbeTimer) clearTimeout(focusProbeTimer)
+        focusProbeTimer = setTimeout(() => {
+          focusProbeTimer = null
+          if (lastPongRef.current === beforePing && !disposedRef.current && !stopReconnectRef.current) {
+            forceReconnect('探活超时，连接可能已断开')
+          }
+        }, 2000)
+      }
+      const termTextarea = term.textarea
+      termTextarea?.addEventListener('focus', handleTermFocus)
+
+      const ro = new ResizeObserver(() => {
+        if (isHiddenRef.current) return
+        if (resizeTimerRef.current) clearTimeout(resizeTimerRef.current)
+        resizeTimerRef.current = setTimeout(() => {
+          resizeTimerRef.current = null
+          if (isHiddenRef.current) return
+          requestAnimationFrame(() => doFit())
+        }, RESIZE_DEBOUNCE_MS)
+      })
+      ro.observe(container)
+
+      // 可见性监听：display:none ↔ 可见切换时 ResizeObserver 不保证触发，用 IO 兜底
+      // 双 rAF：第一帧让样式计算提交，第二帧让布局完全 settle，再读 clientWidth 做 fit
+      const io = new IntersectionObserver((entries) => {
+        if (isHiddenRef.current) return
+        for (const entry of entries) {
+          if (entry.isIntersecting && entry.intersectionRatio > 0) {
+            refitAttemptsRef.current = 0
+            requestAnimationFrame(() => {
+              requestAnimationFrame(() => doFit())
+            })
+          }
+        }
+      })
+      io.observe(container)
+
+      // 浏览器窗口缩放/拖拽：ResizeObserver 可能不触发，需要额外监听
+      let windowResizeTimer: ReturnType<typeof setTimeout> | null = null
+      function handleWindowResize() {
+        if (isHiddenRef.current) return
+        if (windowResizeTimer) clearTimeout(windowResizeTimer)
+        windowResizeTimer = setTimeout(() => {
+          windowResizeTimer = null
+          if (isHiddenRef.current) return
+          requestAnimationFrame(() => doFit())
+        }, RESIZE_DEBOUNCE_MS)
+      }
+      window.addEventListener('resize', handleWindowResize)
+
+      cleanup = () => {
+        disposedRef.current = true
+        document.removeEventListener('visibilitychange', handleVisibilityChange)
+        window.removeEventListener('resize', handleWindowResize)
+        if (windowResizeTimer) clearTimeout(windowResizeTimer)
+        termTextarea?.removeEventListener('focus', handleTermFocus)
+        if (focusProbeTimer) clearTimeout(focusProbeTimer)
+        if (reconnectTimerRef.current) {
+          clearTimeout(reconnectTimerRef.current)
+          reconnectTimerRef.current = null
+        }
         if (resizeTimerRef.current) {
           clearTimeout(resizeTimerRef.current)
           resizeTimerRef.current = null
@@ -718,128 +865,27 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
           clearTimeout(refitTimerRef.current)
           refitTimerRef.current = null
         }
+        refitAttemptsRef.current = 0
         if (pendingResizeRef.current?.timer) {
           clearTimeout(pendingResizeRef.current.timer)
         }
         pendingResizeRef.current = null
-        sendUnregisterSize(wsRef.current)
-        // 重置已发送记录，等可见时重新发当前真实尺寸（不会被去抖跳过）
-        lastSentSizeRef.current = null
-        return
+        ro.disconnect()
+        io.disconnect()
+        const ws = wsRef.current
+        if (ws) ws.close()
+        try { linkProviderRef.current?.dispose() } catch {}
+        linkProviderRef.current = null
+        term.dispose()
+        termRef.current = null
+        wsRef.current = null
+        fitRef.current = null
       }
-      // 切回前台
-      isHiddenRef.current = false
-      lastPongRef.current = Date.now()
-      const ws = wsRef.current
-      if (!ws || ws.readyState !== WebSocket.OPEN) {
-        forceReconnect('标签页切回，连接已断开')
-      } else {
-        ws.send(JSON.stringify({ type: 'ping' }))
-      }
-      // 清掉 lastSent 后立即 refit，重新把当前 cols/rows 加回聚合
-      lastSentSizeRef.current = null
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => doFit())
-      })
-      term.focus()
-    }
-    document.addEventListener('visibilitychange', handleVisibilityChange)
-
-    // 终端获焦时：发 ping 探活，超时无 pong 则强制重连
-    let focusProbeTimer: ReturnType<typeof setTimeout> | null = null
-    function handleTermFocus() {
-      if (disposedRef.current || stopReconnectRef.current) return
-      const ws = wsRef.current
-      if (!ws || ws.readyState !== WebSocket.OPEN) {
-        forceReconnect('聚焦时发现连接断开')
-        return
-      }
-      const beforePing = lastPongRef.current
-      ws.send(JSON.stringify({ type: 'ping' }))
-      if (focusProbeTimer) clearTimeout(focusProbeTimer)
-      focusProbeTimer = setTimeout(() => {
-        focusProbeTimer = null
-        if (lastPongRef.current === beforePing && !disposedRef.current && !stopReconnectRef.current) {
-          forceReconnect('探活超时，连接可能已断开')
-        }
-      }, 2000)
-    }
-    const termTextarea = term.textarea
-    termTextarea?.addEventListener('focus', handleTermFocus)
-
-    const ro = new ResizeObserver(() => {
-      if (isHiddenRef.current) return
-      if (resizeTimerRef.current) clearTimeout(resizeTimerRef.current)
-      resizeTimerRef.current = setTimeout(() => {
-        resizeTimerRef.current = null
-        if (isHiddenRef.current) return
-        requestAnimationFrame(() => doFit())
-      }, RESIZE_DEBOUNCE_MS)
-    })
-    ro.observe(containerRef.current)
-
-    // 可见性监听：display:none ↔ 可见切换时 ResizeObserver 不保证触发，用 IO 兜底
-    // 双 rAF：第一帧让样式计算提交，第二帧让布局完全 settle，再读 clientWidth 做 fit
-    const io = new IntersectionObserver((entries) => {
-      if (isHiddenRef.current) return
-      for (const entry of entries) {
-        if (entry.isIntersecting && entry.intersectionRatio > 0) {
-          refitAttemptsRef.current = 0
-          requestAnimationFrame(() => {
-            requestAnimationFrame(() => doFit())
-          })
-        }
-      }
-    })
-    io.observe(containerRef.current)
-
-    // 浏览器窗口缩放/拖拽：ResizeObserver 可能不触发，需要额外监听
-    let windowResizeTimer: ReturnType<typeof setTimeout> | null = null
-    function handleWindowResize() {
-      if (isHiddenRef.current) return
-      if (windowResizeTimer) clearTimeout(windowResizeTimer)
-      windowResizeTimer = setTimeout(() => {
-        windowResizeTimer = null
-        if (isHiddenRef.current) return
-        requestAnimationFrame(() => doFit())
-      }, RESIZE_DEBOUNCE_MS)
-    }
-    window.addEventListener('resize', handleWindowResize)
+    })()
 
     return () => {
       disposedRef.current = true
-      document.removeEventListener('visibilitychange', handleVisibilityChange)
-      window.removeEventListener('resize', handleWindowResize)
-      if (windowResizeTimer) clearTimeout(windowResizeTimer)
-      termTextarea?.removeEventListener('focus', handleTermFocus)
-      if (focusProbeTimer) clearTimeout(focusProbeTimer)
-      if (reconnectTimerRef.current) {
-        clearTimeout(reconnectTimerRef.current)
-        reconnectTimerRef.current = null
-      }
-      if (resizeTimerRef.current) {
-        clearTimeout(resizeTimerRef.current)
-        resizeTimerRef.current = null
-      }
-      if (refitTimerRef.current) {
-        clearTimeout(refitTimerRef.current)
-        refitTimerRef.current = null
-      }
-      refitAttemptsRef.current = 0
-      if (pendingResizeRef.current?.timer) {
-        clearTimeout(pendingResizeRef.current.timer)
-      }
-      pendingResizeRef.current = null
-      ro.disconnect()
-      io.disconnect()
-      const ws = wsRef.current
-      if (ws) ws.close()
-      try { linkProviderRef.current?.dispose() } catch {}
-      linkProviderRef.current = null
-      term.dispose()
-      termRef.current = null
-      wsRef.current = null
-      fitRef.current = null
+      if (cleanup) cleanup()
     }
   }, [sessionId, tryAutoRecover, showTurnDoneReminder])
 
