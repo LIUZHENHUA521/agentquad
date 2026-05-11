@@ -801,14 +801,23 @@ export class PtyManager extends EventEmitter {
     }
     if (s.proc) {
       try { s.proc.kill() } catch { /* ignore */ }
-      // cleanup of this.sessions entry happens in onExit
+      // cleanup of this.sessions entry happens in onExit (which also emits 'done')
     } else {
       // Not-yet-spawned session (create() called but startWithSize() not yet, or it failed):
-      // no proc to kill, no onExit will fire — clean up timers/watchers and delete now.
+      // no proc to kill, no onExit will fire — clean up timers/watchers, delete the record,
+      // and emit a synthetic 'done' so route-level cleanup runs (same lifecycle event
+      // a spawned-then-killed session would produce).
       if (s.promptTimer) { try { clearTimeout(s.promptTimer) } catch { /* ignore */ } s.promptTimer = null }
       if (s.detectTimer) { try { clearInterval(s.detectTimer) } catch { /* ignore */ } s.detectTimer = null }
       if (s.fsWatcher) { try { s.fsWatcher.close() } catch { /* ignore */ } s.fsWatcher = null }
       this.sessions.delete(sessionId)
+      this.emit('done', {
+        sessionId,
+        exitCode: 0,
+        fullLog: '',
+        nativeId: s.nativeId || null,
+        stopped: true,
+      })
     }
   }
 }

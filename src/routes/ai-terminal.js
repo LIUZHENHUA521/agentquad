@@ -443,6 +443,9 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
       // 5s 兜底：前端如果一直没发合法 init（极少见 — /exec 返回后 WS 还没连上），
       // 用老的 80×24 兜底 spawn，避免 session 永远卡在 create 状态。
       session.spawnFallbackTimer = setTimeout(() => {
+        // Always clear the pointer first so the "is pending" state is accurate
+        // the moment the timer fires, even if init won the race and we return early.
+        session.spawnFallbackTimer = null
         if (session.spawned) return
         console.warn(`[ai-terminal] spawn fallback fired session=${sessionId} (no init within 5s)`)
         try {
@@ -451,7 +454,6 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
         } catch (e) {
           console.warn(`[ai-terminal] spawn fallback failed: ${e.message}`)
         }
-        session.spawnFallbackTimer = null
       }, 5000)
       session.spawnFallbackTimer.unref?.()
     } catch (error) {

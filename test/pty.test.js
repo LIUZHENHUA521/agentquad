@@ -573,4 +573,17 @@ describe('PtyManager', () => {
     expect(pm.has('s-pending')).toBe(false)
     expect(factory.created).toHaveLength(0) // no PTY was ever spawned
   })
+
+  it('stop() on a created-but-not-spawned session emits a synthetic done event', () => {
+    const factory = makeFakePty()
+    const pm = new PtyManager({ tools: tools(), ptyFactory: factory })
+    const events = []
+    pm.on('done', (payload) => events.push(payload))
+    pm.create({ sessionId: 's-pending', tool: 'claude', prompt: null, cwd: '/tmp' })
+    pm.stop('s-pending')
+    expect(events).toEqual([
+      expect.objectContaining({ sessionId: 's-pending', stopped: true, exitCode: 0 }),
+    ])
+    expect(pm.has('s-pending')).toBe(false)
+  })
 })

@@ -1130,6 +1130,25 @@ describe('routes/ai-terminal', () => {
     expect(sent.some(m => m.type === 'pending_cleared')).toBe(true)
   })
 
+  it('5s spawn fallback cleans up the timer field after firing', async () => {
+    vi.useFakeTimers()
+    try {
+      const todo = ctx.db.createTodo({ title: 'T', quadrant: 1 })
+      const r = await request(ctx.app).post('/api/ai-terminal/exec').send({
+        todoId: todo.id, prompt: 'hello', tool: 'claude',
+      })
+      const sessionId = r.body.sessionId
+      // Fast-forward past the 5s fallback window.
+      await vi.advanceTimersByTimeAsync(5001)
+      // Indirect check: the timer fired and called startWithSize(80,24).
+      expect(ctx.pty.startedWithSize).toEqual([{ sessionId, cols: 80, rows: 24 }])
+      // And the route-side pointer is cleared (no stale Timeout reference).
+      expect(ctx.ait.sessions.get(sessionId).spawnFallbackTimer).toBe(null)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   describe('dashboard routes', () => {
     it('GET /sessions lists active sessions with todo metadata', async () => {
       const todo = ctx.db.createTodo({ title: 'Hello', quadrant: 2 })
