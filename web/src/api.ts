@@ -581,7 +581,7 @@ export async function openTerminal(cwd: string): Promise<{ sessionId: string }> 
   return { sessionId: body.sessionId }
 }
 
-export type NativeResumeWarning = 'telegram_route_missing' | 'hook_script_missing' | 'hooks_not_installed'
+export type NativeResumeWarning = 'route_missing' | 'hook_script_missing' | 'hooks_not_installed'
 
 export async function openNativeAiResume(input: {
   cwd: string
