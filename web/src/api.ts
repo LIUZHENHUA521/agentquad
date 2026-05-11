@@ -144,7 +144,7 @@ export interface AppConfig {
     minRenameIntervalMs?: number
     botToken?: string                                          // PUT only; GET 永远不返回明文
     botTokenMasked?: string | null                              // GET 时返回
-    botTokenSource?: 'quadtodo' | 'missing'                     // GET 时返回
+    botTokenSource?: 'agentquad' | 'missing'                    // GET 时返回
     defaultSupergroupId?: string                                // legacy
     [key: string]: unknown
   }
@@ -153,7 +153,7 @@ export interface AppConfig {
     appId?: string
     appSecret?: string
     appSecretMasked?: string | null
-    appSecretSource?: 'quadtodo' | 'missing'
+    appSecretSource?: 'agentquad' | 'missing'
     chatId?: string
     requireThreadGroup?: boolean
     eventSubscribeEnabled?: boolean
@@ -998,7 +998,7 @@ export interface TelegramTestResult {
   botId?: number
   botUsername?: string | null
   botFirstName?: string | null
-  source: 'quadtodo' | 'missing' | 'input'
+  source: 'agentquad' | 'missing' | 'input'
   errorReason?: string
 }
 
@@ -1014,7 +1014,7 @@ export async function testTelegram(input: { botToken?: string } = {}): Promise<T
 
 export interface LarkTestResult {
   ok: boolean
-  source: 'quadtodo' | 'missing' | 'input'
+  source: 'agentquad' | 'missing' | 'input'
   errorReason?: string
   detail?: string
 }

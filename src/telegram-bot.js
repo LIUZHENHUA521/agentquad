@@ -853,12 +853,12 @@ export function createTelegramBot({
 
 /**
  * 读 bot token，并返回来源标记。
- *  - source: "quadtodo" | "missing"
+ *  - source: "agentquad" | "missing"
  */
 export function readBotTokenWithSource(getConfig) {
   const tg = getConfig?.()?.telegram || {}
   if (tg.botToken && typeof tg.botToken === 'string') {
-    return { token: tg.botToken, source: 'quadtodo' }
+    return { token: tg.botToken, source: 'agentquad' }
   }
   return { token: null, source: 'missing' }
 }

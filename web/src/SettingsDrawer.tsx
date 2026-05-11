@@ -69,9 +69,9 @@ function isMaskedToken(value: unknown): boolean {
   return typeof value === 'string' && value.startsWith('tg_***')
 }
 
-function telegramSourceLabel(source: 'quadtodo' | 'missing' | 'input'): string {
+function telegramSourceLabel(source: 'agentquad' | 'missing' | 'input'): string {
   if (source === 'input') return '当前输入，保存后生效'
-  if (source === 'quadtodo') return 'quadtodo'
+  if (source === 'agentquad') return 'AgentQuad'
   return 'missing'
 }
 
@@ -79,9 +79,9 @@ function isMaskedLarkSecret(value: unknown): boolean {
   return typeof value === 'string' && value.startsWith('lark_***')
 }
 
-function larkSourceLabel(source: 'quadtodo' | 'missing' | 'input'): string {
+function larkSourceLabel(source: 'agentquad' | 'missing' | 'input'): string {
   if (source === 'input') return '当前输入，保存后生效'
-  if (source === 'quadtodo') return 'quadtodo'
+  if (source === 'agentquad') return 'AgentQuad'
   return 'missing'
 }
 
@@ -106,11 +106,11 @@ export default function SettingsDrawer({ open, onClose }: Props) {
     } catch { return 'trae-cn' }
   })
   const [probeOpen, setProbeOpen] = useState(false)
-  const [tokenSource, setTokenSource] = useState<'quadtodo' | 'missing'>('missing')
+  const [tokenSource, setTokenSource] = useState<'agentquad' | 'missing'>('missing')
   const [tokenMasked, setTokenMasked] = useState<string>('')
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<string | null>(null)
-  const [larkSecretSource, setLarkSecretSource] = useState<'quadtodo' | 'missing'>('missing')
+  const [larkSecretSource, setLarkSecretSource] = useState<'agentquad' | 'missing'>('missing')
   const [larkTesting, setLarkTesting] = useState(false)
   const [larkTestResult, setLarkTestResult] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<'run' | 'tools' | 'telegram' | 'lark' | 'pricing'>('run')
@@ -210,9 +210,9 @@ export default function SettingsDrawer({ open, onClose }: Props) {
             ...rate,
           })),
         })
-        setTokenSource((result.config.telegram?.botTokenSource as 'quadtodo' | 'missing' | undefined) || 'missing')
+        setTokenSource((result.config.telegram?.botTokenSource as 'agentquad' | 'missing' | undefined) || 'missing')
         setTokenMasked(result.config.telegram?.botTokenMasked || '')
-        setLarkSecretSource((result.config.lark?.appSecretSource as 'quadtodo' | 'missing' | undefined) || 'missing')
+        setLarkSecretSource((result.config.lark?.appSecretSource as 'agentquad' | 'missing' | undefined) || 'missing')
         setViewingTool((result.config.defaultTool as ToolKey) || 'claude')
         const d = result.config.dispatch || {}
         setDispatchDraft({
@@ -326,9 +326,9 @@ export default function SettingsDrawer({ open, onClose }: Props) {
       })
       setConfig(result.config)
       setToolDiagnostics(result.toolDiagnostics)
-      setTokenSource((result.config.telegram?.botTokenSource as 'quadtodo' | 'missing' | undefined) || 'missing')
+      setTokenSource((result.config.telegram?.botTokenSource as 'agentquad' | 'missing' | undefined) || 'missing')
       setTokenMasked(result.config.telegram?.botTokenMasked || '')
-      setLarkSecretSource((result.config.lark?.appSecretSource as 'quadtodo' | 'missing' | undefined) || 'missing')
+      setLarkSecretSource((result.config.lark?.appSecretSource as 'agentquad' | 'missing' | undefined) || 'missing')
       form.setFieldsValue({
         claudeCommand: joinCommandLine(result.config.tools.claude.command, result.config.tools.claude.args),
         claudeBin: result.config.tools.claude.bin,
@@ -787,8 +787,8 @@ export default function SettingsDrawer({ open, onClose }: Props) {
                   >测试</Button>
                 </Space.Compact>
                 <div style={{ marginTop: 4, fontSize: 12 }}>
-                  <Tag color={tokenSource === 'quadtodo' ? 'default' : 'error'}>
-                    {tokenSource === 'quadtodo' && '来自 quadtodo 配置'}
+                  <Tag color={tokenSource === 'agentquad' ? 'default' : 'error'}>
+                    {tokenSource === 'agentquad' && '来自 AgentQuad 配置'}
                     {tokenSource === 'missing' && '未配置'}
                   </Tag>
                   {testResult && <span style={{ marginLeft: 8 }}>{testResult}</span>}
@@ -956,8 +956,8 @@ export default function SettingsDrawer({ open, onClose }: Props) {
           >测试</Button>
         </Space.Compact>
         <div style={{ marginTop: 4, fontSize: 12 }}>
-          <Tag color={larkSecretSource === 'quadtodo' ? 'default' : 'error'}>
-            {larkSecretSource === 'quadtodo' && '来自 quadtodo 配置'}
+          <Tag color={larkSecretSource === 'agentquad' ? 'default' : 'error'}>
+            {larkSecretSource === 'agentquad' && '来自 AgentQuad 配置'}
             {larkSecretSource === 'missing' && '未配置'}
           </Tag>
           {larkTestResult && <span style={{ marginLeft: 8 }}>{larkTestResult}</span>}
