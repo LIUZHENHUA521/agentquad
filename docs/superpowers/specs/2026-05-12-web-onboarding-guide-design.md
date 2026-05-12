@@ -268,7 +268,7 @@ interface WelcomeModalProps {
 
 ```tsx
 import { WelcomeModal } from './onboarding/WelcomeModal'
-import { useWelcomeDismissed } from './onboarding/onboardingStore'
+import { useWelcomeDismissed } from './onboarding/useWelcomeDismissed'
 ```
 
 **新增 state**（与组件顶部其他 useState 同区域）：
