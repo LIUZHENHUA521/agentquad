@@ -72,7 +72,7 @@ describe('POST /api/config/telegram/test', () => {
     const r = await request(app).post('/api/config/telegram/test').send({})
 
     expect(r.status).toBe(200)
-    expect(r.body).toMatchObject({ ok: true, botId: 24680, botUsername: 'savedBot', source: 'quadtodo' })
+    expect(r.body).toMatchObject({ ok: true, botId: 24680, botUsername: 'savedBot', source: 'agentquad' })
     expect(fetchFn).toHaveBeenCalledTimes(1)
     const [url] = fetchFn.mock.calls[0]
     expect(String(url)).toContain('/botSAVED_TOKEN/getMe')

@@ -1,7 +1,7 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
 exports[`renderMarkdown > snapshot 1`] = `
-"# quadtodo 周报 · 2026-04-07 ~ 2026-04-14
+"# AgentQuad 周报 · 2026-04-07 ~ 2026-04-14
 
 AI 活跃 8.3h（墙钟 12.1h）· 47 场会话 · 覆盖 12 个任务
 Token 13.2M（cache 命中 8.1M）· 成本 $23.70 / ¥170.6

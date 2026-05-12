@@ -173,7 +173,7 @@ describe('mcp over http (supertest)', () => {
     const res = await request(app).get('/mcp/health')
     expect(res.status).toBe(200)
     expect(res.body.ok).toBe(true)
-    expect(res.body.server).toBe('quadtodo')
+    expect(res.body.server).toBe('agentquad')
   })
 
   it('POST /mcp without Accept header returns an error JSON-RPC (the transport enforces headers)', async () => {

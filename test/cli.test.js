@@ -48,7 +48,7 @@ describe('cli helpers', () => {
       const out = buildStartupBanner({ port: 5677, host: '127.0.0.1', addresses: { tailscale: [], lan: [], loopback: [] } })
       expect(out).toMatch(/loopback only/)
       expect(out).toMatch(/--expose/)
-      expect(out).toMatch(/quadtodo config set host 0\.0\.0\.0/)
+      expect(out).toMatch(/agentquad config set host 0\.0\.0\.0/)
       expect(out).not.toMatch(/SECURITY/)
     })
 
@@ -130,7 +130,7 @@ describe('cli helpers', () => {
       const out = installMcpIntoClaudeSettings({ settingsPath: path, host: '127.0.0.1', port: 5677 })
       expect(out.action).toBe('created')
       const parsed = JSON.parse(readFileSync(path, 'utf8'))
-      expect(parsed.mcpServers.quadtodo.url).toBe('http://127.0.0.1:5677/mcp')
+      expect(parsed.mcpServers.agentquad.url).toBe('http://127.0.0.1:5677/mcp')
     })
 
     it('merges into existing settings.json preserving other fields', () => {
@@ -144,7 +144,7 @@ describe('cli helpers', () => {
       const parsed = JSON.parse(readFileSync(path, 'utf8'))
       expect(parsed.theme).toBe('dark')
       expect(parsed.mcpServers.other.command).toBe('foo')
-      expect(parsed.mcpServers.quadtodo.url).toBe('http://127.0.0.1:5677/mcp')
+      expect(parsed.mcpServers.agentquad.url).toBe('http://127.0.0.1:5677/mcp')
     })
 
     it('is idempotent when same entry already present', () => {

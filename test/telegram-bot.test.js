@@ -634,9 +634,9 @@ describe('getProxyFetch dispatcher cache', () => {
 })
 
 describe('readBotTokenWithSource', () => {
-  it('returns quadtodo source when config has botToken', () => {
+  it('returns agentquad source when config has botToken', () => {
     const r = readBotTokenWithSource(() => ({ telegram: { botToken: 'XXX' } }))
-    expect(r).toEqual({ token: 'XXX', source: 'quadtodo' })
+    expect(r).toEqual({ token: 'XXX', source: 'agentquad' })
   })
 
   it('returns missing when config has no botToken', () => {
