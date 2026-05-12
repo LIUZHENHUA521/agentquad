@@ -17,15 +17,19 @@ import './mobile.css'
 import TodoManage from './TodoManage'
 import { ThemeProvider, useTheme } from './design/ThemeProvider'
 import { getAntdTheme } from './design/antd-theme'
+import { useGlobalShortcuts } from './design/useGlobalShortcuts'
+import { CommandPalette } from './components/CommandPalette'
 
 dayjs.locale('zh-cn')
 
 function ThemedApp() {
   const { mode } = useTheme()
+  useGlobalShortcuts()
   return (
     <ConfigProvider locale={zhCN} theme={getAntdTheme(mode)}>
       <AntdApp message={{ maxCount: 3 }}>
         <TodoManage />
+        <CommandPalette />
       </AntdApp>
     </ConfigProvider>
   )
