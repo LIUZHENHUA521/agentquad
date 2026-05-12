@@ -28,7 +28,7 @@ import {
   startAiExec, getWorkDirOptions, pickDirectory, deleteTodoAiSession,
   openTraeCN, openTerminal, openNativeAiResume, updateSessionLabel,
   listComments, addComment, deleteComment,
-  listLiveSessions, stopAiExec,
+  listLiveSessions,
   listTemplates, PromptTemplate,
   createRecurringRule, getRecurringRule, updateRecurringRule, deactivateRecurringRule,
   RecurringFrequency, RecurringRule,

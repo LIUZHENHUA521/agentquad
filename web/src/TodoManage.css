@@ -820,28 +820,6 @@ body {
   height: 100vh;
   padding: 0;
 }
-.attention-rail__count {
-  width: 36px;
-  height: 28px;
-  border-radius: 14px;
-  border: 1px solid #d9d9d9;
-  background: #fff;
-  color: #595959;
-  font-weight: 600;
-  font-size: 12px;
-  cursor: pointer;
-  margin-bottom: 8px;
-}
-.attention-rail__count:hover { background: #f0f0f0; }
-.attention-rail.is-alerting .attention-rail__count {
-  border-color: #ff4d4f;
-  color: #ff4d4f;
-  animation: attention-rail-pulse 1.6s infinite;
-}
-@keyframes attention-rail-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 77, 79, 0); }
-  50%      { box-shadow: 0 0 0 6px rgba(255, 77, 79, 0.3); }
-}
 .attention-rail__items {
   display: flex;
   flex-direction: column;
