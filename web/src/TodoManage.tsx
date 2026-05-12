@@ -277,6 +277,7 @@ function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo = false,
       {...attributes}
       className={cardClassName}
       id={`todo-card-${todo.id}`}
+      data-todo-id={todo.id}
     >
       <div className="todo-card-shell">
         <div
