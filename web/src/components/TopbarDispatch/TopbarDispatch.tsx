@@ -15,16 +15,21 @@ export function TopbarDispatch() {
   const sessions = useAiSessionStore((s) => s.sessions)
   const activeList: { id: string; title: string; tool: string; status: string }[] = []
   const pendingList: { id: string; title: string; tool: string }[] = []
-  sessions.forEach((s) => {
-    const status = (s as { status?: string }).status
-    const title = (s as { todoTitle?: string }).todoTitle ?? (s as { title?: string }).title ?? '(untitled)'
-    const tool = (s as { tool?: string }).tool ?? 'ai'
-    const id = (s as { sessionId?: string; id?: string }).sessionId ?? (s as { id?: string }).id ?? ''
-    if (status === 'running' || status === 'thinking') {
-      activeList.push({ id, title, tool, status })
+  sessions.forEach((session) => {
+    if (session.status === 'running') {
+      activeList.push({
+        id: session.sessionId,
+        title: session.todoTitle,
+        tool: session.tool,
+        status: session.status,
+      })
     }
-    if (status === 'pending_confirm') {
-      pendingList.push({ id, title, tool })
+    if (session.status === 'pending_confirm') {
+      pendingList.push({
+        id: session.sessionId,
+        title: session.todoTitle,
+        tool: session.tool,
+      })
     }
   })
 
@@ -49,7 +54,7 @@ export function TopbarDispatch() {
               <div className="topbar-tooltip-title">Active sessions ({activeList.length})</div>
               {activeList.map((s) => (
                 <div key={s.id} className="topbar-tooltip-row">
-                  <span className="topbar-tooltip-dot" style={{ background: s.status === 'thinking' ? 'var(--ai-thinking)' : 'var(--ai-running)' }} />
+                  <span className="topbar-tooltip-dot" style={{ background: 'var(--ai-running)' }} />
                   <span className="topbar-tooltip-name">{s.title}</span>
                   <span className="topbar-tooltip-meta">{s.tool}</span>
                 </div>

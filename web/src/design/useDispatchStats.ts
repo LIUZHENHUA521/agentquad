@@ -24,16 +24,12 @@ export function useDispatchStats(): DispatchStats {
   return useMemo(() => {
     let activeCount = 0
     let pendingCount = 0
-    let tokenSum = 0
+    // tokenSum: LiveSession does NOT carry token totals as of M2.
+    // Always returns 0 until M3 wires a richer source (server-pushed or aggregated).
+    const tokenSum = 0
     sessions.forEach((session) => {
-      const status = (session as { status?: string }).status
-      if (status === 'running' || status === 'thinking') activeCount += 1
-      if (status === 'pending_confirm') pendingCount += 1
-      // Token sum: try common fields; if none present, contributes 0.
-      const tokens = (session as { totalTokens?: number; tokens?: number }).totalTokens
-        ?? (session as { tokens?: number }).tokens
-        ?? 0
-      if (typeof tokens === 'number') tokenSum += tokens
+      if (session.status === 'running') activeCount += 1
+      if (session.status === 'pending_confirm') pendingCount += 1
     })
     return { activeCount, pendingCount, tokenSum, tokenSumLabel: formatTokens(tokenSum) }
   }, [sessions])

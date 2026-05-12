@@ -114,7 +114,7 @@ export function CommandPalette() {
                   {todos.map((t) => (
                     <Command.Item
                       key={t.id}
-                      value={`todo ${t.title}`}
+                      value={`todo-${t.id}-${t.title}`}
                       onSelect={() => {
                         useDispatchStore.getState().setJumpTo(t.id)
                         closePalette()
@@ -170,7 +170,7 @@ export function CommandPalette() {
                   {todos.map((t) => (
                     <Command.Item
                       key={t.id}
-                      value={`picktodo ${t.title}`}
+                      value={`picktodo-${t.id}-${t.title}`}
                       onSelect={() => {
                         // For now, jumping to the todo + setting an intent flag is enough.
                         // M3 will hook the real session start.
