@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { useFocusStore } from './focusStore'
 
 export type DrawerKey = 'settings' | 'stats' | 'wiki' | 'report'
 
@@ -24,6 +25,9 @@ interface DispatchState {
   closePalette: () => void
   togglePalette: () => void
 
+  /** Open the session focus overlay for the given todo (and its session, if known). Closes palette + drawers. */
+  openFocus: (todoId: string, sessionId?: string | null) => void
+
   /** When set, TodoManage should scroll/focus this todo and clear the field */
   jumpToTodoId: string | null
   /** When true, TodoManage should open its new-todo drawer and clear the flag */
@@ -48,6 +52,12 @@ export const useDispatchStore = create<DispatchState>((set) => ({
   openPalette: () => set(() => ({ palette: true })),
   closePalette: () => set(() => ({ palette: false })),
   togglePalette: () => set((s) => ({ palette: !s.palette })),
+
+  openFocus: (todoId, sessionId) => {
+    // Close any open palette/drawers, then activate focus mode
+    set(() => ({ palette: false, settings: false, stats: false, wiki: false, report: false }))
+    useFocusStore.getState().setFocus(todoId, sessionId ?? null)
+  },
 
   jumpToTodoId: null,
   requestNewTodo: false,
