@@ -93,6 +93,47 @@ function formatSessionTime(ts?: number | null) {
   return dayjs(ts).format('MM/DD HH:mm')
 }
 
+// ─── Description parser: split text into text/image segments ───
+// Matches "@/abs/path.{png,jpg,jpeg,gif,webp}" where path starts with '/' and
+// ends at whitespace, end-of-string, or a CJK/ASCII punctuation. The matched
+// path is removed from the surrounding text so the chip-style preview replaces
+// the raw string in the rendered card.
+const DESC_IMAGE_RE = /@(\/[^\s@，。、；;]+?\.(?:png|jpe?g|gif|webp))(?=\s|$|[，。、；;])/gi
+
+export type DescSegment =
+  | { type: 'text'; value: string }
+  | { type: 'image'; path: string }
+
+export function parseDescription(text: string | null | undefined): DescSegment[] {
+  const src = text || ''
+  if (!src) return []
+  const out: DescSegment[] = []
+  let last = 0
+  // Fresh regex instance so module-level /g state doesn't bleed between calls.
+  const re = new RegExp(DESC_IMAGE_RE.source, DESC_IMAGE_RE.flags)
+  let m: RegExpExecArray | null
+  while ((m = re.exec(src)) !== null) {
+    const before = src.slice(last, m.index)
+    if (before) out.push({ type: 'text', value: before })
+    out.push({ type: 'image', path: m[1] })
+    last = m.index + m[0].length
+  }
+  const tail = src.slice(last)
+  if (tail) out.push({ type: 'text', value: tail })
+  // Trim leftover whitespace on text segments so a removed path doesn't leave
+  // long runs of spaces or blank lines.
+  return out.map((s) =>
+    s.type === 'text'
+      ? { type: 'text' as const, value: s.value.replace(/[ \t]{2,}/g, ' ').replace(/\n{3,}/g, '\n\n') }
+      : s,
+  )
+}
+
+export function formatDueDate(ts: number | null | undefined): { label: string; overdue: boolean } {
+  if (!ts) return { label: '无', overdue: false }
+  return { label: dayjs(ts).format('MM-DD HH:mm'), overdue: ts < Date.now() }
+}
+
 function toolDisplayName(tool: AiTool) {
   if (tool === 'claude') return 'Claude Code'
   if (tool === 'codex') return 'Codex'
