@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { mkdtempSync, rmSync, readFileSync, existsSync } from 'node:fs'
+import { mkdtempSync, rmSync, readFileSync, existsSync, writeFileSync as fsWriteFileSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import express from 'express'
@@ -144,9 +144,16 @@ describe('GET /api/uploads/file', () => {
 
   it('rejects path outside the upload dir (directory traversal) with 403', async () => {
     const app = makeApp(tmp)
-    const outside = join(tmp, '..', 'etc-passwd-like')
-    const r = await getFile(app, '/api/uploads/file', { path: outside })
-    expect(r.status).toBe(403)
+    // Create a real file in a sibling directory so realpathSync can resolve it.
+    const siblingDir = mkdtempSync(join(tmpdir(), 'qt-outside-'))
+    try {
+      const outsideFile = join(siblingDir, 'etc-passwd-like')
+      fsWriteFileSync(outsideFile, 'secret')
+      const r = await getFile(app, '/api/uploads/file', { path: outsideFile })
+      expect(r.status).toBe(403)
+    } finally {
+      rmSync(siblingDir, { recursive: true, force: true })
+    }
   })
 
   it('returns 404 when the file is missing', async () => {
@@ -154,5 +161,24 @@ describe('GET /api/uploads/file', () => {
     const ghost = join(tmp, 'does-not-exist.png')
     const r = await getFile(app, '/api/uploads/file', { path: ghost })
     expect(r.status).toBe(404)
+  })
+
+  it('rejects symlinks that escape the upload dir', async () => {
+    const app = makeApp(tmp)
+    // Create a real file outside tmp, then symlink it INTO tmp.
+    // realpathSync should resolve the symlink to its target (outside tmp)
+    // and the sandbox check should reject it with 403.
+    const outsideDir = mkdtempSync(join(tmpdir(), 'qt-outside-'))
+    try {
+      const outsideFile = join(outsideDir, 'secret.png')
+      fsWriteFileSync(outsideFile, Buffer.from([1, 2, 3]))
+      const linkInside = join(tmp, 'link.png')
+      symlinkSync(outsideFile, linkInside)
+
+      const r = await getFile(app, '/api/uploads/file', { path: linkInside })
+      expect(r.status).toBe(403)
+    } finally {
+      rmSync(outsideDir, { recursive: true, force: true })
+    }
   })
 })

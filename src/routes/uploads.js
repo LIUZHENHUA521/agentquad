@@ -12,7 +12,7 @@
  * 文件落到 ~/.agentquad/web-uploads/<ts>-<rand>.<ext>，跟 telegram tg-uploads 同模式。
  */
 import { Router } from 'express'
-import { mkdirSync, writeFileSync, statSync } from 'node:fs'
+import { mkdirSync, writeFileSync, statSync, realpathSync } from 'node:fs'
 import { join, resolve as resolvePath, sep } from 'node:path'
 import { Buffer } from 'node:buffer'
 import { DEFAULT_ROOT_DIR } from '../config.js'
@@ -75,14 +75,27 @@ export function createUploadsRouter({ uploadDir = DEFAULT_UPLOAD_DIR, logger = c
     try {
       const raw = String(req.query.path || '')
       if (!raw) return res.status(400).json({ ok: false, error: 'path_required' })
-      const rootAbs = resolvePath(uploadDir) + sep
-      const fileAbs = resolvePath(raw)
-      if (!(fileAbs + sep).startsWith(rootAbs) && fileAbs !== resolvePath(uploadDir)) {
+      // Resolve symlinks for both root and file so a symlink inside the upload
+      // dir can't escape the sandbox.
+      let rootAbs
+      try { rootAbs = realpathSync(resolvePath(uploadDir)) + sep } catch {
+        // upload dir doesn't exist yet → nothing inside it can possibly be served
+        return res.status(404).json({ ok: false, error: 'not_found' })
+      }
+      let fileAbs
+      try { fileAbs = realpathSync(resolvePath(raw)) } catch {
+        return res.status(404).json({ ok: false, error: 'not_found' })
+      }
+      if (!(fileAbs + sep).startsWith(rootAbs)) {
         return res.status(403).json({ ok: false, error: 'forbidden_path' })
       }
-      let st
-      try { st = statSync(fileAbs) } catch { return res.status(404).json({ ok: false, error: 'not_found' }) }
+      const st = statSync(fileAbs)
       if (!st.isFile()) return res.status(404).json({ ok: false, error: 'not_a_file' })
+      // Defensive headers: prevent SVG/HTML uploads from executing scripts when
+      // served back. Content-Type is still inferred by sendFile from extension.
+      res.set('Content-Disposition', 'inline')
+      res.set('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; sandbox")
+      res.set('X-Content-Type-Options', 'nosniff')
       return res.sendFile(fileAbs)
     } catch (e) {
       logger.warn?.(`[uploads] serve failed: ${e.message}`)
