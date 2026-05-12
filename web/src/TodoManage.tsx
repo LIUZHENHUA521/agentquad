@@ -64,6 +64,7 @@ import { useDrawerStackStore } from './store/drawerStackStore'
 import { useDrawerStack } from './hooks/useDrawerStack'
 import { useDispatchStore } from './store/dispatchStore'
 import { TopbarDispatch } from './components/TopbarDispatch'
+import { QuadrantBoard } from './components/QuadrantBoard'
 import './TodoManage.css'
 
 const { TextArea } = Input
@@ -974,10 +975,7 @@ export default function TodoManage() {
   // 拖拽
   const [activeId, setActiveId] = useState<string | null>(null)
 
-  // 四象限分割比例（百分比）
-  const [splitH, setSplitH] = useState(50)  // 上下分割：上面占比
-  const [splitV, setSplitV] = useState(50)  // 左右分割：左边占比
-  const boardRef = React.useRef<HTMLDivElement>(null)
+  // splitV/splitH 状态由 <QuadrantBoard /> 内部维护
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -1754,132 +1752,44 @@ export default function TodoManage() {
           onDragStart={handleDragStart}
           onDragEnd={handleDragEnd}
         >
-          <div className="todo-board" ref={boardRef}>
-            {/* 上面一行：Q1 | 分隔线 | Q2 */}
-            <div className="todo-board-row" style={{ flex: splitH }}>
-              <QuadrantZone
-                config={QUADRANT_CONFIG[0]} todos={todosByQuadrant[1] || []}
-                childrenByParentId={childrenByParentId}
-                childHitIdsByParentId={childHitIdsByParentId}
-                onCreateSubtodo={handleCreateSubtodo}
-                onCardClick={openDetail} onToggleDone={handleToggleDone}
-                onAiExec={handleAiExec} onRequestFork={handleRequestFork} onDeleteAiSession={handleDeleteAiSession} onUpdateSessionLabel={handleUpdateSessionLabel} onDelete={handleDelete}
-                onOpenTrae={handleOpenTrae} onOpenTerminal={handleOpenTerminal} onOpenNativeResume={handleOpenNativeResume} onCopyPrompt={handleCopyPrompt} onExport={handleExport}
-                style={{ flex: splitV }}
-                isNarrow={isNarrow}
-                onRefresh={fetchTodos}
-                highlightTodoId={highlightTodoId}
-              />
-              <div
-                className="todo-divider-v"
-                onMouseDown={(e) => {
-                  e.preventDefault()
-                  const board = boardRef.current
-                  if (!board) return
-                  const startX = e.clientX
-                  const startSplit = splitV
-                  const boardW = board.getBoundingClientRect().width
-                  const onMove = (ev: MouseEvent) => {
-                    const delta = ((ev.clientX - startX) / boardW) * 100
-                    setSplitV(Math.max(20, Math.min(80, startSplit + delta)))
-                  }
-                  const onUp = () => {
-                    document.removeEventListener('mousemove', onMove)
-                    document.removeEventListener('mouseup', onUp)
-                  }
-                  document.addEventListener('mousemove', onMove)
-                  document.addEventListener('mouseup', onUp)
-                }}
-              />
-              <QuadrantZone
-                config={QUADRANT_CONFIG[1]} todos={todosByQuadrant[2] || []}
-                childrenByParentId={childrenByParentId}
-                childHitIdsByParentId={childHitIdsByParentId}
-                onCreateSubtodo={handleCreateSubtodo}
-                onCardClick={openDetail} onToggleDone={handleToggleDone}
-                onAiExec={handleAiExec} onRequestFork={handleRequestFork} onDeleteAiSession={handleDeleteAiSession} onUpdateSessionLabel={handleUpdateSessionLabel} onDelete={handleDelete}
-                onOpenTrae={handleOpenTrae} onOpenTerminal={handleOpenTerminal} onOpenNativeResume={handleOpenNativeResume} onCopyPrompt={handleCopyPrompt} onExport={handleExport}
-                style={{ flex: 100 - splitV }}
-                isNarrow={isNarrow}
-                onRefresh={fetchTodos}
-                highlightTodoId={highlightTodoId}
-              />
-            </div>
-
-            {/* 水平分隔线 */}
-            <div
-              className="todo-divider-h"
-              onMouseDown={(e) => {
-                e.preventDefault()
-                const board = boardRef.current
-                if (!board) return
-                const startY = e.clientY
-                const startSplit = splitH
-                const boardH = board.getBoundingClientRect().height
-                const onMove = (ev: MouseEvent) => {
-                  const delta = ((ev.clientY - startY) / boardH) * 100
-                  setSplitH(Math.max(20, Math.min(80, startSplit + delta)))
+          {(() => {
+            const sharedZoneProps = {
+              childrenByParentId,
+              childHitIdsByParentId,
+              onCreateSubtodo: handleCreateSubtodo,
+              onCardClick: openDetail,
+              onToggleDone: handleToggleDone,
+              onAiExec: handleAiExec,
+              onRequestFork: handleRequestFork,
+              onDeleteAiSession: handleDeleteAiSession,
+              onUpdateSessionLabel: handleUpdateSessionLabel,
+              onDelete: handleDelete,
+              onOpenTrae: handleOpenTrae,
+              onOpenTerminal: handleOpenTerminal,
+              onOpenNativeResume: handleOpenNativeResume,
+              onCopyPrompt: handleCopyPrompt,
+              onExport: handleExport,
+              isNarrow,
+              onRefresh: fetchTodos,
+              highlightTodoId,
+            }
+            return (
+              <QuadrantBoard
+                topLeft={
+                  <QuadrantZone config={QUADRANT_CONFIG[0]} todos={todosByQuadrant[1] || []} {...sharedZoneProps} />
                 }
-                const onUp = () => {
-                  document.removeEventListener('mousemove', onMove)
-                  document.removeEventListener('mouseup', onUp)
+                topRight={
+                  <QuadrantZone config={QUADRANT_CONFIG[1]} todos={todosByQuadrant[2] || []} {...sharedZoneProps} />
                 }
-                document.addEventListener('mousemove', onMove)
-                document.addEventListener('mouseup', onUp)
-              }}
-            />
-
-            {/* 下面一行：Q3 | 分隔线 | Q4 */}
-            <div className="todo-board-row" style={{ flex: 100 - splitH }}>
-              <QuadrantZone
-                config={QUADRANT_CONFIG[2]} todos={todosByQuadrant[3] || []}
-                childrenByParentId={childrenByParentId}
-                childHitIdsByParentId={childHitIdsByParentId}
-                onCreateSubtodo={handleCreateSubtodo}
-                onCardClick={openDetail} onToggleDone={handleToggleDone}
-                onAiExec={handleAiExec} onRequestFork={handleRequestFork} onDeleteAiSession={handleDeleteAiSession} onUpdateSessionLabel={handleUpdateSessionLabel} onDelete={handleDelete}
-                onOpenTrae={handleOpenTrae} onOpenTerminal={handleOpenTerminal} onOpenNativeResume={handleOpenNativeResume} onCopyPrompt={handleCopyPrompt} onExport={handleExport}
-                style={{ flex: splitV }}
-                isNarrow={isNarrow}
-                onRefresh={fetchTodos}
-                highlightTodoId={highlightTodoId}
+                bottomLeft={
+                  <QuadrantZone config={QUADRANT_CONFIG[2]} todos={todosByQuadrant[3] || []} {...sharedZoneProps} />
+                }
+                bottomRight={
+                  <QuadrantZone config={QUADRANT_CONFIG[3]} todos={todosByQuadrant[4] || []} {...sharedZoneProps} />
+                }
               />
-              <div
-                className="todo-divider-v"
-                onMouseDown={(e) => {
-                  e.preventDefault()
-                  const board = boardRef.current
-                  if (!board) return
-                  const startX = e.clientX
-                  const startSplit = splitV
-                  const boardW = board.getBoundingClientRect().width
-                  const onMove = (ev: MouseEvent) => {
-                    const delta = ((ev.clientX - startX) / boardW) * 100
-                    setSplitV(Math.max(20, Math.min(80, startSplit + delta)))
-                  }
-                  const onUp = () => {
-                    document.removeEventListener('mousemove', onMove)
-                    document.removeEventListener('mouseup', onUp)
-                  }
-                  document.addEventListener('mousemove', onMove)
-                  document.addEventListener('mouseup', onUp)
-                }}
-              />
-              <QuadrantZone
-                config={QUADRANT_CONFIG[3]} todos={todosByQuadrant[4] || []}
-                childrenByParentId={childrenByParentId}
-                childHitIdsByParentId={childHitIdsByParentId}
-                onCreateSubtodo={handleCreateSubtodo}
-                onCardClick={openDetail} onToggleDone={handleToggleDone}
-                onAiExec={handleAiExec} onRequestFork={handleRequestFork} onDeleteAiSession={handleDeleteAiSession} onUpdateSessionLabel={handleUpdateSessionLabel} onDelete={handleDelete}
-                onOpenTrae={handleOpenTrae} onOpenTerminal={handleOpenTerminal} onOpenNativeResume={handleOpenNativeResume} onCopyPrompt={handleCopyPrompt} onExport={handleExport}
-                style={{ flex: 100 - splitV }}
-                isNarrow={isNarrow}
-                onRefresh={fetchTodos}
-                highlightTodoId={highlightTodoId}
-              />
-            </div>
-          </div>
+            )
+          })()}
           <DragOverlay>
             {activeTodo ? (
               <div className={`todo-card quadrant-${activeTodo.quadrant}`} style={{ boxShadow: '0 4px 12px rgba(0,0,0,0.15)', width: 300 }}>

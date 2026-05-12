@@ -1,0 +1,69 @@
+/* ─── 四象限看板（splitV / splitH 由 QuadrantBoard 内部维护） ─── */
+.todo-board {
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-2);
+  border-radius: 8px;
+  overflow: hidden;
+  min-height: calc(100vh - 220px);
+}
+
+.todo-board-row {
+  display: flex;
+  flex: 1;
+  min-height: 100px;
+}
+
+/* 垂直分隔线（左右拖拽） */
+.todo-divider-v {
+  width: 6px;
+  background: var(--surface-2);
+  cursor: col-resize;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+}
+.todo-divider-v:hover,
+.todo-divider-v.dragging {
+  background: var(--accent-electric);
+}
+.todo-divider-v::after {
+  content: '';
+  width: 2px;
+  height: 24px;
+  border-radius: 1px;
+  background: var(--text-tertiary);
+}
+.todo-divider-v:hover::after,
+.todo-divider-v.dragging::after {
+  background: var(--text-primary);
+}
+
+/* 水平分隔线（上下拖拽） */
+.todo-divider-h {
+  height: 6px;
+  background: var(--surface-2);
+  cursor: row-resize;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+}
+.todo-divider-h:hover,
+.todo-divider-h.dragging {
+  background: var(--accent-electric);
+}
+.todo-divider-h::after {
+  content: '';
+  width: 24px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--text-tertiary);
+}
+.todo-divider-h:hover::after,
+.todo-divider-h.dragging::after {
+  background: var(--text-primary);
+}
