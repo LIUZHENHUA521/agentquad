@@ -5,6 +5,7 @@ import {
   TerminalPresetName,
   isPresetName,
   isValidColor,
+  migratePreset,
 } from '../terminalThemes'
 
 // rebrand: localStorage keys kept for backward compatibility
@@ -31,7 +32,8 @@ function readStored(): StoredTheme {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return DEFAULT_STORED
     const parsed = JSON.parse(raw)
-    const presetCandidate: string = typeof parsed?.preset === 'string' ? parsed.preset : 'default'
+    const presetCandidateRaw: string = typeof parsed?.preset === 'string' ? parsed.preset : 'default'
+    const presetCandidate = migratePreset(presetCandidateRaw).value
     const preset = (isPresetName(presetCandidate) || presetCandidate.startsWith(CUSTOM_PREFIX))
       ? presetCandidate : 'default'
     const override: ThemeOverride = {}

@@ -305,3 +305,18 @@ export function deriveChrome(theme: { background?: string; foreground?: string }
     isLight,
   }
 }
+
+/** 旧版本内置 preset → 新版本对应主题。仅在 readStored 中改写返回值；持久化由 hook 的 useEffect 完成。 */
+export const LEGACY_PRESET_MIGRATION: Record<string, TerminalPresetName> = {
+  'dracula': 'catppuccin-mocha',
+  'solarized-dark': 'catppuccin-macchiato',
+  'one-dark': 'tokyo-night-storm',
+  'solarized-light': 'catppuccin-latte',
+}
+
+/** 纯函数：把旧 preset key 映射到新 key；非 legacy 输入原样返回。 */
+export function migratePreset(raw: string): { value: string; migrated: boolean } {
+  const mapped = LEGACY_PRESET_MIGRATION[raw]
+  if (mapped) return { value: mapped, migrated: true }
+  return { value: raw, migrated: false }
+}
