@@ -623,16 +623,6 @@ export interface LiveSession {
   awaitingReply?: boolean
 }
 
-export interface SessionStats {
-  total: number
-  byStatus: { done: number; failed: number; stopped: number }
-  byTool: { claude: number; codex: number; cursor: number }
-  byQuadrant: Record<1 | 2 | 3 | 4, number>
-  totalDurationMs: number
-  avgDurationMs: number
-  timeline: { t: number; count: number }[]
-}
-
 export interface ResourceSnapshot {
   sessionId: string
   todoId: string | null
@@ -647,11 +637,6 @@ export interface ResourceSnapshot {
 export async function listLiveSessions(): Promise<LiveSession[]> {
   const body = await jsonFetch<{ ok: true; sessions: LiveSession[] }>('/api/ai-terminal/sessions')
   return body.sessions
-}
-
-export async function getSessionStats(range: 'today' | 'week' | 'month'): Promise<{ range: string; since: number; until: number; stats: SessionStats }> {
-  const body = await jsonFetch<{ ok: true; range: string; since: number; until: number; stats: SessionStats }>(`/api/ai-terminal/stats?range=${range}`)
-  return body
 }
 
 export async function getResourceSnapshot(): Promise<ResourceSnapshot[]> {
