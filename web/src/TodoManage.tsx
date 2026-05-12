@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import {
   Button, Space, Tag, Drawer, Form, Input, DatePicker, Empty, Image,
-  Radio, message, Popconfirm, Spin, Tooltip, Dropdown, Select, Switch, Segmented, Modal,
+  Radio, Popconfirm, Spin, Tooltip, Dropdown, Select, Switch, Segmented, Modal,
 } from 'antd'
+import { useAppMessages } from './design/useAppMessages'
 import {
   PlusOutlined,
   DeleteOutlined, CheckOutlined,
@@ -224,6 +225,7 @@ function dockStatusOf(
 }
 
 function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo = false, onCreateSubtodo, onClick, onToggleDone, onAiExec, onDeleteAiSession, onUpdateSessionLabel, onDelete, onOpenTrae, onOpenTerminal, onOpenNativeResume, onCopyPrompt, onExport, onOpenSessionInDock, isNarrow, onRequestFork, onRefresh, highlightTodoId }: SortableTodoCardProps) {
+  const { message } = useAppMessages()
   const [editingLabelSessionId, setEditingLabelSessionId] = useState<string | null>(null)
   const [editingLabelText, setEditingLabelText] = useState('')
   const [childrenExpanded, setChildrenExpanded] = useState(true)
@@ -716,6 +718,7 @@ function QuadrantZone({ config, todos, childrenByParentId, childHitIdsByParentId
 // ─── 主页面 ───
 
 export default function TodoManage() {
+  const { message, modal } = useAppMessages()
   // 数据
   const [todos, setTodos] = useState<Todo[]>([])
   const [welcomeDismissed, setWelcomeDismissed] = useWelcomeDismissed()
@@ -1326,7 +1329,7 @@ export default function TodoManage() {
     if (memorizing) return
     const already = todoCoverage[todo.id]
     if (already && !force) {
-      Modal.confirm({
+      modal.confirm({
         title: '这条已经沉淀过',
         content: '重新沉淀会再跑一次 claude（消耗 token）。确认吗？',
         onOk: () => handleMemorize(todo, true),

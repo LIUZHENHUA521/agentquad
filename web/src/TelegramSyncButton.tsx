@@ -6,9 +6,10 @@
  *   - clear_route: 孤儿路由 → 清
  */
 import { useState } from 'react'
-import { Button, Modal, Tag, message, Tooltip } from 'antd'
+import { Button, Modal, Tag, Tooltip } from 'antd'
 import { SyncOutlined } from '@ant-design/icons'
 import { syncChannels, SyncResponse, SyncActionType } from './api'
+import { useAppMessages } from './design/useAppMessages'
 
 const TYPE_LABEL: Record<SyncActionType, string> = {
   open_topic: '建 TG 话题',
@@ -26,6 +27,7 @@ const TYPE_COLOR: Record<SyncActionType, string> = {
 }
 
 export default function TelegramSyncButton() {
+  const { message } = useAppMessages()
   const [loading, setLoading] = useState(false)
   const [plan, setPlan] = useState<SyncResponse | null>(null)
   const [confirmOpen, setConfirmOpen] = useState(false)

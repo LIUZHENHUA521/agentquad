@@ -3,7 +3,8 @@
  */
 
 import React, { useEffect, useMemo, useRef, useCallback, useState } from 'react'
-import { Button, Tooltip, Tag, Dropdown, Modal, ColorPicker, Input, Divider, message } from 'antd'
+import { Button, Tooltip, Tag, Dropdown, Modal, ColorPicker, Input, Divider } from 'antd'
+import { useAppMessages } from './design/useAppMessages'
 import { FullscreenOutlined, FullscreenExitOutlined, StopOutlined, DownOutlined, VerticalAlignBottomOutlined, LockOutlined, UnlockOutlined, BgColorsOutlined, DeleteOutlined, UpOutlined, LeftOutlined, RightOutlined, DragOutlined } from '@ant-design/icons'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
@@ -110,6 +111,7 @@ async function waitTerminalReady(container: HTMLDivElement): Promise<void> {
 
 export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeTarget, onSessionRecovered, onSessionSwitch, onClose, onDone, onStatusChange, fillHeight }: Props) {
   void onClose
+  const { message } = useAppMessages()
   const { theme, preset, override, customPresets, setPreset, setOverride, resetOverride, saveCustomPreset, deleteCustomPreset } = useTerminalTheme()
   const themeRef = useRef(theme)
   useEffect(() => { themeRef.current = theme }, [theme])

@@ -1,7 +1,8 @@
 // web/src/dock/TerminalDock.tsx
 import React, { useCallback, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { Button, Dropdown, Tooltip, message } from 'antd'
+import { Button, Dropdown, Tooltip } from 'antd'
+import { useAppMessages } from '../design/useAppMessages'
 import { CloseOutlined, MenuFoldOutlined, ColumnWidthOutlined, MergeCellsOutlined, ExportOutlined, CodeOutlined } from '@ant-design/icons'
 import {
   DndContext,
@@ -77,6 +78,7 @@ interface Props {
 export default function TerminalDock({
   resolveTabContext, onSessionRecovered, onSessionSwitch, onDone, onFork,
 }: Props = {}) {
+  const { message } = useAppMessages()
   const { widthPx, isCollapsed, openTabs, activeTabId, splitSecondaryTabId, poppedOutTabIds, toggleCollapsed, setWidth } = useTerminalDockStore()
   const tabsRef = useRef<HTMLDivElement | null>(null)
 

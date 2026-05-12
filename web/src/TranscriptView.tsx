@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Input, Button, Spin, Tag, Empty, Tooltip, Mentions, Popconfirm, message } from 'antd'
+import { Input, Button, Spin, Tag, Empty, Tooltip, Mentions, Popconfirm } from 'antd'
+import { useAppMessages } from './design/useAppMessages'
 import {
   ReloadOutlined, BranchesOutlined, DownOutlined, RightOutlined, SearchOutlined, SendOutlined,
   FullscreenOutlined, FullscreenExitOutlined, StopOutlined, PoweroffOutlined,
@@ -206,6 +207,7 @@ const MIN_HEIGHT = 240
 const MAX_HEIGHT = 1200
 
 export default function TranscriptView({ todoId, sessionId, onFork, autoRefreshMs = 0, resumeTarget = null, onSessionRecovered, fillHeight, cwd, active = true }: Props) {
+  const { message } = useAppMessages()
   const [data, setData] = useState<TranscriptResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [sending, setSending] = useState(false)
