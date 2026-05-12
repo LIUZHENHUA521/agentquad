@@ -17,7 +17,7 @@ export function TopbarDispatch() {
   const pendingList: { id: string; title: string; tool: string }[] = []
   sessions.forEach((s) => {
     const status = (s as { status?: string }).status
-    const title = (s as { title?: string }).title ?? '(untitled)'
+    const title = (s as { todoTitle?: string }).todoTitle ?? (s as { title?: string }).title ?? '(untitled)'
     const tool = (s as { tool?: string }).tool ?? 'ai'
     const id = (s as { sessionId?: string; id?: string }).sessionId ?? (s as { id?: string }).id ?? ''
     if (status === 'running' || status === 'thinking') {
