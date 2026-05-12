@@ -78,7 +78,7 @@ export function TelegramProbeModal({ open, onClose, onPick }: Props) {
       </div>
 
       {error ? (
-        <div style={{ color: '#cf1322' }}>启动失败：{error}</div>
+        <div style={{ color: 'var(--ai-error)' }}>启动失败：{error}</div>
       ) : (
         <>
           <div style={{ marginBottom: 8 }}>

@@ -275,7 +275,7 @@ export default function TranscriptSearchDrawer({ open, onClose, preselectTodoId,
                   const boundTodo = f.bound_todo_id ? todos.find(t => t.id === f.bound_todo_id) : null
                   const boundTodoTitle = boundTodo ? `已挂到《${boundTodo.title}》` : ''
                   return (
-                    <div key={f.id} style={{ border: '1px solid #f0f0f0', borderRadius: 6, padding: 10, minWidth: 0 }}>
+                    <div key={f.id} style={{ border: '1px solid var(--border-subtle)', borderRadius: 6, padding: 10, minWidth: 0 }}>
                       <div style={resultHeaderStyle}>
                         <Tag>{f.tool}</Tag>
                         {boundTodo ? (
@@ -291,15 +291,15 @@ export default function TranscriptSearchDrawer({ open, onClose, preselectTodoId,
                           {formatTs(f.started_at)} · {f.turn_count} 轮
                         </Typography.Text>
                       </div>
-                      <div style={{ fontSize: 12, color: '#888', marginTop: 4, wordBreak: 'break-all' }}>
+                      <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 4, wordBreak: 'break-all' }}>
                         cwd: {f.cwd || '-'}
                       </div>
-                      <div style={{ marginTop: 6, fontSize: 13, color: '#333' }}>
+                      <div style={{ marginTop: 6, fontSize: 13, color: 'var(--text-primary)' }}>
                         {f.first_user_prompt ? (f.first_user_prompt.length > 140 ? f.first_user_prompt.slice(0, 140) + '…' : f.first_user_prompt) : <i>(无首条用户消息)</i>}
                       </div>
                       {f.snippet && (
                         <div
-                          style={{ marginTop: 4, fontSize: 12, color: '#666' }}
+                          style={{ marginTop: 4, fontSize: 12, color: 'var(--text-secondary)' }}
                           dangerouslySetInnerHTML={{ __html: f.snippet }}
                         />
                       )}

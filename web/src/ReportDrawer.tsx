@@ -143,7 +143,7 @@ function TodoRow({ todo, indent }: { todo: Todo; indent?: boolean }) {
   return (
     <div className={`report-todo-row${indent ? ' report-todo-row-sub' : ''}`}>
       <span className="report-todo-time">{time}</span>
-      <span className="report-quadrant-dot" style={{ background: q?.color || '#ccc' }} />
+      <span className="report-quadrant-dot" style={{ background: q?.color || 'var(--border-default)' }} />
       <span className="report-todo-title">{todo.title}</span>
       {todo.description ? (
         <span className="report-todo-desc" title={todo.description}>{todo.description}</span>
@@ -289,7 +289,7 @@ export default function ReportDrawer({ open, onClose }: { open: boolean; onClose
 
   const title = (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 15, fontWeight: 600 }}>
-      <TrophyOutlined style={{ color: '#f59f00' }} />
+      <TrophyOutlined style={{ color: 'var(--ai-pending-confirm)' }} />
       完成报表
     </span>
   )

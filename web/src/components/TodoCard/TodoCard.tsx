@@ -143,7 +143,7 @@ export function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo =
         <div className="todo-card-footer">
           <div className="todo-card-meta">
             {todo.brainstorm && (
-              <span className="todo-meta-pill" style={{ background: '#fff7e6', color: '#d46b08', border: '1px solid #ffd591' }}>
+              <span className="todo-meta-pill" style={{ background: 'color-mix(in srgb, var(--ai-pending-confirm) 12%, var(--surface-1))', color: 'var(--ai-pending-confirm)', border: '1px solid color-mix(in srgb, var(--ai-pending-confirm) 40%, var(--surface-1))' }}>
                 脑爆
               </span>
             )}
@@ -314,7 +314,7 @@ export function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo =
                       ) : (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: session.label ? 2 : 0 }}>
                           {session.label && (
-                            <span style={{ fontSize: 12, fontWeight: 600, color: '#333', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={session.label}>
+                            <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={session.label}>
                               {session.label}
                             </span>
                           )}

@@ -531,8 +531,8 @@ export default function TranscriptView({ todoId, sessionId, onFork, autoRefreshM
       value: c.name,
       label: (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', maxWidth: 520 }}>
-          <span style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', color: '#1677ff', flexShrink: 0 }}>/{c.name}</span>
-          <span style={{ fontSize: 11, color: '#888', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <span style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', color: 'var(--accent-electric)', flexShrink: 0 }}>/{c.name}</span>
+          <span style={{ fontSize: 11, color: 'var(--text-tertiary)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {c.description || '—'}
           </span>
           {c.source === 'project' && <Tag color="orange" style={{ fontSize: 10, margin: 0, lineHeight: '16px', height: 16, padding: '0 4px' }}>项目</Tag>}
@@ -810,7 +810,7 @@ export default function TranscriptView({ todoId, sessionId, onFork, autoRefreshM
                 <span className="tv-live-pulse">生成中</span>
                 <div style={{ flex: 1 }} />
                 {liveExpanded && truncated && (
-                  <span style={{ fontSize: 11, color: '#999', marginRight: 6 }}>
+                  <span style={{ fontSize: 11, color: 'var(--text-tertiary)', marginRight: 6 }}>
                     仅最新 {TAIL_LINES} 行
                   </span>
                 )}

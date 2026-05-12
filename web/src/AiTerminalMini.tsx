@@ -1323,7 +1323,7 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
                           e.stopPropagation(); e.preventDefault()
                           if (window.confirm(`删除自定义主题「${name}」？`)) deleteCustomPreset(name)
                         }}
-                        style={{ color: '#999', padding: '0 4px', cursor: 'pointer', fontSize: 11 }}
+                        style={{ color: 'var(--text-tertiary)', padding: '0 4px', cursor: 'pointer', fontSize: 11 }}
                       >
                         <DeleteOutlined />
                       </span>
@@ -1381,7 +1381,7 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
             />
           </div>
           <Divider style={{ margin: '12px 0' }} />
-          <div style={{ fontSize: 12, color: '#888', marginBottom: 6 }}>保存当前颜色为一份自定义主题，下次可直接从下拉里选：</div>
+          <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 6 }}>保存当前颜色为一份自定义主题，下次可直接从下拉里选：</div>
           <div style={{ display: 'flex', gap: 8 }}>
             <Input
               placeholder="输入主题名称，例如：我的深色"
@@ -1405,21 +1405,21 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
         <Tooltip title="清空历史输出（仅显示，不影响任务）">
           <Button type="text" size="small"
             icon={<DeleteOutlined />}
-            style={{ color: '#888', fontSize: 12, width: 20, height: 20, minWidth: 20 }}
+            style={{ color: 'var(--text-tertiary)', fontSize: 12, width: 20, height: 20, minWidth: 20 }}
             onClick={handleClearHistory}
           />
         </Tooltip>
         <Tooltip title="滚动到底部（Ctrl+End）">
           <Button type="text" size="small"
             icon={<VerticalAlignBottomOutlined />}
-            style={{ color: '#888', fontSize: 12, width: 20, height: 20, minWidth: 20 }}
+            style={{ color: 'var(--text-tertiary)', fontSize: 12, width: 20, height: 20, minWidth: 20 }}
             onClick={scrollToBottom}
           />
         </Tooltip>
         {isActive && !sessionExpired && (
           <Tooltip title="中止">
             <Button type="text" size="small" danger icon={<StopOutlined />}
-              style={{ color: '#ff6b6b', fontSize: 12, width: 20, height: 20, minWidth: 20 }}
+              style={{ color: 'var(--ai-error)', fontSize: 12, width: 20, height: 20, minWidth: 20 }}
               onClick={handleStop}
             />
           </Tooltip>
@@ -1429,14 +1429,14 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
             className="dpad-toggle-btn"
             type="text" size="small"
             icon={<DragOutlined />}
-            style={{ color: dpadHidden ? '#666' : '#5b9bd5', fontSize: 12, width: 20, height: 20, minWidth: 20 }}
+            style={{ color: dpadHidden ? 'var(--text-secondary)' : 'var(--accent-electric)', fontSize: 12, width: 20, height: 20, minWidth: 20 }}
             onClick={toggleDpad}
           />
         </Tooltip>
         <Tooltip title={fullscreen ? '退出全屏' : '全屏'}>
           <Button type="text" size="small"
             icon={fullscreen ? <FullscreenExitOutlined /> : <FullscreenOutlined />}
-            style={{ color: '#888', fontSize: 12, width: 20, height: 20, minWidth: 20 }}
+            style={{ color: 'var(--text-tertiary)', fontSize: 12, width: 20, height: 20, minWidth: 20 }}
             onClick={toggleFullscreen}
           />
         </Tooltip>
@@ -1450,7 +1450,7 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
           <div style={{ fontWeight: 600, marginBottom: 8 }}>
             AI 工具 <code>{toolMissing.tool}</code> 未安装
           </div>
-          <div style={{ marginBottom: 10, color: '#595959', fontSize: 12 }}>
+          <div style={{ marginBottom: 10, color: 'var(--text-secondary)', fontSize: 12 }}>
             在 PATH 中找不到二进制文件 <code>{toolMissing.bin}</code>。在终端运行下面这条命令安装：
           </div>
           <div style={{

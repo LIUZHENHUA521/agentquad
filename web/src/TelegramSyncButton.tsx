@@ -94,7 +94,7 @@ export default function TelegramSyncButton() {
       >
         {plan && (
           <>
-            <div style={{ marginBottom: 12, fontSize: 12, color: '#666' }}>
+            <div style={{ marginBottom: 12, fontSize: 12, color: 'var(--text-secondary)' }}>
               TG 建 <b>{plan.summary.open_topic}</b> · 关 <b>{plan.summary.close_topic}</b>
               {' ｜ '}
               Lark 建 <b>{plan.summary.open_thread}</b> · 关 <b>{plan.summary.close_thread}</b>
@@ -119,7 +119,7 @@ export default function TelegramSyncButton() {
                     <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {a.todoTitle || a.sessionId || a.rootMessageId || `thread ${a.threadId}`}
                     </div>
-                    <div style={{ fontSize: 11, color: '#999' }}>{a.reason}</div>
+                    <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{a.reason}</div>
                   </div>
                 </div>
               ))}

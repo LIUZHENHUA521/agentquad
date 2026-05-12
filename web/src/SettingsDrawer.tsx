@@ -435,12 +435,12 @@ export default function SettingsDrawer({ open, onClose }: Props) {
           <Button size="small" onClick={() => handleRedetectTool(tool)}>重新检测</Button>
         </Space>
         {!meta.missing && (
-          <div style={{ marginTop: 6, fontSize: 12, color: '#6b6257' }}>
+          <div style={{ marginTop: 6, fontSize: 12, color: 'var(--text-secondary)' }}>
             当前启动命令：<Text code>{meta.command}</Text>
           </div>
         )}
         {!meta.missing && (
-          <div style={{ marginTop: 6, fontSize: 12, color: '#6b6257' }}>
+          <div style={{ marginTop: 6, fontSize: 12, color: 'var(--text-secondary)' }}>
             当前有效路径：<Text code>{meta.bin}</Text>
           </div>
         )}

@@ -1666,7 +1666,7 @@ export default function TodoManage() {
               return null
             }}
           </Form.Item>
-          <div style={{ color: '#999', fontSize: 12 }}>保存后只影响未来新生成的实例，不会回写已存在的待办。</div>
+          <div style={{ color: 'var(--text-tertiary)', fontSize: 12 }}>保存后只影响未来新生成的实例，不会回写已存在的待办。</div>
         </Form>
       </Modal>
 

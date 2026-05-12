@@ -189,7 +189,7 @@ export default function PipelineRunDrawer({ open, runId, todoId, template, todoS
           {run.status === 'done' && (
             <div className="pr-action-panel pr-action-panel--ok">
               <div className="pr-action-panel-head">
-                <CheckCircleOutlined style={{ color: '#52c41a' }} />
+                <CheckCircleOutlined style={{ color: 'var(--ai-running)' }} />
                 <span className="pr-action-panel-title">Pipeline 通过 — 下一步</span>
                 <span className="pr-action-panel-sub">
                   审阅员已 approved，代码在 <code>{findLatestWriterBranch(run)}</code>
@@ -216,7 +216,7 @@ export default function PipelineRunDrawer({ open, runId, todoId, template, todoS
           {run.status === 'stopped' && (run.messages || []).some(m => m.kind === 'limit') && (
             <div className="pr-action-panel pr-action-panel--warn">
               <div className="pr-action-panel-head">
-                <WarningOutlined style={{ color: '#faad14' }} />
+                <WarningOutlined style={{ color: 'var(--ai-pending-confirm)' }} />
                 <span className="pr-action-panel-title">已达 iteration 上限（maxIterations={template?.maxIterations ?? '?'}）</span>
                 <span className="pr-action-panel-sub">代码员 ↔ 审阅员仍未收敛，请选：</span>
               </div>
@@ -234,7 +234,7 @@ export default function PipelineRunDrawer({ open, runId, todoId, template, todoS
           {run.status === 'stopped' && !(run.messages || []).some(m => m.kind === 'limit') && (
             <div className="pr-action-panel pr-action-panel--warn">
               <div className="pr-action-panel-head">
-                <WarningOutlined style={{ color: '#faad14' }} />
+                <WarningOutlined style={{ color: 'var(--ai-pending-confirm)' }} />
                 <span className="pr-action-panel-title">Pipeline 已停止</span>
               </div>
               <Space wrap>
