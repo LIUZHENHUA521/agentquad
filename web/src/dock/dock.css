@@ -5,8 +5,8 @@
   flex-direction: column;
   flex: 0 0 auto;
   height: 100%;
-  border-left: 1px solid #d9d9d9;
-  background: #fff;
+  border-left: 1px solid var(--border-default);
+  background: var(--surface-1);
   user-select: none;
 }
 .terminal-dock--collapsed {
@@ -25,16 +25,16 @@
   z-index: 5;
 }
 .terminal-dock__divider:hover {
-  background: rgba(22, 119, 255, 0.2);
+  background: color-mix(in srgb, var(--accent-electric) 20%, transparent);
 }
 .terminal-dock__head {
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 6px 10px;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--border-subtle);
 }
-.terminal-dock__count { color: #8c8c8c; font-size: 12px; flex: 1; }
+.terminal-dock__count { color: var(--text-tertiary); font-size: 12px; flex: 1; }
 .terminal-dock__body {
   flex: 1;
   min-height: 0;
@@ -48,7 +48,7 @@
   justify-content: center;
   flex: 1;
   height: 100%;
-  color: #bfbfbf;
+  color: var(--text-disabled);
 }
 .terminal-dock__empty {
   flex: 1;
@@ -59,10 +59,10 @@
   gap: 10px;
   padding: 32px 24px;
   text-align: center;
-  color: #8c8c8c;
+  color: var(--text-tertiary);
   background:
-    radial-gradient(circle at 50% 38%, rgba(22, 119, 255, 0.04), transparent 60%),
-    #fff;
+    radial-gradient(circle at 50% 38%, color-mix(in srgb, var(--accent-electric) 4%, transparent), transparent 60%),
+    var(--surface-1);
 }
 .terminal-dock__empty-icon {
   width: 56px;
@@ -71,21 +71,21 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: rgba(22, 119, 255, 0.08);
-  color: #1677ff;
+  background: var(--accent-electric-soft);
+  color: var(--accent-electric);
   font-size: 26px;
   margin-bottom: 4px;
 }
 .terminal-dock__empty-title {
   font-size: 14px;
   font-weight: 600;
-  color: #434343;
+  color: var(--text-primary);
   letter-spacing: 0.2px;
 }
 .terminal-dock__empty-hint {
   font-size: 12px;
   line-height: 1.6;
-  color: #8c8c8c;
+  color: var(--text-tertiary);
   max-width: 240px;
 }
 .terminal-dock__empty-kbd {
@@ -93,11 +93,11 @@
   padding: 1px 6px;
   margin: 0 2px;
   border-radius: 4px;
-  background: #f5f5f5;
-  border: 1px solid #e8e8e8;
+  background: var(--surface-2);
+  border: 1px solid var(--border-default);
   font-size: 11px;
   font-weight: 500;
-  color: #595959;
+  color: var(--text-secondary);
   white-space: nowrap;
 }
 .terminal-dock__expand-btn { padding: 4px; }
@@ -108,8 +108,8 @@
   flex-direction: row;
   gap: 2px;
   padding: 4px 6px 0 6px;
-  border-bottom: 1px solid #f0f0f0;
-  background: #fafafa;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--surface-2);
   overflow-x: auto;
   flex: 0 0 auto;
   scrollbar-width: none;
@@ -126,32 +126,32 @@
   flex: 0 0 auto;
   user-select: none;
   font-size: 12px;
-  color: #595959;
+  color: var(--text-secondary);
 }
-.terminal-dock__tab:hover { background: #f0f0f0; }
+.terminal-dock__tab:hover { background: var(--surface-3); }
 .terminal-dock__tab.is-active {
-  background: #fff;
-  border-color: #d9d9d9;
-  border-bottom-color: #fff;
+  background: var(--surface-1);
+  border-color: var(--border-default);
+  border-bottom-color: var(--surface-1);
   margin-bottom: -1px;
-  color: #262626;
+  color: var(--text-primary);
   font-weight: 500;
 }
 .terminal-dock__tab-dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #bfbfbf;
+  background: var(--ai-idle);
 }
-.terminal-dock__tab-dot.status-running { background: #52c41a; }
-.terminal-dock__tab-dot.status-pending_reply { background: #faad14; }
-.terminal-dock__tab-dot.status-idle { background: #bfbfbf; }
-.terminal-dock__tab-dot.status-closed { background: #ff4d4f; }
+.terminal-dock__tab-dot.status-running { background: var(--ai-running); }
+.terminal-dock__tab-dot.status-pending_reply { background: var(--ai-pending-confirm); }
+.terminal-dock__tab-dot.status-idle { background: var(--ai-idle); }
+.terminal-dock__tab-dot.status-closed { background: var(--ai-error); }
 .terminal-dock__tab-close {
   font-size: 10px;
   opacity: 0.5;
 }
-.terminal-dock__tab-close:hover { opacity: 1; color: #ff4d4f; }
+.terminal-dock__tab-close:hover { opacity: 1; color: var(--ai-error); }
 
 /* === Split mode === */
 .terminal-dock__pane {
@@ -160,7 +160,7 @@
 }
 .terminal-dock__body.is-split {
   gap: 6px;
-  background: #595959;
+  background: var(--surface-0);
 }
 
 /* === Mobile === */

@@ -1,11 +1,11 @@
 .tv-wrapper {
   display: flex;
   flex-direction: column;
-  background: #f7f8fa;
+  background: var(--surface-2);
   border-radius: 10px;
   overflow: hidden;
-  border: 1px solid #e6e8ec;
-  box-shadow: 0 6px 18px rgba(15, 20, 40, 0.05);
+  border: 1px solid var(--border-default);
+  box-shadow: var(--shadow-elevated);
   position: relative;
   /* 防止子节点（长 JSON / base64 tool result）把外框撑出视口；min-width:0
      是 flex 子元素能真正按 100% 宽展开的前提 */
@@ -38,8 +38,8 @@
   align-items: center;
   gap: 6px;
   padding: 8px 10px;
-  background: #ffffff;
-  border-bottom: 1px solid #ececec;
+  background: var(--surface-1);
+  border-bottom: 1px solid var(--border-subtle);
   flex-wrap: wrap;
   flex-shrink: 0;
   position: sticky;
@@ -49,7 +49,7 @@
 
 .tv-match-count {
   font-size: 11px;
-  color: #888;
+  color: var(--text-tertiary);
   padding: 0 4px;
 }
 
@@ -82,16 +82,16 @@
   height: 8px;
 }
 .tv-body::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.15);
+  background: var(--border-strong);
   border-radius: 4px;
 }
 .tv-body::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 0, 0, 0.25);
+  background: color-mix(in srgb, var(--text-primary) 25%, transparent);
 }
 
 .tv-turn {
-  background: #fff;
-  border: 1px solid #eef0f2;
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle);
   border-left-width: 3px;
   border-radius: 8px;
   padding: 8px 12px;
@@ -102,15 +102,15 @@
 }
 
 .tv-turn:hover {
-  box-shadow: 0 2px 8px rgba(15, 20, 40, 0.05);
+  box-shadow: var(--shadow-subtle);
 }
 
-.tv-turn.tv-role-user { border-left-color: #1677ff; background: #f2f8ff; }
-.tv-turn.tv-role-assistant { border-left-color: #52c41a; background: #fcfffb; }
-.tv-turn.tv-role-thinking { border-left-color: #bfbfbf; background: #fafafa; color: #666; }
-.tv-turn.tv-role-tool-use { border-left-color: #faad14; background: #fffbe8; }
-.tv-turn.tv-role-tool-result { border-left-color: #722ed1; background: #faf5ff; }
-.tv-turn.tv-role-raw { border-left-color: #d9d9d9; background: #fafbfc; }
+.tv-turn.tv-role-user { border-left-color: var(--accent-electric); background: color-mix(in srgb, var(--accent-electric) 8%, var(--surface-1)); }
+.tv-turn.tv-role-assistant { border-left-color: var(--ai-running); background: color-mix(in srgb, var(--ai-running) 8%, var(--surface-1)); }
+.tv-turn.tv-role-thinking { border-left-color: var(--text-disabled); background: var(--surface-2); color: var(--text-secondary); }
+.tv-turn.tv-role-tool-use { border-left-color: var(--ai-pending-confirm); background: color-mix(in srgb, var(--ai-pending-confirm) 10%, var(--surface-1)); }
+.tv-turn.tv-role-tool-result { border-left-color: #722ed1; background: color-mix(in srgb, #722ed1 10%, var(--surface-1)); /* token-exception: distinct purple for tool_result, matches dock conventions */ }
+.tv-turn.tv-role-raw { border-left-color: var(--border-strong); background: var(--surface-2); }
 
 .tv-turn-header {
   display: flex;
@@ -137,7 +137,7 @@
 
 .tv-turn-time {
   font-size: 11px;
-  color: #999;
+  color: var(--text-tertiary);
   font-variant-numeric: tabular-nums;
 }
 
@@ -146,7 +146,7 @@
   line-height: 1.65;
   word-break: break-word;
   overflow-wrap: anywhere;
-  color: #1f2328;
+  color: var(--text-primary);
   max-width: 100%;
   min-width: 0;
 }
@@ -158,28 +158,28 @@
 .tv-md h1 { font-size: 17px; }
 .tv-md h2 { font-size: 15px; }
 .tv-md h3 { font-size: 14px; }
-.tv-md a { color: #1677ff; }
+.tv-md a { color: var(--accent-electric); }
 .tv-md blockquote {
   margin: 4px 0;
   padding: 2px 10px;
-  border-left: 3px solid #d0d7de;
-  color: #555;
-  background: rgba(0, 0, 0, 0.02);
+  border-left: 3px solid var(--border-strong);
+  color: var(--text-secondary);
+  background: var(--surface-2);
 }
 
 .tv-code-pre {
-  background: #f6f8fa;
+  background: var(--surface-2);
   padding: 10px 12px;
   border-radius: 6px;
   overflow-x: auto;
   font-size: 12px;
   line-height: 1.55;
   margin: 6px 0;
-  border: 1px solid #eaeef2;
+  border: 1px solid var(--border-default);
 }
 
 .tv-inline-code {
-  background: rgba(175, 184, 193, 0.25);
+  background: color-mix(in srgb, var(--text-primary) 12%, transparent);
   padding: 1px 5px;
   border-radius: 4px;
   font-size: 12.5px;
@@ -187,7 +187,7 @@
 }
 
 .tv-tool-pre, .tv-raw-pre {
-  background: #f6f8fa;
+  background: var(--surface-2);
   border-radius: 6px;
   padding: 8px 10px;
   font-size: 11.5px;
@@ -201,10 +201,10 @@
   max-width: 100%;
   max-height: 360px;
   overflow-y: auto;
-  color: #444;
+  color: var(--text-secondary);
   margin: 0;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  border: 1px solid #eaeef2;
+  border: 1px solid var(--border-default);
 }
 
 .tv-plain {
@@ -213,12 +213,12 @@
   word-break: break-word;
   overflow-wrap: anywhere;
   line-height: 1.65;
-  color: #1f2328;
+  color: var(--text-primary);
   max-width: 100%;
 }
 
 .tv-highlight {
-  background: #fff066;
+  background: color-mix(in srgb, var(--ai-pending-confirm) 60%, transparent);
   padding: 0 1px;
   border-radius: 2px;
 }
@@ -251,12 +251,12 @@
   flex: 1;
   min-width: 0;
 }
-.tv-todo-done .tv-todo-icon { color: #52c41a; }
-.tv-todo-done .tv-todo-text { color: #8c8c8c; text-decoration: line-through; }
-.tv-todo-active .tv-todo-icon { color: #1677ff; }
-.tv-todo-active .tv-todo-text { color: #1677ff; font-weight: 500; }
-.tv-todo-pending .tv-todo-icon { color: #bfbfbf; }
-.tv-todo-pending .tv-todo-text { color: #333; }
+.tv-todo-done .tv-todo-icon { color: var(--ai-running); }
+.tv-todo-done .tv-todo-text { color: var(--text-tertiary); text-decoration: line-through; }
+.tv-todo-active .tv-todo-icon { color: var(--accent-electric); }
+.tv-todo-active .tv-todo-text { color: var(--accent-electric); font-weight: 500; }
+.tv-todo-pending .tv-todo-icon { color: var(--text-disabled); }
+.tv-todo-pending .tv-todo-text { color: var(--text-primary); }
 
 /* AI 生成中的 loading 占位：没有 liveOutput 前用三点呼吸显示还在算；
    liveOutput 来了之后换成"生成中..."的呼吸标签 */
@@ -265,12 +265,12 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  background: #fff;
-  border: 1px solid #eef0f2;
-  border-left: 3px solid #52c41a;
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle);
+  border-left: 3px solid var(--ai-running);
   border-radius: 8px;
   padding: 8px 14px;
-  color: #555;
+  color: var(--text-secondary);
   font-size: 13px;
   max-width: 100%;
 }
@@ -284,7 +284,7 @@
 .tv-thinking-dots i {
   width: 6px;
   height: 6px;
-  background: #52c41a;
+  background: var(--ai-running);
   border-radius: 50%;
   display: inline-block;
   animation: tvThinkingBounce 1.2s infinite ease-in-out both;
@@ -302,7 +302,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  color: #1677ff;
+  color: var(--accent-electric);
   font-size: 11px;
   animation: tvLivePulse 1.5s ease-in-out infinite;
 }
@@ -311,8 +311,8 @@
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #1677ff;
-  box-shadow: 0 0 0 0 rgba(22, 119, 255, 0.5);
+  background: var(--accent-electric);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent-electric) 50%, transparent);
   animation: tvLiveDot 1.5s ease-in-out infinite;
 }
 @keyframes tvLivePulse {
@@ -320,13 +320,13 @@
   50%      { opacity: 1; }
 }
 @keyframes tvLiveDot {
-  0%   { box-shadow: 0 0 0 0   rgba(22, 119, 255, 0.55); }
-  70%  { box-shadow: 0 0 0 8px rgba(22, 119, 255, 0); }
-  100% { box-shadow: 0 0 0 0   rgba(22, 119, 255, 0); }
+  0%   { box-shadow: 0 0 0 0   color-mix(in srgb, var(--accent-electric) 55%, transparent); }
+  70%  { box-shadow: 0 0 0 8px color-mix(in srgb, var(--accent-electric) 0%, transparent); }
+  100% { box-shadow: 0 0 0 0   color-mix(in srgb, var(--accent-electric) 0%, transparent); }
 }
 
 .tv-error {
-  color: #ff4d4f;
+  color: var(--ai-error);
   padding: 12px;
   text-align: center;
 }
@@ -336,8 +336,8 @@
   flex-direction: column;
   gap: 8px;
   padding: 10px 12px;
-  background: #fff;
-  border-top: 1px solid #ececec;
+  background: var(--surface-1);
+  border-top: 1px solid var(--border-subtle);
   flex-shrink: 0;
 }
 
@@ -355,30 +355,30 @@
 
 .tv-composer-hint {
   font-size: 12px;
-  color: #8c8c8c;
+  color: var(--text-tertiary);
 }
 
 .tv-resize-handle {
   height: 8px;
   cursor: ns-resize;
-  background: linear-gradient(#f0f1f4, #e5e6ea);
+  background: linear-gradient(var(--surface-2), var(--surface-3));
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-top: 1px solid #ececec;
+  border-top: 1px solid var(--border-subtle);
   transition: background 0.15s ease;
 }
 
 .tv-resize-handle:hover {
-  background: linear-gradient(#e8eaef, #dadce2);
+  background: linear-gradient(var(--surface-3), var(--surface-2));
 }
 
 .tv-resize-grip {
   width: 36px;
   height: 3px;
   border-radius: 2px;
-  background: #b0b4bb;
+  background: var(--text-disabled);
 }
 
 .tv-unread-pill {
@@ -388,13 +388,13 @@
   bottom: 118px;
   padding: 6px 14px;
   border-radius: 999px;
-  background: #1677ff;
-  color: #fff;
+  background: var(--accent-electric);
+  color: var(--surface-0);
   border: none;
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
-  box-shadow: 0 6px 16px rgba(22, 119, 255, 0.35);
+  box-shadow: 0 6px 16px color-mix(in srgb, var(--accent-electric) 35%, transparent);
   z-index: 3;
   transition: transform 0.15s ease, box-shadow 0.15s ease;
   animation: tvPillPop 0.2s ease;
@@ -402,7 +402,7 @@
 
 .tv-unread-pill:hover {
   transform: translateY(-1px);
-  box-shadow: 0 8px 20px rgba(22, 119, 255, 0.45);
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--accent-electric) 45%, transparent);
 }
 
 @keyframes tvPillPop {
@@ -416,8 +416,8 @@
   right: 12px;
   padding: 4px 10px;
   border-radius: 6px;
-  background: rgba(0, 0, 0, 0.45);
-  color: #fff;
+  background: color-mix(in srgb, var(--surface-0) 60%, transparent);
+  color: var(--text-primary);
   font-size: 11px;
   pointer-events: none;
   opacity: 0.85;
