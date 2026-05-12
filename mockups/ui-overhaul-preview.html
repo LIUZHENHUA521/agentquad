@@ -811,6 +811,210 @@
   }
   .preview-note strong { color: var(--text-primary); display: block; margin-bottom: 4px; font-family: 'Inter', sans-serif; font-weight: 600; }
 
+  /* ============ M2 annotation overlay ============ */
+  .m2-overlay {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 70;
+    display: none;
+  }
+  .m2-overlay.on { display: block; }
+  .m2-frame {
+    position: absolute;
+    border: 2px dashed var(--accent-electric);
+    border-radius: 8px;
+    box-shadow: 0 0 0 9999px rgba(0,0,0,0.55);
+    pointer-events: none;
+    animation: m2-pulse 2s ease-in-out infinite;
+  }
+  .m2-frame.topbar-frame {
+    top: 6px; left: 6px; right: 6px; height: 44px;
+  }
+  @keyframes m2-pulse {
+    0%, 100% { box-shadow: 0 0 0 9999px rgba(0,0,0,0.55), 0 0 0 0 var(--accent-electric-glow); }
+    50% { box-shadow: 0 0 0 9999px rgba(0,0,0,0.55), 0 0 16px 0 var(--accent-electric-glow); }
+  }
+  .m2-label {
+    position: absolute;
+    background: var(--surface-3);
+    border: 1px solid var(--accent-electric);
+    color: var(--accent-electric);
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    box-shadow: var(--shadow-elevated);
+    pointer-events: auto;
+    line-height: 1.5;
+  }
+  .m2-label strong { display: block; color: var(--text-primary); font-family: 'Inter', sans-serif; font-weight: 600; font-size: 12px; margin-bottom: 4px; }
+  .m2-label .m2-badge {
+    display: inline-block;
+    background: var(--accent-electric);
+    color: var(--surface-0);
+    border-radius: 3px;
+    padding: 1px 5px;
+    font-size: 9px;
+    font-weight: 700;
+    margin-right: 6px;
+    vertical-align: middle;
+  }
+  .m2-label-topbar { top: 60px; left: 6px; }
+
+  /* ============ Pill tooltip (hover details) ============ */
+  .stat-pill { position: relative; cursor: pointer; }
+  .stat-pill .pill-tooltip {
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 0;
+    min-width: 240px;
+    background: var(--surface-3);
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    padding: 10px 12px;
+    box-shadow: var(--shadow-floating);
+    font-family: 'Inter', sans-serif;
+    font-size: 12px;
+    color: var(--text-secondary);
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(-4px);
+    transition: opacity 120ms ease, transform 120ms ease;
+    z-index: 110;
+  }
+  .stat-pill:hover .pill-tooltip {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateY(0);
+  }
+  .pill-tooltip-title {
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-size: 10px;
+    margin-bottom: 6px;
+  }
+  .pill-tooltip-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+  }
+  .pill-tooltip-item .dot-mini {
+    width: 6px; height: 6px; border-radius: 50%;
+  }
+  .pill-tooltip-item .item-name {
+    color: var(--text-primary);
+    flex: 1;
+  }
+  .pill-tooltip-item .item-meta {
+    color: var(--text-tertiary);
+    font-size: 10px;
+  }
+
+  /* ============ Cmdk filter / sub-state ============ */
+  .cmdk-empty-hint {
+    padding: 24px 16px;
+    text-align: center;
+    color: var(--text-tertiary);
+    font-size: 12px;
+  }
+  .cmdk-input { width: 100%; }
+  .cmdk-result-mini {
+    color: var(--text-tertiary);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 8px 10px 4px;
+    font-weight: 600;
+  }
+  .cmdk-todo-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    color: var(--text-secondary);
+    font-size: 13px;
+  }
+  .cmdk-todo-row:hover, .cmdk-todo-row.active {
+    background: var(--accent-electric-soft);
+    color: var(--text-primary);
+  }
+  .cmdk-todo-row .quad-color {
+    width: 4px; height: 16px; border-radius: 2px;
+  }
+  .cmdk-todo-row .todo-meta {
+    margin-left: auto;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--text-tertiary);
+  }
+  .cmdk-back-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    color: var(--text-tertiary);
+    font-size: 11px;
+    border-bottom: 1px solid var(--border-subtle);
+    margin-bottom: 4px;
+  }
+
+  /* ============ M2 control panel (toggle visualizations) ============ */
+  .m2-control {
+    position: fixed;
+    top: 80px;
+    right: 16px;
+    background: var(--surface-3);
+    border: 1px solid var(--accent-electric);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-family: 'Inter', sans-serif;
+    font-size: 11px;
+    color: var(--text-secondary);
+    box-shadow: var(--shadow-elevated);
+    z-index: 80;
+    line-height: 1.6;
+    max-width: 240px;
+  }
+  .m2-control strong {
+    display: block;
+    color: var(--accent-electric);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 6px;
+  }
+  .m2-control button {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: var(--surface-2);
+    border: 1px solid var(--border-default);
+    border-radius: 5px;
+    color: var(--text-primary);
+    padding: 5px 8px;
+    margin-top: 4px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 11px;
+  }
+  .m2-control button:hover {
+    border-color: var(--accent-electric);
+    background: var(--accent-electric-soft);
+  }
+  .m2-control button.active {
+    border-color: var(--accent-electric);
+    background: var(--accent-electric-soft);
+    color: var(--accent-electric);
+  }
+
   /* ============ Scrollbar ============ */
   ::-webkit-scrollbar { width: 6px; height: 6px; }
   ::-webkit-scrollbar-track { background: transparent; }
@@ -830,16 +1034,64 @@
     <span class="dot pulse"></span>
     <span class="num">3</span>
     <span>active</span>
+    <div class="pill-tooltip">
+      <div class="pill-tooltip-title">Active sessions (3)</div>
+      <div class="pill-tooltip-item">
+        <span class="dot-mini" style="background: var(--ai-running);"></span>
+        <span class="item-name">优化首屏性能</span>
+        <span class="item-meta">claude · 12m</span>
+      </div>
+      <div class="pill-tooltip-item">
+        <span class="dot-mini" style="background: var(--ai-thinking);"></span>
+        <span class="item-name">线上 503 错误排查</span>
+        <span class="item-meta">claude · 2m</span>
+      </div>
+      <div class="pill-tooltip-item">
+        <span class="dot-mini" style="background: var(--ai-running);"></span>
+        <span class="item-name">重构 PVP server 房间生命周期</span>
+        <span class="item-meta">claude · 34m</span>
+      </div>
+    </div>
   </div>
   <div class="stat-pill">
     <span class="arrow">▲</span>
     <span class="accent-num">24.5k</span>
     <span>tok</span>
+    <div class="pill-tooltip">
+      <div class="pill-tooltip-title">Token usage today</div>
+      <div class="pill-tooltip-item">
+        <span class="item-name" style="color: var(--text-secondary);">Input</span>
+        <span class="item-meta">8.2k</span>
+      </div>
+      <div class="pill-tooltip-item">
+        <span class="item-name" style="color: var(--text-secondary);">Output</span>
+        <span class="item-meta">2.1k</span>
+      </div>
+      <div class="pill-tooltip-item">
+        <span class="item-name" style="color: var(--text-secondary);">Cache read</span>
+        <span class="item-meta">14.2k</span>
+      </div>
+      <div class="pill-tooltip-item" style="border-top: 1px solid var(--border-subtle); margin-top: 4px; padding-top: 6px;">
+        <span class="item-name">Est. cost</span>
+        <span class="item-meta" style="color: var(--accent-electric);">¥3.21</span>
+      </div>
+    </div>
   </div>
   <div class="stat-pill alert">
     <span class="dot amber pulse"></span>
     <span class="num" style="color: var(--ai-pending-confirm);">1</span>
     <span>pending</span>
+    <div class="pill-tooltip">
+      <div class="pill-tooltip-title">Pending confirm (1)</div>
+      <div class="pill-tooltip-item">
+        <span class="dot-mini" style="background: var(--ai-pending-confirm);"></span>
+        <span class="item-name">部署回滚 v1.4.2</span>
+        <span class="item-meta">codex · 5m</span>
+      </div>
+      <div style="margin-top: 6px; font-size: 11px; color: var(--text-tertiary);">
+        ↵ Click pill to jump to the task
+      </div>
+    </div>
   </div>
 
   <div class="topbar-spacer"></div>
@@ -1180,24 +1432,26 @@
   <div class="cmdk">
     <div class="cmdk-input-wrap">
       <span style="color: var(--accent-electric); font-weight: 600;">⌘</span>
-      <input class="cmdk-input" placeholder="Type a command or search a todo..." autofocus />
+      <input class="cmdk-input" id="cmdkInput" placeholder="Type a command or search a todo..." autofocus oninput="updateCmdkState(this.value)" />
       <kbd>esc</kbd>
     </div>
-    <div class="cmdk-list">
+
+    <!-- State 1: empty / default -->
+    <div class="cmdk-list" id="cmdkListDefault">
       <div class="cmdk-section">Quick actions</div>
       <div class="cmdk-item active">
         <span class="icon">+</span>
         <span>Create new todo</span>
         <span class="meta">N</span>
       </div>
-      <div class="cmdk-item">
+      <div class="cmdk-item" onclick="enterAiPicker('claude')">
         <span class="icon">▶</span>
-        <span>Start AI session (claude)</span>
+        <span>Start AI session (claude) →</span>
         <span class="meta">⌘⏎</span>
       </div>
-      <div class="cmdk-item">
+      <div class="cmdk-item" onclick="enterAiPicker('codex')">
         <span class="icon">▶</span>
-        <span>Start AI session (codex)</span>
+        <span>Start AI session (codex) →</span>
         <span class="meta">⌘⇧⏎</span>
       </div>
 
@@ -1249,6 +1503,54 @@
       <div class="cmdk-item">
         <span class="icon">🌙</span>
         <span>Toggle theme (dark / light)</span>
+      </div>
+    </div>
+
+    <!-- State 2: typed "503" — filtered todos + commands -->
+    <div class="cmdk-list" id="cmdkListFiltered" style="display: none;">
+      <div class="cmdk-result-mini">Todos · 1 match</div>
+      <div class="cmdk-todo-row active">
+        <span class="quad-color" style="background: var(--q1);"></span>
+        <span>线上 <strong style="color: var(--accent-electric);">503</strong> 错误排查</span>
+        <span class="todo-meta">Q1 · claude · thinking</span>
+      </div>
+      <div class="cmdk-result-mini">Commands · 0 matches</div>
+      <div class="cmdk-empty-hint" style="padding: 8px 10px; text-align: left; font-size: 11px; opacity: 0.7;">
+        No commands match "<span style="color: var(--accent-electric);">503</span>". Press ↵ to focus the matching todo.
+      </div>
+    </div>
+
+    <!-- State 3: AI session picker (after click "Start AI session (claude)") -->
+    <div class="cmdk-list" id="cmdkListAiPicker" style="display: none;">
+      <div class="cmdk-back-row" onclick="resetCmdk()" style="cursor: pointer;">
+        <span style="color: var(--accent-electric);">←</span>
+        <span>Start AI session — pick a todo (<span id="aiToolPicked">claude</span>)</span>
+      </div>
+      <div class="cmdk-result-mini">Recent / Active todos</div>
+      <div class="cmdk-todo-row active">
+        <span class="quad-color" style="background: var(--q2);"></span>
+        <span>UI 整体升级 — AI Console 调度台</span>
+        <span class="todo-meta">Q2 · idle</span>
+      </div>
+      <div class="cmdk-todo-row">
+        <span class="quad-color" style="background: var(--q1);"></span>
+        <span>优化首屏性能</span>
+        <span class="todo-meta">Q1 · already running</span>
+      </div>
+      <div class="cmdk-todo-row">
+        <span class="quad-color" style="background: var(--q2);"></span>
+        <span>调研 cmdk 库 vs 自写命令面板</span>
+        <span class="todo-meta">Q2 · idle</span>
+      </div>
+      <div class="cmdk-todo-row">
+        <span class="quad-color" style="background: var(--q3);"></span>
+        <span>每周自动签到云函数失败通知</span>
+        <span class="todo-meta">Q3 · idle</span>
+      </div>
+      <div class="cmdk-result-mini">Or create new</div>
+      <div class="cmdk-todo-row">
+        <span class="icon" style="color: var(--accent-electric);">+</span>
+        <span>Create todo &amp; start AI session…</span>
       </div>
     </div>
   </div>
@@ -1385,9 +1687,35 @@ ws.on('error', () =&gt; {
   </div>
 </div>
 
+<!-- M2 highlight overlay -->
+<div class="m2-overlay" id="m2Overlay">
+  <div class="m2-frame topbar-frame"></div>
+  <div class="m2-label m2-label-topbar">
+    <strong><span class="m2-badge">M2</span>Topbar Dispatch</strong>
+    新建 TopbarDispatch / StatPill 组件<br/>
+    替换 TodoManage 内联顶栏（净减 ~150 行）<br/>
+    实时数据源：active sessions / token sum / pending count<br/>
+    Hover pill 看 tooltip 详情<br/>
+    Click pill → 跳到对应 todo
+  </div>
+</div>
+
+<!-- M2 control panel -->
+<div class="m2-control" id="m2Control">
+  <strong>M2 Mockup Demo</strong>
+  <button onclick="setCmdkState('default')">⌘K · empty state</button>
+  <button onclick="setCmdkState('filtered')">⌘K · type "503" (filter todos)</button>
+  <button onclick="setCmdkState('aiPicker')">⌘K · "Start AI" → pick todo</button>
+  <button onclick="toggleM2Overlay()">Toggle M2 highlight</button>
+  <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border-subtle); color: var(--text-tertiary); font-size: 10px;">
+    Hover the topbar pills for tooltip
+  </div>
+</div>
+
 <div class="preview-note">
   <strong>UI Mockup Preview</strong>
-  hover 卡片看 actions · 点卡片或 ▶ 开 <strong style="color: var(--accent-electric); font-family: 'JetBrains Mono', monospace;">focus mode (session view)</strong> · 按 <kbd>⌘K</kbd> 开命令面板 · 🌙 切主题
+  hover 卡片看 actions · 点卡片开 focus mode · 按 <kbd>⌘K</kbd> 开命令面板 · 🌙 切主题<br/>
+  <span style="color: var(--accent-electric);">右上角 M2 Demo 面板</span> 切换 M2 演示状态
 </div>
 
 <script>
@@ -1403,7 +1731,55 @@ ws.on('error', () =&gt; {
     overlay.classList.toggle('open');
     if (overlay.classList.contains('open')) {
       setTimeout(() => overlay.querySelector('.cmdk-input').focus(), 80);
+    } else {
+      resetCmdk();
     }
+  }
+  function setCmdkState(state) {
+    document.getElementById('cmdkOverlay').classList.add('open');
+    const input = document.getElementById('cmdkInput');
+    document.getElementById('cmdkListDefault').style.display = 'none';
+    document.getElementById('cmdkListFiltered').style.display = 'none';
+    document.getElementById('cmdkListAiPicker').style.display = 'none';
+    if (state === 'default') {
+      input.value = '';
+      input.placeholder = 'Type a command or search a todo...';
+      document.getElementById('cmdkListDefault').style.display = 'block';
+    } else if (state === 'filtered') {
+      input.value = '503';
+      document.getElementById('cmdkListFiltered').style.display = 'block';
+    } else if (state === 'aiPicker') {
+      input.value = '';
+      input.placeholder = 'Search a todo to start AI session...';
+      document.getElementById('cmdkListAiPicker').style.display = 'block';
+    }
+    setTimeout(() => input.focus(), 50);
+  }
+  function updateCmdkState(value) {
+    if (value === '') {
+      setCmdkState('default');
+    } else if (value === '503' || value.toLowerCase().includes('503') || value.toLowerCase().includes('错误')) {
+      setCmdkState('filtered');
+      document.getElementById('cmdkInput').value = value;
+    } else {
+      document.getElementById('cmdkListDefault').style.display = 'block';
+      document.getElementById('cmdkListFiltered').style.display = 'none';
+      document.getElementById('cmdkListAiPicker').style.display = 'none';
+    }
+  }
+  function enterAiPicker(tool) {
+    document.getElementById('aiToolPicked').textContent = tool;
+    setCmdkState('aiPicker');
+  }
+  function resetCmdk() {
+    const input = document.getElementById('cmdkInput');
+    if (input) input.value = '';
+    document.getElementById('cmdkListDefault').style.display = 'block';
+    document.getElementById('cmdkListFiltered').style.display = 'none';
+    document.getElementById('cmdkListAiPicker').style.display = 'none';
+  }
+  function toggleM2Overlay() {
+    document.getElementById('m2Overlay').classList.toggle('on');
   }
   function openFocus() {
     document.getElementById('focusView').classList.add('open');
