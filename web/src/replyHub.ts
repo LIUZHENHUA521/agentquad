@@ -1,6 +1,7 @@
 import type { AiSession, AiTool, Quadrant, Todo } from './api'
 import type { SessionMeta } from './store/aiSessionStore'
 
+// rebrand: localStorage key kept for backward compatibility
 export const SEEN_REPLY_STORAGE_KEY = 'quadtodo:seenAiReplies'
 
 export type AttentionKind = 'interaction' | 'awaiting_reply' | 'review'

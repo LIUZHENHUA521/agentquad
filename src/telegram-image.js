@@ -6,14 +6,14 @@
  *   2) GET https://api.telegram.org/file/bot<TOKEN>/<file_path> → 下载二进制
  *   3) 写到 destDir，返回 { localPath, fileSize }
  *
- * 默认存到 ~/.quadtodo/tg-uploads/<ts>-<rand>.<ext>，不主动清理（量级小，磁盘占用可忽略）
+ * 默认存到 ~/.agentquad/tg-uploads/<ts>-<rand>.<ext>，不主动清理（量级小，磁盘占用可忽略）
  */
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { homedir } from 'node:os'
 import { Buffer } from 'node:buffer'
+import { DEFAULT_ROOT_DIR } from './config.js'
 
-const DEFAULT_DIR = join(homedir(), '.quadtodo', 'tg-uploads')
+const DEFAULT_DIR = join(DEFAULT_ROOT_DIR, 'tg-uploads')
 const DOWNLOAD_TIMEOUT_MS = 30_000
 const MAX_PHOTO_SIZE_MB = 20  // Telegram 限制 ~20MB
 
@@ -32,7 +32,7 @@ export function pickLargestPhoto(photos) {
  * @param opts.token Telegram bot token
  * @param opts.fetchFn (url, opts) => Response（默认全局 fetch；测试可注入）
  * @param opts.fileId Telegram file_id
- * @param opts.destDir 下载目标目录（默认 ~/.quadtodo/tg-uploads）
+ * @param opts.destDir 下载目标目录（默认 ~/.agentquad/tg-uploads）
  * @param opts.fileSize 可选，预先校验 ≤ 20MB
  * @returns {{ localPath: string, fileSize: number, ext: string }}
  */

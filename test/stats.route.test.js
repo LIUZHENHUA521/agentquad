@@ -37,7 +37,7 @@ describe('GET /api/stats/report', () => {
 		const res = await request(srv.app).get('/api/stats/report.md?since=0&until=9999999999999')
 		expect(res.status).toBe(200)
 		expect(res.headers['content-type']).toMatch(/text\/markdown/)
-		expect(res.text).toMatch(/# quadtodo/)
+		expect(res.text).toMatch(/# AgentQuad/)
 		await srv.close()
 	})
 

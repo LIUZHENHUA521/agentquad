@@ -20,7 +20,7 @@ describe('GET /api/config token mask', () => {
     try { rmSync(tmp, { recursive: true, force: true }) } catch {}
   })
 
-  it('masks token + adds source field when token is set in quadtodo config', async () => {
+  it('masks token + adds source field when token is set in agentquad config', async () => {
     writeFileSync(join(tmp, 'config.json'), JSON.stringify({
       telegram: { enabled: false, botToken: '7846123456:AAH9xK_abcdefg1234' },
     }))
@@ -29,7 +29,7 @@ describe('GET /api/config token mask', () => {
     expect(r.status).toBe(200)
     expect(r.body.config.telegram.botToken).toBeUndefined()
     expect(r.body.config.telegram.botTokenMasked).toBe('tg_***1234')
-    expect(r.body.config.telegram.botTokenSource).toBe('quadtodo')
+    expect(r.body.config.telegram.botTokenSource).toBe('agentquad')
   })
 
   it('returns missing when no token anywhere', async () => {
@@ -117,6 +117,6 @@ describe('PUT /api/config token mask', () => {
     })
     expect(r.body.config.telegram.botToken).toBeUndefined()
     expect(r.body.config.telegram.botTokenMasked).toBe('tg_***5678')
-    expect(r.body.config.telegram.botTokenSource).toBe('quadtodo')
+    expect(r.body.config.telegram.botTokenSource).toBe('agentquad')
   })
 })

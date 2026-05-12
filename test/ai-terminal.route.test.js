@@ -113,7 +113,7 @@ describe('routes/ai-terminal', () => {
     expect(res.body).toMatchObject({
       code: 'tool_missing',
       tool: 'claude',
-      fix: 'quadtodo install-tools --claude',
+      fix: 'agentquad install-tools --claude',
     })
     // 没有真的去 spawn pty
     expect(ctx.pty.created).toHaveLength(0)

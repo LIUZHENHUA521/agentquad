@@ -26,7 +26,7 @@ describe('renderMarkdown', () => {
 
 	it('包含关键信息', () => {
 		const md = renderMarkdown(sampleReport)
-		expect(md).toContain('# quadtodo 周报')
+		expect(md).toContain('# AgentQuad 周报')
 		expect(md).toContain('活跃 8.3h')
 		expect(md).toContain('12.1h')
 		expect(md).toContain('修复 bug')

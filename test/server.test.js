@@ -259,7 +259,7 @@ describe("server", () => {
 			appId: "cli_a123",
 			chatId: "oc_test_chat",
 			appSecretMasked: "lark_***1234",
-			appSecretSource: "quadtodo",
+			appSecretSource: "agentquad",
 		});
 		expect(first.body.config.lark).not.toHaveProperty("appSecret");
 		expect(loadConfig({ rootDir: configRootDir }).lark.appSecret).toBe("secret_abc1234");

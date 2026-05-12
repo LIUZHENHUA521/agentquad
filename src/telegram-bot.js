@@ -1,5 +1,5 @@
 /**
- * quadtodo 自己跑的 Telegram bot：
+ * AgentQuad 自己跑的 Telegram bot：
  *   - 长轮询 getUpdates 拿入站消息（含 message_thread_id 用于 Topic 路由）
  *   - 出站 sendMessage / sendDocument / createForumTopic / closeForumTopic / editForumTopic
  *
@@ -8,7 +8,7 @@
  *   - 入站派发到 wizard.handleInbound({ chatId, threadId, text, fromUserId })
  *   - wizard 返回 reply 时，自动 sendMessage 回去（保持 thread）
  *   - 安全：白名单 allowedChatIds（空 = 拒所有）；不在白名单的消息只 log + drop
- *   - offset 持久化到 ~/.quadtodo/telegram-offset.json，重启不丢
+ *   - offset 持久化到 ~/.agentquad/telegram-offset.json，重启不丢
  *   - 失败一律不阻塞主循环，5s 退避
  *
  * 不在 v1：
@@ -18,16 +18,16 @@
  */
 import { existsSync, readFileSync, writeFileSync, mkdirSync, statSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import { homedir } from 'node:os'
 import { Blob } from 'node:buffer'
 import net from 'node:net'
 import { toTelegramV2, toPlainText } from './telegram-markdown.js'
 import { downloadTelegramFile, pickLargestPhoto } from './telegram-image.js'
 import { downloadTelegramVideo, extractTelegramVideo } from './telegram-video.js'
+import { DEFAULT_ROOT_DIR } from './config.js'
 
 const TELEGRAM_API = 'https://api.telegram.org'
 const DEFAULT_LONG_POLL_TIMEOUT_SEC = 30
-const DEFAULT_OFFSET_FILE = join(homedir(), '.quadtodo', 'telegram-offset.json')
+const DEFAULT_OFFSET_FILE = join(DEFAULT_ROOT_DIR, 'telegram-offset.json')
 const POLL_RETRY_DELAY_MS = 5_000
 
 function readProxyUrl() {
@@ -38,7 +38,7 @@ function readProxyUrl() {
 
 /**
  * 走 HTTPS_PROXY 的 fetch。按 proxyUrl 缓存 dispatcher，URL 变了自动切，
- * 这样 Clash / 代理重启不再需要重启 quadtodo。
+ * 这样 Clash / 代理重启不再需要重启 AgentQuad。
  */
 const dispatcherCache = new Map()
 async function getProxyFetch() {
@@ -853,12 +853,12 @@ export function createTelegramBot({
 
 /**
  * 读 bot token，并返回来源标记。
- *  - source: "quadtodo" | "missing"
+ *  - source: "agentquad" | "missing"
  */
 export function readBotTokenWithSource(getConfig) {
   const tg = getConfig?.()?.telegram || {}
   if (tg.botToken && typeof tg.botToken === 'string') {
-    return { token: tg.botToken, source: 'quadtodo' }
+    return { token: tg.botToken, source: 'agentquad' }
   }
   return { token: null, source: 'missing' }
 }

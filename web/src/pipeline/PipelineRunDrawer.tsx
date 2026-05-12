@@ -249,6 +249,7 @@ export default function PipelineRunDrawer({ open, runId, todoId, template, todoS
             <code className="pr-inline-code">{run.baseBranch || 'detached'}@{(run.baseSha || '').slice(0, 8)}</code>
             {' · '}
             worktree 根：
+            {/* rebrand: on-disk directory name kept for backward compatibility */}
             <code className="pr-inline-code">.quadtodo-worktrees/{run.id}/</code>
           </div>
 

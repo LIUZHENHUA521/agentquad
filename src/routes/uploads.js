@@ -9,15 +9,15 @@
  *   - 粘贴图通常 <2MB，base64 33% 开销可忍
  *   - 大文件 / 多文件场景以后真有需求再换 multipart
  *
- * 文件落到 ~/.quadtodo/web-uploads/<ts>-<rand>.<ext>，跟 telegram tg-uploads 同模式。
+ * 文件落到 ~/.agentquad/web-uploads/<ts>-<rand>.<ext>，跟 telegram tg-uploads 同模式。
  */
 import { Router } from 'express'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { homedir } from 'node:os'
 import { Buffer } from 'node:buffer'
+import { DEFAULT_ROOT_DIR } from '../config.js'
 
-const DEFAULT_UPLOAD_DIR = join(homedir(), '.quadtodo', 'web-uploads')
+const DEFAULT_UPLOAD_DIR = join(DEFAULT_ROOT_DIR, 'web-uploads')
 const MAX_BYTES = 20 * 1024 * 1024  // 20MB，跟 telegram 一致
 
 const SAFE_EXTS = new Set([

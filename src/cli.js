@@ -40,7 +40,7 @@ function loadPkgVersion() {
 }
 
 function pidFile(rootDir = DEFAULT_ROOT_DIR) {
-  return join(rootDir, 'quadtodo.pid')
+  return join(rootDir, 'agentquad.pid')
 }
 
 function isAlive(pid) {
@@ -86,16 +86,16 @@ export function buildStartupBanner({ port, host, addresses = collectReachableAdd
   const isLoopbackOnly = host === '127.0.0.1' || host === 'localhost'
 
   if (isLoopbackOnly) {
-    lines.push(`quadtodo listening on ${url('127.0.0.1')}  (loopback only)`)
+    lines.push(`AgentQuad listening on ${url('127.0.0.1')}  (loopback only)`)
     lines.push('')
     lines.push('⚠️  To access from phone via Tailscale, run:')
-    lines.push('     quadtodo config set host 0.0.0.0')
+    lines.push('     agentquad config set host 0.0.0.0')
     lines.push('   or start with:')
-    lines.push('     quadtodo start --expose')
+    lines.push('     agentquad start --expose')
   } else {
-    lines.push(`quadtodo listening on ${url(host === '0.0.0.0' || host === '::' ? 'all-interfaces' : host)}  (port ${port})`)
+    lines.push(`AgentQuad listening on ${url(host === '0.0.0.0' || host === '::' ? 'all-interfaces' : host)}  (port ${port})`)
     lines.push('')
-    lines.push('⚠️  SECURITY: quadtodo exposes a shell + AI terminal. Reachable URLs:')
+    lines.push('⚠️  SECURITY: AgentQuad exposes a shell + AI terminal. Reachable URLs:')
     if (addresses.tailscale.length) {
       lines.push('   Tailscale (recommended — private mesh VPN):')
       for (const item of addresses.tailscale) {
@@ -165,7 +165,7 @@ export async function doctorReport({ rootDir = DEFAULT_ROOT_DIR } = {}) {
       ok,
       detail: ok
         ? distIndex
-        : `missing ${distIndex} — run \`npm run build\` (from source) or \`npm i -g quadtodo\` (reinstall)`,
+        : `missing ${distIndex} — run \`npm run build\` (from source) or \`npm i -g agentquad\` (reinstall)`,
     })
   }
 
@@ -237,19 +237,28 @@ export async function doctorReport({ rootDir = DEFAULT_ROOT_DIR } = {}) {
       checks.push({
         name: 'openclaw.targetUserId (fallback)',
         ok: true,
-        detail: '空（per-session 路由仍可工作；如要 ad-hoc 推送，set via `quadtodo config set openclaw.targetUserId <peer-id>`）',
+        detail: '空（per-session 路由仍可工作；如要 ad-hoc 推送，set via `agentquad config set openclaw.targetUserId <peer-id>`）',
       })
     }
 
-    // 3. quadtodo skill 装好了吗（OpenClaw 端配置）
-    const skillFile = join(homedir(), '.openclaw', 'skills', 'quadtodo-claw', 'SKILL.md')
+    // 3. AgentQuad skill 装好了吗（OpenClaw 端配置）
+    const skillFile = join(homedir(), '.openclaw', 'skills', 'agentquad-claw', 'SKILL.md')
     checks.push({
-      name: 'quadtodo-claw skill installed',
+      name: 'agentquad-claw skill installed',
       ok: existsSync(skillFile),
       detail: existsSync(skillFile)
         ? skillFile
         : '缺失：参考 docs/OPENCLAW.md',
     })
+    // 3b. legacy skill 目录还在？软警告（非 failing）
+    const legacySkillDir = join(homedir(), '.openclaw', 'skills', 'quadtodo-claw')
+    if (existsSync(legacySkillDir)) {
+      checks.push({
+        name: 'legacy openclaw skill folder',
+        ok: true,
+        detail: 'legacy ~/.openclaw/skills/quadtodo-claw/ still exists — safe to delete',
+      })
+    }
 
     // 4. Claude Code hook 安装状态（主动推送）
     try {
@@ -265,7 +274,7 @@ export async function doctorReport({ rootDir = DEFAULT_ROOT_DIR } = {}) {
         ok: hk.installed,
         detail: hk.installed
           ? `events: ${hk.eventsInstalled.join(', ')}`
-          : '缺失：跑 `quadtodo openclaw install-hook` 一次',
+          : '缺失：跑 `agentquad openclaw install-hook` 一次',
       })
     } catch (e) {
       checks.push({
@@ -283,7 +292,7 @@ export async function doctorReport({ rootDir = DEFAULT_ROOT_DIR } = {}) {
     checks.push({
       name: 'telegram.supergroupId',
       ok: Boolean(tg.supergroupId),
-      detail: tg.supergroupId || '未配置：第一次跑 quadtodo 时让 bot 拿 chat.id（log 里），再 `quadtodo config set telegram.supergroupId <id>`',
+      detail: tg.supergroupId || '未配置：第一次跑 AgentQuad 时让 bot 拿 chat.id（log 里），再 `agentquad config set telegram.supergroupId <id>`',
     })
 
     // 6. allowedChatIds（白名单）
@@ -293,17 +302,17 @@ export async function doctorReport({ rootDir = DEFAULT_ROOT_DIR } = {}) {
       ok: allowList.length > 0,
       detail: allowList.length > 0
         ? allowList.join(', ')
-        : '空 = 拒所有：跑 `quadtodo config set telegram.allowedChatIds.0 <supergroup-id>`',
+        : '空 = 拒所有：跑 `agentquad config set telegram.allowedChatIds.0 <supergroup-id>`',
     })
 
-    // 7. token（从 ~/.quadtodo/config.json 读）
+    // 7. token（从 ~/.agentquad/config.json 读）
     try {
       const { readBotToken } = await import('./telegram-bot.js')
       const tok = readBotToken(() => cfg)
       checks.push({
         name: 'telegram bot token',
         ok: Boolean(tok),
-        detail: tok ? '✓ token in ~/.quadtodo/config.json' : '缺失：在 Web Settings → Telegram 里填 Bot Token，或编辑 ~/.quadtodo/config.json 的 telegram.botToken',
+        detail: tok ? '✓ token in ~/.agentquad/config.json' : '缺失：在 Web Settings → Telegram 里填 Bot Token，或编辑 ~/.agentquad/config.json 的 telegram.botToken',
       })
     } catch (e) {
       checks.push({ name: 'telegram bot token', ok: false, detail: e.message })
@@ -319,7 +328,7 @@ export async function doctorReport({ rootDir = DEFAULT_ROOT_DIR } = {}) {
 
 const program = new Command()
 program
-  .name('quadtodo')
+  .name('agentquad')
   .description('Local four-quadrant todo CLI with embedded Claude Code / Codex terminal')
   .version(loadPkgVersion())
 
@@ -337,12 +346,12 @@ program.command('start')
       ? '0.0.0.0'
       : (cmdOpts.host || cfg.host || '127.0.0.1')
 
-    // ─── stdout/stderr 复制到 ~/.quadtodo/logs/quadtodo.log ───
+    // ─── stdout/stderr 复制到 ~/.agentquad/logs/agentquad.log ───
     // 保留正常 console 输出 + 同步追加到日志文件，方便诊断
     try {
       const logsDir = join(rootDir, 'logs')
       if (!existsSync(logsDir)) mkdirSync(logsDir, { recursive: true })
-      const logFile = join(logsDir, 'quadtodo.log')
+      const logFile = join(logsDir, 'agentquad.log')
       // 启动时如果 log > 5MB 就截断到尾部 1MB
       try {
         const { statSync } = await import('node:fs')
@@ -355,7 +364,7 @@ program.command('start')
       } catch { /* file 不存在或读不了，忽略 */ }
       const { createWriteStream } = await import('node:fs')
       const logStream = createWriteStream(logFile, { flags: 'a' })
-      logStream.write(`\n=== quadtodo start ${new Date().toISOString()} pid=${process.pid} ===\n`)
+      logStream.write(`\n=== agentquad start ${new Date().toISOString()} pid=${process.pid} ===\n`)
       const wrap = (orig) => (...args) => {
         try {
           const line = args.map((a) => typeof a === 'string' ? a : JSON.stringify(a)).join(' ')
@@ -376,7 +385,7 @@ program.command('start')
     if (existsSync(pf)) {
       const oldPid = Number(readFileSync(pf, 'utf8'))
       if (oldPid && isAlive(oldPid)) {
-        console.error(`quadtodo already running (pid ${oldPid}). Run 'quadtodo stop' first.`)
+        console.error(`AgentQuad already running (pid ${oldPid}). Run 'agentquad stop' first.`)
         process.exit(1)
       }
       try { unlinkSync(pf) } catch { /* ignore */ }
@@ -398,7 +407,7 @@ program.command('start')
       await srv.listen(port, host)
     } catch (e) {
       if (e.code === 'EADDRINUSE') {
-        console.error(`port ${port} in use — run 'quadtodo config set port <newPort>' or stop whoever holds it`)
+        console.error(`port ${port} in use — run 'agentquad config set port <newPort>' or stop whoever holds it`)
       } else if (e.code === 'EADDRNOTAVAIL') {
         console.error(`host ${host} not available on this machine — try --host 0.0.0.0`)
       } else {
@@ -413,15 +422,15 @@ program.command('start')
 
     // ─── 自动 bootstrap Claude Code hook（部署 notify.js + 合入 settings.json）───
     // 设计：缺啥补啥 / 已装则 noop / 用户跑过 uninstall-hook 留下的 marker 会被尊重
-    // 任何错误一律 warn-skip，绝不让 hook bootstrap 把 quadtodo start 挂掉
+    // 任何错误一律 warn-skip，绝不让 hook bootstrap 把 agentquad start 挂掉
     try {
       const { bootstrapHooks } = await import('./openclaw-hook-installer.js')
       const r = bootstrapHooks()
       if (r.skipped) {
         if (r.reason === 'uninstall_marker') {
-          console.log(`ℹ claude-code hook: 已被你 uninstall-hook 拒绝；想恢复跑 'quadtodo openclaw bootstrap'`)
+          console.log(`ℹ claude-code hook: 已被你 uninstall-hook 拒绝；想恢复跑 'agentquad openclaw bootstrap'`)
         } else if (r.reason === 'malformed_settings') {
-          console.warn(`⚠ claude-code hook: ~/.claude/settings.json JSON 损坏，跳过自动安装；修好后跑 'quadtodo openclaw bootstrap'`)
+          console.warn(`⚠ claude-code hook: ~/.claude/settings.json JSON 损坏，跳过自动安装；修好后跑 'agentquad openclaw bootstrap'`)
         } else {
           console.log(`ℹ claude-code hook bootstrap skipped: ${r.reason}`)
         }
@@ -470,7 +479,7 @@ program.command('start')
 program.command('stop')
   .action(async () => {
     const pf = pidFile()
-    if (!existsSync(pf)) { console.log('quadtodo is not running (no pid file)'); return }
+    if (!existsSync(pf)) { console.log('AgentQuad is not running (no pid file)'); return }
     const pid = Number(readFileSync(pf, 'utf8'))
     if (!pid || !isAlive(pid)) {
       console.log('stale pid file, removing')
@@ -482,12 +491,12 @@ program.command('stop')
     while (Date.now() < deadline) {
       if (!isAlive(pid)) {
         try { unlinkSync(pf) } catch { /* ignore */ }
-        console.log('quadtodo stopped')
+        console.log('AgentQuad stopped')
         return
       }
       await new Promise(r => setTimeout(r, 100))
     }
-    console.log('quadtodo did not exit in 3s, sending SIGKILL')
+    console.log('AgentQuad did not exit in 3s, sending SIGKILL')
     try { process.kill(pid, 'SIGKILL') } catch { /* ignore */ }
     try { unlinkSync(pf) } catch { /* ignore */ }
   })
@@ -528,7 +537,7 @@ program.command('doctor')
     if (missing.length > 0) {
       const flags = missing.map(t => `--${t}`).join(' ')
       console.log(`\nMissing AI CLI(s): ${missing.join(', ')}`)
-      console.log(`Suggested fix: quadtodo install-tools ${flags}`)
+      console.log(`Suggested fix: agentquad install-tools ${flags}`)
       if (process.stdin.isTTY) {
         const ans = await prompt(`Run it now? [Enter = yes / q = skip] `)
         if (ans.trim().toLowerCase() !== 'q') {
@@ -591,7 +600,7 @@ program.command('install-tools')
     process.exit(allOk ? 0 : 1)
   })
 
-// ─── quadtodo mcp install / status ─────────────────────────────
+// ─── agentquad mcp install / status ─────────────────────────────
 
 export function defaultClaudeSettingsPath() {
   return join(homedir(), '.claude', 'settings.json')
@@ -606,18 +615,19 @@ export function buildMcpServerEntry({ host, port } = {}) {
 }
 
 /**
- * Merge `quadtodo` 进 settings.json 的 mcpServers 段，不破坏现有条目。
+ * Merge `agentquad` 进 settings.json 的 mcpServers 段，不破坏现有条目。
  * - 如果 settings.json 不存在：创建一个只含 mcpServers 的新文件
  * - 如果存在且有效 JSON：merge
  * - 如果存在但不是 JSON：报错（让用户自己先修好）
+ * - 如果存在 legacy `quadtodo` entry 且其 url/command 指向 OUR 包 bin → 删除
  *
- * 返回 { path, action: 'created'|'updated'|'unchanged', entry }
+ * 返回 { path, action: 'created'|'updated'|'unchanged', entry, legacyRemoved }
  */
 export function installMcpIntoClaudeSettings({
   settingsPath = defaultClaudeSettingsPath(),
   host,
   port,
-  name = 'quadtodo',
+  name = 'agentquad',
 } = {}) {
   const entry = buildMcpServerEntry({ host, port })
   let settings = {}
@@ -639,14 +649,27 @@ export function installMcpIntoClaudeSettings({
   if (!settings.mcpServers || typeof settings.mcpServers !== 'object') {
     settings.mcpServers = {}
   }
+  // legacy 清理：如果有 quadtodo entry 且看起来是 OUR 包（http URL 指向 /mcp，或
+  // command 字段含 /quadtodo/ | /agentquad/），删掉它。
+  let legacyRemoved = false
+  const legacy = settings.mcpServers.quadtodo
+  if (legacy && name !== 'quadtodo') {
+    const isOurs =
+      (typeof legacy.url === 'string' && /\/mcp\/?$/.test(legacy.url)) ||
+      (typeof legacy.command === 'string' && /\/agentquad\/|\/quadtodo\//.test(legacy.command))
+    if (isOurs) {
+      delete settings.mcpServers.quadtodo
+      legacyRemoved = true
+    }
+  }
   const existing = settings.mcpServers[name]
   const same = existing && existing.type === entry.type && existing.url === entry.url
-  if (same) {
-    return { path: settingsPath, action: 'unchanged', entry }
+  if (same && !legacyRemoved) {
+    return { path: settingsPath, action: 'unchanged', entry, legacyRemoved }
   }
   settings.mcpServers[name] = entry
   writeFileSync(settingsPath, JSON.stringify(settings, null, 2))
-  return { path: settingsPath, action: existed ? 'updated' : 'created', entry }
+  return { path: settingsPath, action: existed ? 'updated' : 'created', entry, legacyRemoved }
 }
 
 const mcpCmd = program.command('mcp').description('Claude Code MCP: install / status')
@@ -664,7 +687,10 @@ mcpCmd.command('install')
       })
       const icon = out.action === 'unchanged' ? '=' : out.action === 'created' ? '+' : '~'
       console.log(`${icon} ${out.action} ${out.path}`)
-      console.log(`   mcpServers.quadtodo.url = ${out.entry.url}`)
+      if (out.legacyRemoved) {
+        console.log('   removed legacy mcpServers["quadtodo"] entry')
+      }
+      console.log(`   mcpServers.agentquad.url = ${out.entry.url}`)
       if (out.action === 'unchanged') {
         console.log('   (already configured)')
       } else {
@@ -688,7 +714,7 @@ mcpCmd.command('status')
       console.log(`  ${JSON.stringify(body)}`)
     } catch (e) {
       console.error(`✗ ${url} unreachable: ${e.message}`)
-      console.error(`  quadtodo 是不是没跑？试 'quadtodo start' 或 'npm start'`)
+      console.error(`  AgentQuad 是不是没跑？试 'agentquad start' 或 'npm start'`)
       process.exit(1)
     }
   })
@@ -697,7 +723,7 @@ mcpCmd.command('status')
 const openclawCmd = program.command('openclaw').description('OpenClaw bridge: install/uninstall Claude Code hooks for proactive WeChat push')
 
 openclawCmd.command('install-hook')
-  .description('把 quadtodo 的 3 个 hook（Stop/Notification/SessionEnd）合并写入 ~/.claude/settings.json')
+  .description('把 AgentQuad 的 3 个 hook（Stop/Notification/SessionEnd）合并写入 ~/.claude/settings.json')
   .action(async () => {
     const { installHooks } = await import('./openclaw-hook-installer.js')
     try {
@@ -709,14 +735,14 @@ openclawCmd.command('install-hook')
       console.log('')
       console.log('完成。新的 PTY 会话启动后会自动通过 hook 推送状态到微信。')
       console.log('注意：现存的 PTY 会话（重启前已经在跑的）env 已固定，不受影响；')
-      console.log('     新 quadtodo.start_ai_session 启动的 PTY 才会带 hook env。')
+      console.log('     新 agentquad.start_ai_session 启动的 PTY 才会带 hook env。')
     } catch (e) {
       console.error(`install-hook failed: ${e.message}`)
       if (e.code === 'malformed_settings') {
         console.error(`  你的 ~/.claude/settings.json JSON 不合法，先修复再试。`)
       }
       if (e.code === 'hook_script_missing') {
-        console.error(`  hook 脚本缺失。跑 'quadtodo openclaw bootstrap' 一键部署 + 安装。`)
+        console.error(`  hook 脚本缺失。跑 'agentquad openclaw bootstrap' 一键部署 + 安装。`)
       }
       process.exit(1)
     }
@@ -759,21 +785,21 @@ openclawCmd.command('bootstrap')
   })
 
 openclawCmd.command('uninstall-hook')
-  .description('从 ~/.claude/settings.json 移除 quadtodo 加的 hook entry，保留你其他 hook（默认会写 .uninstalled marker，下次 start 不再自动装回）')
-  .option('--no-marker', '不写 .uninstalled marker（下次 quadtodo start 会自动装回）')
+  .description('从 ~/.claude/settings.json 移除 AgentQuad 加的 hook entry，保留你其他 hook（默认会写 .uninstalled marker，下次 start 不再自动装回）')
+  .option('--no-marker', '不写 .uninstalled marker（下次 agentquad start 会自动装回）')
   .action(async (opts) => {
     const { uninstallHooks } = await import('./openclaw-hook-installer.js')
     try {
       const out = uninstallHooks({ writeUninstallMarker: opts.marker !== false })
       if (out.removed.length === 0) {
-        console.log('= no quadtodo hooks installed; nothing to remove')
+        console.log('= no AgentQuad hooks installed; nothing to remove')
       } else {
-        console.log(`✓ removed quadtodo hooks from ${out.settingsPath}`)
+        console.log(`✓ removed AgentQuad hooks from ${out.settingsPath}`)
         for (const r of out.removed) console.log(`   ${r.event}: -${r.removedCount}`)
         if (out.backup) console.log(`  backup: ${out.backup}`)
       }
       if (out.markerWritten) {
-        console.log(`  marker written → 下次 'quadtodo start' 不会自动装回；想恢复跑 'quadtodo openclaw bootstrap'`)
+        console.log(`  marker written → 下次 'agentquad start' 不会自动装回；想恢复跑 'agentquad openclaw bootstrap'`)
       }
     } catch (e) {
       console.error(`uninstall-hook failed: ${e.message}`)
@@ -782,7 +808,7 @@ openclawCmd.command('uninstall-hook')
   })
 
 openclawCmd.command('hook-status')
-  .description('查看 quadtodo hook 是否安装到 ~/.claude/settings.json')
+  .description('查看 AgentQuad hook 是否安装到 ~/.claude/settings.json')
   .action(async () => {
     const { inspectHooks } = await import('./openclaw-hook-installer.js')
     const r = inspectHooks()
@@ -795,10 +821,10 @@ openclawCmd.command('hook-status')
   })
 
 openclawCmd.command('inbound')
-  .description('OpenClaw skill 单入口：转发一条用户消息到 quadtodo wizard，stdout 是给用户的回复')
+  .description('OpenClaw skill 单入口：转发一条用户消息到 AgentQuad wizard，stdout 是给用户的回复')
   .requiredOption('--from <peer>', '微信对端 user_id（OpenClaw 给的 from_user_id）')
   .requiredOption('--text <text>', '用户原文')
-  .option('--port <port>', 'quadtodo 端口', (v) => Number(v))
+  .option('--port <port>', 'AgentQuad 端口', (v) => Number(v))
   .action(async (opts) => {
     const cfg = loadConfig()
     const port = opts.port || cfg.port || 5677
@@ -819,7 +845,7 @@ openclawCmd.command('inbound')
       // exit 0
     } catch (e) {
       console.error(`✗ inbound failed: ${e.message}`)
-      console.error(`  quadtodo 是不是没跑？试 'quadtodo status'`)
+      console.error(`  AgentQuad 是不是没跑？试 'agentquad status'`)
       process.exit(1)
     }
   })
@@ -839,7 +865,7 @@ openclawCmd.command('inbound-state')
     }
   })
 
-const cfgCmd = program.command('config').description('read/write ~/.quadtodo/config.json')
+const cfgCmd = program.command('config').description('read/write ~/.agentquad/config.json')
 cfgCmd.command('get <key>').action((key) => {
   const v = getConfigValue(key)
   if (v === undefined) process.exit(1)
@@ -860,9 +886,9 @@ const isMain = (() => {
   try {
     return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url))
   } catch {
-    // fallback：argv[1] 是 cli.js 或 bin 名 'quadtodo'
+    // fallback：argv[1] 是 cli.js 或 bin 名 'agentquad' / 'quadtodo'（legacy alias）
     if (process.argv[1].endsWith('cli.js')) return true
-    if (/\/quadtodo$/.test(process.argv[1])) return true
+    if (/\/(agentquad|quadtodo)$/.test(process.argv[1])) return true
     return false
   }
 })()

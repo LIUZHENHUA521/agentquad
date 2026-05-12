@@ -134,7 +134,7 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
   const [sessionExpired, setSessionExpired] = useState(false)
   const sessionExpiredRef = useRef(false)
   // 后端在 claude/codex 二进制缺失时返回 HTTP 424 + code:'tool_missing'，
-  // 这里保存修复指引（quadtodo install-tools --xxx），用一张卡片代替难懂的 ENOENT toast
+  // 这里保存修复指引（agentquad install-tools --xxx），用一张卡片代替难懂的 ENOENT toast
   const [toolMissing, setToolMissing] = useState<null | { tool: string; bin: string; fix: string }>(null)
   const [height, setHeight] = useState(420)
   const [autoMode, setAutoMode] = useState<string | null>(() => {
@@ -336,9 +336,9 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
     }
 
     try {
-      const notification = new window.Notification('quadtodo', {
+      const notification = new window.Notification('AgentQuad', {
         body: TURN_DONE_TEXT,
-        tag: `quadtodo-turn-done-${sessionId}`,
+        tag: `agentquad-turn-done-${sessionId}`,
       })
       notification.onclick = () => {
         focusOwnDockTab()

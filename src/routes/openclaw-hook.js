@@ -5,7 +5,7 @@ import { Router } from 'express'
  *   body: { source?, path?, event, sessionId, targetUserId?, todoId?, todoTitle?, hookPayload?,
  *           nativeId?, transcript_path?, cwd?, raw_event_payload?, promptText?, matchedPattern? }
  *
- * Claude Code hook 脚本（~/.quadtodo/claude-hooks/notify.js）调用此端点（默认 source=claude）。
+ * Claude Code hook 脚本（~/.agentquad/claude-hooks/notify.js）调用此端点（默认 source=claude）。
  * Codex 事件来源（jsonl emitter / detector）也走同一端点，通过 source/path 字段区分。
  * 端到端逻辑都委托给 openclaw-hook handler，路由层只做 body 校验与字段转发。
  */

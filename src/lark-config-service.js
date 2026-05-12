@@ -12,5 +12,5 @@ export function isMaskedLarkAppSecret(value) {
 
 export function larkAppSecretSource(config) {
   const secret = config?.lark?.appSecret
-  return secret && typeof secret === 'string' ? 'quadtodo' : 'missing'
+  return secret && typeof secret === 'string' ? 'agentquad' : 'missing'
 }

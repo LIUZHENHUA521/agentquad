@@ -28,7 +28,7 @@ export function registerReadTools(server, { db, searchService, wikiDir, transcri
     'search',
     {
       description:
-        '全局搜索 quadtodo 的所有语料：todo 标题/描述、评论、wiki 记忆、AI 会话元信息。基于 SQLite FTS5 + BM25 排序。返回每条命中的 scope/snippet/todoId/todoTitle 等。',
+        '全局搜索 AgentQuad 的所有语料：todo 标题/描述、评论、wiki 记忆、AI 会话元信息。基于 SQLite FTS5 + BM25 排序。返回每条命中的 scope/snippet/todoId/todoTitle 等。',
       inputSchema: {
         query: z.string().min(1).describe('搜索关键词；可以是自然语言词组，会自动转成 FTS5 前缀匹配'),
         scopes: z.array(ScopeEnum).optional().describe('限定搜索范围，默认 4 个全开'),
@@ -188,7 +188,7 @@ export function registerReadTools(server, { db, searchService, wikiDir, transcri
       'search_transcripts',
       {
         description:
-          '在 AI 会话日志（~/.quadtodo/logs/*.log）里做纯文本逐行扫描。不使用 FTS，适合查 "当时 Claude 说的那句话"。结果带前后文；单次返回上限默认 30 条、单文件最多 5 条。',
+          '在 AI 会话日志（~/.agentquad/logs/*.log）里做纯文本逐行扫描。不使用 FTS，适合查 "当时 Claude 说的那句话"。结果带前后文；单次返回上限默认 30 条、单文件最多 5 条。',
         inputSchema: {
           query: z.string().min(1),
           todoId: z.string().optional().describe('只搜这个 todo 下的会话；不传就全局'),
