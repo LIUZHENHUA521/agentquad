@@ -26,16 +26,31 @@ class FakePty extends EventEmitter {
   constructor() {
     super()
     this.started = []
+    this.startedWithSize = []
     this.writes = []
     this._has = new Set()
+    this._nativeIds = new Map()
   }
-  start(opts) { this.started.push(opts); this._has.add(opts.sessionId) }
+  create(opts) {
+    this.started.push(opts)
+    this._has.add(opts.sessionId)
+    if (opts.resumeNativeId) {
+      this._nativeIds.set(opts.sessionId, opts.resumeNativeId)
+    } else if (opts.tool === 'claude') {
+      this._nativeIds.set(opts.sessionId, `claude-preset-${this.started.length}`)
+    } else {
+      this._nativeIds.set(opts.sessionId, null)
+    }
+  }
+  startWithSize(sessionId, cols, rows) { this.startedWithSize.push({ sessionId, cols, rows }) }
+  start(opts) { this.create(opts); this.startWithSize(opts.sessionId, 80, 24) }
   write(id, data) { this.writes.push({ id, data }) }
   resize() {}
   stop(id) {
     this._has.delete(id)
     this.emit('done', { sessionId: id, exitCode: 0, fullLog: '', nativeId: null, stopped: true })
   }
+  getNativeId(id) { return this._nativeIds.get(id) ?? null }
   has(id) { return this._has.has(id) }
   list() { return [...this._has] }
   getPids() { return [] }
