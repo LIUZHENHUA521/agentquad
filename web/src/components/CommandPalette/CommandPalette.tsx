@@ -87,7 +87,10 @@ export function CommandPalette() {
           {page === 'default' && (
             <>
               <Command.Group heading="Quick actions">
-                <Command.Item onSelect={() => { /* T8 wires this */ closePalette() }}>
+                <Command.Item onSelect={() => {
+                  useDispatchStore.getState().requestNewTodoOpen()
+                  closePalette()
+                }}>
                   <span className="cmdk-icon">+</span>
                   <span>Create new todo</span>
                   <span className="cmdk-meta">N</span>
@@ -112,7 +115,10 @@ export function CommandPalette() {
                     <Command.Item
                       key={t.id}
                       value={`todo ${t.title}`}
-                      onSelect={() => { /* T8 wires jump via setJumpTo(t.id) */ closePalette() }}
+                      onSelect={() => {
+                        useDispatchStore.getState().setJumpTo(t.id)
+                        closePalette()
+                      }}
                     >
                       <span className="cmdk-icon" style={{ color: 'var(--accent-electric)' }}>›</span>
                       <span>{t.title}</span>
@@ -166,8 +172,13 @@ export function CommandPalette() {
                       key={t.id}
                       value={`picktodo ${t.title}`}
                       onSelect={() => {
-                        // T8 wires actual session start using t.id (todoId)
+                        // For now, jumping to the todo + setting an intent flag is enough.
+                        // M3 will hook the real session start.
+                        useDispatchStore.getState().setJumpTo(t.id)
                         closePalette()
+                        // Surface intent for debugging / future wiring.
+                        // eslint-disable-next-line no-console
+                        console.info('[cmdk] start AI session intent:', { tool: aiTool, todoId: t.id })
                       }}
                     >
                       <span className="cmdk-icon" style={{ color: 'var(--accent-electric)' }}>›</span>
