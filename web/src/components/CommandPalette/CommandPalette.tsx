@@ -9,6 +9,7 @@ type Page = 'default' | 'aiPicker'
 
 interface TodoEntry {
   id: string
+  sessionId: string
   title: string
   status?: string
   tool?: string
@@ -45,6 +46,7 @@ export function CommandPalette() {
     seenTodoIds.add(id)
     todos.push({
       id,
+      sessionId: s.sessionId,
       title: s.todoTitle,
       status: s.status,
       tool: s.tool,
@@ -122,6 +124,25 @@ export function CommandPalette() {
                     >
                       <span className="cmdk-icon" style={{ color: 'var(--accent-electric)' }}>›</span>
                       <span>{t.title}</span>
+                      {t.tool && <span className="cmdk-meta">{t.tool}</span>}
+                    </Command.Item>
+                  ))}
+                </Command.Group>
+              )}
+
+              {todos.length > 0 && (
+                <Command.Group heading="Focus session">
+                  {todos.map((t) => (
+                    <Command.Item
+                      key={`focus-${t.id}`}
+                      value={`focus-${t.id}-${t.title}`}
+                      onSelect={() => {
+                        useDispatchStore.getState().openFocus(t.id, t.sessionId)
+                        closePalette()
+                      }}
+                    >
+                      <span className="cmdk-icon">⇆</span>
+                      <span>Focus: {t.title}</span>
                       {t.tool && <span className="cmdk-meta">{t.tool}</span>}
                     </Command.Item>
                   ))}
