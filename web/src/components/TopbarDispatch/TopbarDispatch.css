@@ -1,5 +1,5 @@
 .topbar-dispatch {
-  height: 52px;
+  height: var(--topbar-dispatch-h, 52px);
   background: var(--surface-1);
   border-bottom: 1px solid var(--border-subtle);
   display: flex;

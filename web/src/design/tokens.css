@@ -81,6 +81,9 @@
 
 /* Spacing / radius / typography (mode-independent) */
 :root {
+  /* Layout heights */
+  --topbar-dispatch-h: 52px;
+
   --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px;
   --space-5: 20px; --space-6: 24px; --space-7: 32px; --space-8: 48px; --space-9: 64px;
 

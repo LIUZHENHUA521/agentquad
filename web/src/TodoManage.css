@@ -22,7 +22,7 @@ body {
 /* 常驻顶部工具栏 + 筛选栏 */
 .todo-sticky-header {
   position: sticky;
-  top: 0;
+  top: var(--topbar-dispatch-h, 52px);
   z-index: 10;
   background: var(--surface-1);
   margin: 0 -16px;
