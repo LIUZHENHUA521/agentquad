@@ -12,8 +12,8 @@
  * 文件落到 ~/.agentquad/web-uploads/<ts>-<rand>.<ext>，跟 telegram tg-uploads 同模式。
  */
 import { Router } from 'express'
-import { mkdirSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { mkdirSync, writeFileSync, statSync } from 'node:fs'
+import { join, resolve as resolvePath, sep } from 'node:path'
 import { Buffer } from 'node:buffer'
 import { DEFAULT_ROOT_DIR } from '../config.js'
 
@@ -68,6 +68,25 @@ export function createUploadsRouter({ uploadDir = DEFAULT_UPLOAD_DIR, logger = c
     } catch (e) {
       logger.warn?.(`[uploads] save failed: ${e.message}`)
       res.status(500).json({ ok: false, error: e.message || 'upload_failed' })
+    }
+  })
+
+  router.get('/file', (req, res) => {
+    try {
+      const raw = String(req.query.path || '')
+      if (!raw) return res.status(400).json({ ok: false, error: 'path_required' })
+      const rootAbs = resolvePath(uploadDir) + sep
+      const fileAbs = resolvePath(raw)
+      if (!(fileAbs + sep).startsWith(rootAbs) && fileAbs !== resolvePath(uploadDir)) {
+        return res.status(403).json({ ok: false, error: 'forbidden_path' })
+      }
+      let st
+      try { st = statSync(fileAbs) } catch { return res.status(404).json({ ok: false, error: 'not_found' }) }
+      if (!st.isFile()) return res.status(404).json({ ok: false, error: 'not_a_file' })
+      return res.sendFile(fileAbs)
+    } catch (e) {
+      logger.warn?.(`[uploads] serve failed: ${e.message}`)
+      res.status(500).json({ ok: false, error: e.message || 'serve_failed' })
     }
   })
 

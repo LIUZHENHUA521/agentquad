@@ -104,3 +104,55 @@ describe('POST /api/uploads/image', () => {
     expect(r.body.path).toMatch(/\.svg$/)
   })
 })
+
+async function getFile(app, path, query) {
+  const url = await new Promise((resolve) => {
+    const server = app.listen(0, () => {
+      const port = server.address().port
+      resolve({ port, server })
+    })
+  })
+  try {
+    const qs = query ? '?' + new URLSearchParams(query).toString() : ''
+    const r = await fetch(`http://127.0.0.1:${url.port}${path}${qs}`)
+    const buf = Buffer.from(await r.arrayBuffer())
+    const ct = r.headers.get('content-type') || ''
+    return { status: r.status, body: buf, contentType: ct }
+  } finally {
+    url.server.close()
+  }
+}
+
+describe('GET /api/uploads/file', () => {
+  let tmp
+  beforeEach(() => { tmp = mkdtempSync(join(tmpdir(), 'qt-up-')) })
+  afterEach(() => { try { rmSync(tmp, { recursive: true, force: true }) } catch {} })
+
+  it('serves a file located inside the upload dir', async () => {
+    const app = makeApp(tmp)
+    const png = Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])
+    const up = await postJson(app, '/api/uploads/image', {
+      filename: 'a.png', mime: 'image/png', dataBase64: png.toString('base64'),
+    })
+    expect(up.status).toBe(200)
+
+    const r = await getFile(app, '/api/uploads/file', { path: up.body.path })
+    expect(r.status).toBe(200)
+    expect(r.body).toEqual(png)
+    expect(r.contentType).toMatch(/image\/png/)
+  })
+
+  it('rejects path outside the upload dir (directory traversal) with 403', async () => {
+    const app = makeApp(tmp)
+    const outside = join(tmp, '..', 'etc-passwd-like')
+    const r = await getFile(app, '/api/uploads/file', { path: outside })
+    expect(r.status).toBe(403)
+  })
+
+  it('returns 404 when the file is missing', async () => {
+    const app = makeApp(tmp)
+    const ghost = join(tmp, 'does-not-exist.png')
+    const r = await getFile(app, '/api/uploads/file', { path: ghost })
+    expect(r.status).toBe(404)
+  })
+})
