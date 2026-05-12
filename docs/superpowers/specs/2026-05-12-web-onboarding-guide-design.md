@@ -1,56 +1,48 @@
-# Web 端新手引导 (Web Onboarding Guide)
+# Web 端首次启动欢迎 Modal (Web Onboarding Welcome Modal)
 
 - 日期：2026-05-12
-- 范围：新增 `web/src/onboarding/` 目录（3 个文件）+ 改动 `web/src/TodoManage.tsx`（sticky header 工具栏与下方区域）
+- 范围：新增 `web/src/onboarding/` 目录（3 个文件）+ 改动 `web/src/TodoManage.tsx`（顶层挂载 Modal）
 - 后端：无改动
 
 ## 1. 背景与问题
 
-AgentQuad 启动后，web 端首屏对新用户信息量很大：
+AgentQuad 启动后，web 端首屏对新用户信息量很大：四象限 + AI 终端 + 多个 Drawer + AttentionRail + TerminalDock。目前 web 端**没有任何新手引导**，README 和 `docs/*.md` 只对"已经知道要找文档"的用户起作用。
 
-- 四象限视图 + 优先级视图切换
-- 每个 todo 上的 AI 终端、Fork、导出、复制 prompt 等多个操作
-- 工具栏含找回、设置、模板、报表、记忆、统计、Telegram 同步等多个 Drawer
-- 右侧 AttentionRail 提示流、底部 TerminalDock
+经过 brainstorm，确定走极简方向：
 
-目前 web 端**没有任何新手引导**。已有的 README、`docs/*.md`、SettingsDrawer 里的"配置教程（不熟悉的话点开看）"链接是为 *已知道要去找文档* 的用户准备的，对从浏览器进来直接看到界面的新人帮助有限。
-
-用户原话："宝子，我这个工具，你觉得启动 web 端后，需要有一个新手教程吗？"
-
-经过 brainstorm，结论是：**需要做，但不做高亮巡览**——AgentQuad 的目标用户是技术开发者，强弹窗/tour 会反感；同时界面仍在频繁迭代，tour 步骤会快速腐烂。
+- 不做高亮 tour（power user 反感、UI 改动会让 tour 腐烂）
+- 不做永久入口 Drawer（之前讨论过的 GuideDrawer 砍掉）
+- **只做一个首次启动的居中 Modal**，简单介绍工具，关掉后不再弹
+- 视觉走"极简苹果风"
 
 ## 2. 目标
 
-提供轻量、不打扰、长期可维护的新手引导：
-
-1. **首次空状态**自动给出 3 步上手提示（不是模态弹窗）
-2. **永久入口**让任何时候都能查阅完整指南，不会"关了找不回"
-3. **不引入新依赖**（不要 Joyride / Driver.js 这类）
+- 首次访问 web 端弹一次居中 Modal，展示工具定位 + 3 步上手 + 一个主按钮
+- 关掉后写 localStorage 标记，永不再弹
+- 视觉上做到"好看"——极简苹果风：留白、细字重、灰阶 + 单一高亮色、柔和阴影、大圆角
+- 零新依赖、零后端改动
 
 非目标：
 
+- 不做永久"上手指南"入口（点了"开始使用"就再也不出现）
+- 不做 GuideDrawer / FAQ / 外链汇总
+- 不做空状态自适应（不与 `todos.length === 0` 绑定，Modal 仅由 localStorage 决定）
 - 不做高亮 tour / 步骤遮罩
-- 不做 GIF / 截图（避免维护负担；纯文字 + AntD icon）
-- 不做后端持久化（localStorage 即可，AgentQuad 是本地单用户工具）
-- 不做 i18n（仅中文，与界面主体一致）
-- 不替换 SettingsDrawer 既有"配置教程"链接（两者并存：那是 AI tool 安装教程，本 spec 是产品功能引导）
+- 不做 GIF / Lottie / SVG 插画（纯文字 + AntD icon）
+- 不做 i18n（仅中文）
+- 不依赖第三方动画/UI 库（不引入 framer-motion / Joyride 等）
 
 ## 3. 验收标准
 
-- [ ] 新用户首次打开 web 端（localStorage 无 `agentquad:welcome:dismissed`，且 `todos.length === 0`），sticky header 下方显示 WelcomeCard 横幅，列出 3 步上手
-- [ ] WelcomeCard 上"立即新建"按钮等价于点击工具栏"新建"，打开 `handleCreate()` 新建 Drawer
-- [ ] WelcomeCard 上"完整指南"按钮打开 GuideDrawer
-- [ ] WelcomeCard 上"我知道了，不再显示"按钮写入 `agentquad:welcome:dismissed=1`，立即隐藏；后续即使清空 todo 也不再出现
-- [ ] 已有任意 todo 的用户（`todos.length > 0`）看不到 WelcomeCard
-- [ ] sticky header 工具栏"更多" Dropdown 末尾新增一项"上手指南"（icon: `QuestionCircleOutlined`），点击打开 GuideDrawer
-- [ ] 移动端 `mobileMenuOpen` 菜单也包含"上手指南"项
-- [ ] GuideDrawer 包含 5 个分区：30 秒上手 / 主要功能简介 / 进阶玩法（外链）/ 没装 claude/codex（跳 Settings）/ FAQ
-- [ ] GuideDrawer 中"去设置 → 配置教程"按钮关闭 GuideDrawer 并打开 SettingsDrawer
-- [ ] 进阶玩法外链指向 GitHub 仓库（`https://github.com/LIUZHENHUA521/agentquad/blob/main/docs/MCP.md` 等），`target="_blank"` + `rel="noopener noreferrer"`
-- [ ] 移动端窄屏（<480px）：WelcomeCard 三步纵向堆叠，按钮不溢出；GuideDrawer 变全宽
+- [ ] 新用户首次打开 web 端（localStorage 无 `agentquad:welcome:dismissed`）→ 自动弹出居中 Modal，显示标题、副标题、3 步上手、"开始使用"按钮
+- [ ] 点击"开始使用" / Modal 关闭按钮 / 遮罩 / Esc → localStorage 写入 `agentquad:welcome:dismissed=1`，Modal 立即关闭
+- [ ] 已 dismiss 的用户后续刷新页面 / 重启服务 → Modal 不再出现
+- [ ] Modal 与 `todos.length` 无关（无论有无 todo，首次都会弹）
+- [ ] 视觉规范全部命中（详见 §4.4）
+- [ ] 移动端窄屏（<480px）：Modal 边距收紧到屏宽-32px，三步从横排变纵排，按钮不溢出
 - [ ] 不新增第三方依赖（package.json `dependencies` / `devDependencies` 无新增）
-- [ ] `npm run -w web build` 通过；既有用例不回归
-- [ ] 新增最小化单元测试：onboardingStore 的 localStorage 读写
+- [ ] `npm run -w web build` 通过；既有测试不回归
+- [ ] 新增单元测试：onboardingStore 的纯函数 `readWelcomeDismissed` / `writeWelcomeDismissed`
 
 ## 4. 设计
 
@@ -60,27 +52,27 @@ AgentQuad 启动后，web 端首屏对新用户信息量很大：
 
 ```
 web/src/onboarding/
-├── WelcomeCard.tsx       # 首次空状态横幅
-├── GuideDrawer.tsx       # 永久可访问的上手指南 Drawer
-└── onboardingStore.ts    # localStorage dismissed 状态 hook
+├── WelcomeModal.tsx       # 居中欢迎 Modal
+├── onboardingStore.ts     # localStorage dismissed 状态（纯函数 + 薄 hook）
+└── onboarding.css         # 极简苹果风样式
 ```
 
 改动：
 
-- `web/src/TodoManage.tsx`：
-  - sticky header 下方挂 `<WelcomeCard ... />`（条件渲染）
-  - "更多" Dropdown items 末尾追加 "guide" 项
-  - 移动端 menu（`mobileMenuOpen` 内）同步追加
-  - 顶层 state 增加 `guideOpen` + `<GuideDrawer open={guideOpen} ... />`
+- `web/src/TodoManage.tsx`：在顶层 JSX 末尾挂 `<WelcomeModal />`（与 Settings/Wiki 等 Drawer 同层级），由 `useWelcomeDismissed()` 控制 open 状态
+
+**不动**的：
+
+- 工具栏 / 移动端菜单 / Dropdown items（不加任何"上手指南"入口）
+- SettingsDrawer 既有"配置教程"链接（保持原样）
 
 ### 4.2 onboardingStore.ts
 
-暴露**纯函数**（不依赖 React），再加一个薄 hook 给组件用。这样 store 测试可以直接在根 `test/` 目录跑，不需要 jsdom。
+纯函数 + 薄 hook，纯函数可在根 `test/` 目录跑（vitest 无 jsdom）。
 
 ```ts
 const WELCOME_DISMISSED_KEY = 'agentquad:welcome:dismissed'
 
-// 纯函数：可单独测试
 export function readWelcomeDismissed(): boolean {
   try {
     return globalThis.localStorage?.getItem(WELCOME_DISMISSED_KEY) === '1'
@@ -96,7 +88,7 @@ export function writeWelcomeDismissed(v: boolean): void {
   } catch { /* 隐私模式等异常静默 */ }
 }
 
-// React hook：薄包装，组件内使用
+// React hook：组件内使用
 export function useWelcomeDismissed(): [boolean, (v: boolean) => void] {
   const [dismissed, setDismissedState] = useState<boolean>(readWelcomeDismissed)
   const setDismissed = useCallback((v: boolean) => {
@@ -107,216 +99,229 @@ export function useWelcomeDismissed(): [boolean, (v: boolean) => void] {
 }
 ```
 
-- 不监听 `storage` 事件（单浏览器标签场景足够）
-- localStorage 不可用时（隐私模式）：默认 dismissed = false，setter 静默失败——表现为"每次都显示"，可接受
+localStorage 不可用时（隐私模式）：默认 dismissed = false，setter 静默失败——表现为"每次都弹"，可接受。
 
-### 4.3 WelcomeCard.tsx
-
-**Props**：
-
-```ts
-interface WelcomeCardProps {
-  onCreate: () => void       // 复用 TodoManage 的 handleCreate
-  onOpenGuide: () => void    // 打开 GuideDrawer
-  onDismiss: () => void      // 写 dismissed
-}
-```
-
-**布局（桌面端）**：
-
-```
-┌─ .welcome-card ────────────────────────────────────────────────────┐
-│ 👋 欢迎使用 AgentQuad！3 步开始：                       [✕ 关闭]   │
-│                                                                     │
-│ ┌─ ① 新建 todo ──┐ ┌─ ② 启动 AI 终端 ──┐ ┌─ ③ 协作完成 ───────┐ │
-│ │ 标题写你想做的 │ │ 在卡片上点"AI    │ │ 关注 AttentionRail │ │
-│ │ 事             │ │ 执行"，让        │ │ 提示，跟 AI 聊到   │ │
-│ │ [立即新建]     │ │ claude/codex 接手│ │ 搞定               │ │
-│ └────────────────┘ └──────────────────┘ └────────────────────┘ │
-│                                                                     │
-│ [📖 完整指南]                            [我知道了，不再显示]      │
-└─────────────────────────────────────────────────────────────────────┘
-```
-
-- 容器：AntD `Card` 或自定义 div，浅色背景（不要太抢眼）
-- 顶行：标题 + 右上角"✕"快速关闭（等同"我知道了"）
-- 中间：3 张小卡，flex 横排；窄屏纵向堆叠
-- 底行：左侧"完整指南"按钮（`type="default"`，icon: `BookOutlined`），右侧"我知道了"链接按钮（`type="link"`）
-
-**显示条件**（在 TodoManage 中判断，不在 WelcomeCard 内）：
-
-```tsx
-{!welcomeDismissed && totalTodoCount === 0 && (
-  <WelcomeCard onCreate={handleCreate} onOpenGuide={() => setGuideOpen(true)} onDismiss={() => setWelcomeDismissed(true)} />
-)}
-```
-
-**`totalTodoCount` 来源（关键点）**：`TodoManage.tsx` 现有 `todos` state（行 708）受 `filterStatus`/`keyword` 影响——`fetchTodos` 把这俩作为参数传给 `listTodos`（行 979-983），所以不能直接用 `todos.length` 当 raw count。
-
-实现方案：
-
-1. 新增 state `const [totalTodoCount, setTotalTodoCount] = useState<number | null>(null)`（null = 还未拿到，避免首次渲染闪现 WelcomeCard 又消失）
-2. 初次挂载用 `useEffect` 调一次 `listTodos({})`（不带 filter）取总数 → `setTotalTodoCount(list.length)`
-3. CRUD 后**懒同步**：在 `handleCreate` 成功（子函数：保存新建 Drawer 时）+ `handleDelete` 成功后，重新调一次 `listTodos({})` 更新；或者更简单——CRUD 后直接 `setTotalTodoCount(prev => prev + 1 / prev - 1)`。删除子树时数量不止 -1，所以**统一用 re-fetch 法**，但只在 `welcomeDismissed === false` 时执行（dismissed 之后不再需要这个数）
-4. 显示条件改为：`!welcomeDismissed && totalTodoCount === 0`（注意 null 不等于 0，所以拿到数据前不会显示）
-
-简化版数据流：
-
-```tsx
-const [totalTodoCount, setTotalTodoCount] = useState<number | null>(null)
-
-useEffect(() => {
-  if (welcomeDismissed) return  // 已 dismiss 就不需要再算了
-  listTodos({}).then(list => setTotalTodoCount(list.length)).catch(() => {})
-}, [welcomeDismissed])
-
-// CRUD 后触发重新计数
-const refreshTotalCount = useCallback(() => {
-  if (welcomeDismissed) return
-  listTodos({}).then(list => setTotalTodoCount(list.length)).catch(() => {})
-}, [welcomeDismissed])
-
-// 在 handleCreate(保存成功)、handleDelete、handleToggleDone 等成功回调里调 refreshTotalCount()
-```
-
-- 一旦 `totalTodoCount > 0`，立即隐藏；用户主动 dismiss 后即使数量又变回 0 也不再显示
-
-**样式**：新建 `web/src/onboarding/onboarding.css` 或追加到 `TodoManage.css`（推荐前者，独立模块）
-
-### 4.4 GuideDrawer.tsx
+### 4.3 WelcomeModal.tsx
 
 **Props**：
 
 ```ts
-interface GuideDrawerProps {
+interface WelcomeModalProps {
   open: boolean
-  onClose: () => void
-  onOpenSettings: () => void   // 点 "去设置 → 配置教程" 时调用
+  onClose: () => void   // 点关闭/遮罩/Esc/主按钮都调它
 }
 ```
 
-**Drawer 配置**：标题"AgentQuad 上手指南"，placement="right"。桌面端 `width={560}`，移动端（`useIsMobile()` 命中）切换到 `width="100%"`，避免窄屏溢出（参考 `web/src/hooks/useIsMobile.ts`）。
+**结构**（AntD `Modal`，自定义 `footer={null}`，所有视觉控制走 CSS）：
 
-**内容（5 个分区，纯静态）**：
+```
+┌─ Modal (width=520, centered, 圆角 20) ──────────────────┐
+│                                                     ✕   │  ← 右上角细线 close
+│                                                          │
+│              欢迎使用 AgentQuad                          │  ← H2, 24px, 600
+│                                                          │
+│       四象限里的 AI 调度台 ——                           │  ← 副标题 14px, 灰 #666
+│       每个待办都能跑一个 Claude/Codex 会话，全本地        │     行高 1.6
+│                                                          │
+│   ┌──────┐    ┌──────┐    ┌──────┐                     │
+│   │  📝  │    │  🤖  │    │  ✅  │                     │  ← 三个 step icon
+│   │      │    │      │    │      │                     │     icon 容器 48x48 圆 12
+│   │ 新建 │    │ 启动 │    │ 协作 │                     │     灰背景 #f5f5f5
+│   │ todo │    │ AI 终│    │ 完成 │                     │
+│   │      │    │ 端   │    │      │                     │
+│   └──────┘    └──────┘    └──────┘                     │
+│   标题写你    在卡片上    关注右上                       │  ← 每步说明 13px
+│   想做的事    点 "AI执行" Rail 提示                      │     灰 #555 行高 1.5
+│                                                          │
+│              [    开始使用    ]                          │  ← 主按钮：圆角 12
+│                                                          │     高 44，宽 200
+│                                                          │     主色填充
+└──────────────────────────────────────────────────────────┘
+```
 
-1. **30 秒上手**
-   - 展开 WelcomeCard 三步：每步加 1-2 句关键说明
-   - 第 1 步末尾："标题就是给 AI 的 prompt——写清楚要做什么"
-   - 第 2 步末尾："首次启动 AI 会用 claude（默认），可在设置里切到 codex"
-   - 第 3 步末尾："AI 卡到需要决策的地方会推送到 AttentionRail，点开继续聊"
-
-2. **主要功能**（每项一行）
-   - 四象限视图 / 优先级视图（顶部切换）
-   - AI 终端（todo 卡片上的"AI 执行"）
-   - AttentionRail（右上角提示流）
-   - 记忆 Wiki（项目长期记忆）
-   - 模板（常用 prompt 复用）
-   - 报表 / 统计（活跃度回顾）
-   - 找回（历史会话恢复）
-   - 设置（端口、默认工具、Telegram 等）
-
-3. **进阶玩法**（外链卡片，点击新窗口打开）
-   - MCP：让外部 Claude Code 操作你的 todo（`docs/MCP.md`）
-   - Telegram：每个 todo 一个 Topic，手机端跟 AI 对话（`docs/TELEGRAM.md`）
-   - OpenClaw：微信里调用 AgentQuad（`docs/OPENCLAW.md`）
-   - 手机访问：Tailscale 私网（`docs/MOBILE.md`）
-
-   外链格式：`https://github.com/LIUZHENHUA521/agentquad/blob/main/docs/<name>.md`（仓库地址从 README 取）
-
-4. **没装 claude / codex？**
-   - 一句话提示：AI 终端依赖 `claude` 和 `codex` 这两个命令
-   - 按钮："去设置 → 配置教程" → 关闭本 Drawer，打开 SettingsDrawer
-
-5. **常见问题（FAQ）**
-   - AI 终端打开后没反应？→ 跑 `agentquad doctor` 看 claude/codex 是否在 PATH
-   - 之前的会话能找回吗？→ 顶部工具栏的"找回"按钮
-   - 想关掉欢迎横幅但又想再看？→ 清浏览器 localStorage 的 `agentquad:welcome:dismissed`
-   - 移动端访问？→ 见"进阶玩法 / 手机访问"
-   - 数据存哪里？→ `~/.agentquad/`
-
-### 4.5 接入点变更（TodoManage.tsx）
-
-**新增 state**：
+**JSX 骨架**：
 
 ```tsx
-const [guideOpen, setGuideOpen] = useState(false)
+<Modal
+  open={open}
+  onCancel={onClose}
+  footer={null}
+  centered
+  width={520}
+  closable
+  maskClosable
+  keyboard
+  className="welcome-modal"
+  rootClassName="welcome-modal-root"
+>
+  <div className="welcome-modal__body">
+    <h2 className="welcome-modal__title">欢迎使用 AgentQuad</h2>
+    <p className="welcome-modal__subtitle">
+      四象限里的 AI 调度台 —— 每个待办都能跑一个 Claude/Codex 会话，全本地
+    </p>
+    <ol className="welcome-modal__steps">
+      <li>
+        <span className="welcome-modal__step-icon"><EditOutlined /></span>
+        <span className="welcome-modal__step-label">新建 todo</span>
+        <span className="welcome-modal__step-desc">标题写你想做的事</span>
+      </li>
+      <li>
+        <span className="welcome-modal__step-icon"><RobotOutlined /></span>
+        <span className="welcome-modal__step-label">启动 AI 终端</span>
+        <span className="welcome-modal__step-desc">在卡片上点 "AI 执行"</span>
+      </li>
+      <li>
+        <span className="welcome-modal__step-icon"><CheckCircleOutlined /></span>
+        <span className="welcome-modal__step-label">协作完成</span>
+        <span className="welcome-modal__step-desc">关注右上 Rail 提示</span>
+      </li>
+    </ol>
+    <Button
+      type="primary"
+      size="large"
+      onClick={onClose}
+      className="welcome-modal__cta"
+    >
+      开始使用
+    </Button>
+  </div>
+</Modal>
+```
+
+**Icon 选择**（AntD 自带，避免新增依赖）：
+
+- ① 新建 → `EditOutlined`（铅笔）
+- ② 启动 AI 终端 → `RobotOutlined`（机器人）
+- ③ 协作完成 → `CheckCircleOutlined`（对勾）
+
+### 4.4 视觉规范（极简苹果风）—— `onboarding.css`
+
+**整体 Modal**：
+
+- `.ant-modal-content` 内 padding 改成 `48px 40px 40px`（默认 AntD 24px 太挤）
+- 背景纯白 `#ffffff`
+- 圆角 `border-radius: 20px`
+- 阴影 `box-shadow: 0 20px 60px rgba(0, 0, 0, 0.12), 0 4px 16px rgba(0, 0, 0, 0.04)`
+- 遮罩 `.ant-modal-mask` 颜色加深一点：`rgba(0, 0, 0, 0.45)`，可选 `backdrop-filter: blur(2px)`（兼容性好）
+
+**关闭按钮**（右上角"✕"）：
+
+- 改为细线（AntD 默认就是细线），但调暗 `color: rgba(0, 0, 0, 0.35)`，hover `color: rgba(0, 0, 0, 0.85)`
+- 位置 `top: 20px; right: 20px`
+
+**标题**：
+
+- font-size `24px`，font-weight `600`，颜色 `#1a1a1a`，letter-spacing `-0.02em`（紧字距，苹果味）
+- text-align center
+- margin-bottom `12px`
+
+**副标题**：
+
+- font-size `14px`，font-weight `400`，颜色 `#666`，line-height `1.6`
+- text-align center
+- max-width `380px`，居中
+- margin-bottom `36px`
+
+**三步容器**：
+
+- `display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px`
+- margin-bottom `36px`
+- 每个 li：`flex column align-items: center; gap: 10px`
+
+**Step icon 容器**：
+
+- 尺寸 `48x48`
+- 背景 `#f5f5f7`（苹果系统浅灰）
+- 圆角 `14px`
+- icon 自身 `font-size: 22px`，颜色 `#1a1a1a`
+- 居中显示
+
+**Step label**：
+
+- font-size `14px`，font-weight `500`，颜色 `#1a1a1a`
+
+**Step desc**：
+
+- font-size `12px`，颜色 `#888`，line-height `1.5`
+- text-align center
+
+**主按钮 "开始使用"**：
+
+- 宽度 `200px`，高 `44px`
+- 圆角 `12px`
+- 字号 `15px`，font-weight `500`
+- 主色（沿用 AntD 默认 `#1677ff`），白字
+- 容器外加 `display: flex; justify-content: center`
+- 覆盖 AntD 默认 box-shadow，去掉立体感：`box-shadow: 0 1px 2px rgba(22, 119, 255, 0.2)`
+- hover 颜色变浅、轻微上移 `transform: translateY(-1px)`，加 transition
+
+**移动端**（`@media (max-width: 480px)`）：
+
+- Modal `.ant-modal` 宽度走 `width: calc(100vw - 32px); max-width: 480px`
+- 内 padding 收紧 `32px 24px 28px`
+- 三步 grid 改 `grid-template-columns: 1fr`，每 li 横排（icon 左，label/desc 右）：`flex-direction: row; gap: 12px; text-align: left; align-items: center`
+- 主按钮宽度变 `100%`
+
+### 4.5 接入点（TodoManage.tsx）
+
+**新增 import**：
+
+```tsx
+import { WelcomeModal } from './onboarding/WelcomeModal'
+import { useWelcomeDismissed } from './onboarding/onboardingStore'
+```
+
+**新增 state**（与组件顶部其他 useState 同区域）：
+
+```tsx
 const [welcomeDismissed, setWelcomeDismissed] = useWelcomeDismissed()
-const totalTodoCount = /* 实现时确认数据来源，见 4.3 */
 ```
 
-**Sticky header 下方挂横幅**（行 1740 附近，`</div>` 关闭 sticky-header 之后、`viewMode === 'priority'` 之前）：
+**JSX 末尾挂载**（与 Settings/Wiki/Stats 等 Drawer 同层级，紧挨着即可）：
 
 ```tsx
-{!welcomeDismissed && totalTodoCount === 0 && (
-  <WelcomeCard
-    onCreate={handleCreate}
-    onOpenGuide={() => setGuideOpen(true)}
-    onDismiss={() => setWelcomeDismissed(true)}
-  />
-)}
-```
-
-**Dropdown items 追加**（行 1729 数组末尾）：
-
-```ts
-{
-  key: 'guide',
-  icon: <QuestionCircleOutlined />,
-  label: '上手指南',
-  onClick: () => setGuideOpen(true),
-},
-```
-
-**移动端 menu 内同步追加**（找到 `mobileMenuOpen` 渲染的 menu 位置）。
-
-**底部挂 Drawer**（与 Settings / Wiki / Stats 等 Drawer 同层级）：
-
-```tsx
-<GuideDrawer
-  open={guideOpen}
-  onClose={() => setGuideOpen(false)}
-  onOpenSettings={() => {
-    setGuideOpen(false)
-    setSettingsOpen(true)
-  }}
+<WelcomeModal
+  open={!welcomeDismissed}
+  onClose={() => setWelcomeDismissed(true)}
 />
 ```
+
+就这些。**不动工具栏，不动 Dropdown，不动移动端菜单**。
 
 ## 5. 测试
 
 ### 5.1 单元测试
 
-新增 `test/onboarding-store.test.js`（根 test/ 目录，符合现有 vitest 配置——`vitest.config.js` 只设 `pool: 'vmThreads'`，没启用 jsdom，所以**只测纯函数**，不测 React hook）。
+新增 `test/onboarding-store.test.js`（根 test/ 目录，符合现有 vitest 配置）：
 
-mock 一个最小 localStorage 注入到 `globalThis`，覆盖：
+mock 一个最小 localStorage 注入 `globalThis`，覆盖：
 
 - 无 key 时 `readWelcomeDismissed()` 返回 `false`
-- `writeWelcomeDismissed(true)` 后 `readWelcomeDismissed()` 返回 `true`，localStorage 里 key 值为 `'1'`
+- `writeWelcomeDismissed(true)` 后 `readWelcomeDismissed()` 返回 `true`，key 值为 `'1'`
 - `writeWelcomeDismissed(false)` 后 localStorage 删掉该 key
-- localStorage 抛错（mock 的 setItem/getItem 抛异常）时函数不崩、`readWelcomeDismissed()` 回退到 `false`
+- localStorage 抛错（mock setItem/getItem 抛异常）时不崩、`readWelcomeDismissed()` 回退到 `false`
 
-React hook 行为不写单元测试（避免引入 jsdom + RTL），靠手动验证覆盖。
+React hook 行为不写单元测试（避免引入 jsdom + RTL），靠手动验证。
 
 ### 5.2 手动验证
 
 | 步骤 | 期望 |
 |---|---|
-| 清 localStorage + 无 todo → 启动 web | 看到 WelcomeCard 横幅 |
-| 点"立即新建" → 填标题保存 | 横幅消失 |
-| 删除所有 todo | 横幅再次出现（dismissed 未写） |
-| 点"我知道了" | 横幅立即消失，localStorage 有 `agentquad:welcome:dismissed=1` |
-| 再清空 todo → 刷新 | 横幅不再出现 |
-| 工具栏"更多" → "上手指南" | GuideDrawer 打开 |
-| GuideDrawer 进阶玩法链接 | 新窗口打开 GitHub `docs/*.md` |
-| GuideDrawer "去设置 → 配置教程" | GuideDrawer 关闭、SettingsDrawer 打开 |
-| 移动端窄屏 | WelcomeCard 三步纵向堆叠；GuideDrawer 全宽 |
+| 清 localStorage → 启动 web | 自动弹 Modal |
+| 点"开始使用" | Modal 关闭，localStorage 有 `agentquad:welcome:dismissed=1` |
+| 刷新页面 | Modal 不再出现 |
+| 清 localStorage 后再刷新 | Modal 又出现 |
+| 点 ✕ / 点遮罩 / 按 Esc | 等同"开始使用"，都写入 dismissed |
+| 视觉对照 §4.4：圆角、阴影、字号、间距、icon 容器、按钮 | 全部命中 |
+| 移动端窄屏（chrome devtools iPhone SE 320×568） | Modal 不溢出，三步纵向堆叠 |
+| Modal 关闭后界面交互（新建、AI 终端等） | 一切正常，无 z-index 残留 |
 
 ## 6. 风险与回退
 
-- **风险 1**：`totalTodoCount` re-fetch 在 CRUD 频繁的场景下有额外开销
-  - **缓解**：仅在 `welcomeDismissed === false` 时计算；一旦 dismiss 即停止
-- **风险 2**：FAQ 内容随 UI 迭代失效
-  - **缓解**：FAQ 都是稳定问题（doctor、找回、localStorage、数据目录），不引用具体 UI 坐标
-- **风险 3**：进阶玩法 GitHub 链接的仓库名变化（如再次改名）会全部失效
-  - **缓解**：仓库 URL 集中放一个常量（如 `web/src/onboarding/links.ts`），后续改名只改一处
-- **回退**：所有改动局限在 `web/src/onboarding/` 新目录 + `TodoManage.tsx` 几处 hook 点，回退只需 `git revert` 一次
+- **风险 1**：极简苹果风的 CSS 调优需要肉眼验收；纸面规范命中不等于看起来好看
+  - **缓解**：实现后让用户在浏览器实际看一眼再 commit；必要时进入 `frontend-design` skill 做视觉迭代
+- **风险 2**：AntD `Modal` 内部样式权重高，自定义 CSS 可能要用 `:where()` 或具体的 class chain
+  - **缓解**：所有 selector 写成 `.welcome-modal .ant-modal-content { ... }` 这种链式形式，避免 `!important`
+- **风险 3**：移动端 `useIsMobile()` 与纯 CSS `@media` 二选一
+  - **决定**：用纯 CSS `@media`，不依赖 JS 判断，避免首次渲染闪烁
+- **回退**：所有改动局限在 `web/src/onboarding/` 新目录 + `TodoManage.tsx` 两处插入，回退只需 `git revert` 一次
