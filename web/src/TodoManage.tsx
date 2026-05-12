@@ -329,6 +329,8 @@ export default function TodoManage() {
   const setJumpTo = useDispatchStore((s) => s.setJumpTo)
   const requestNewTodo = useDispatchStore((s) => s.requestNewTodo)
   const consumeRequestNewTodo = useDispatchStore((s) => s.consumeRequestNewTodo)
+  const requestRecover = useDispatchStore((s) => s.requestRecover)
+  const consumeRequestRecover = useDispatchStore((s) => s.consumeRequestRecover)
 
   useEffect(() => {
     if (!jumpToTodoId) return
@@ -347,6 +349,12 @@ export default function TodoManage() {
     setDrawerOpen(true)
     consumeRequestNewTodo()
   }, [requestNewTodo, consumeRequestNewTodo])
+
+  useEffect(() => {
+    if (!requestRecover) return
+    setTranscriptDrawerOpen(true)
+    consumeRequestRecover()
+  }, [requestRecover, consumeRequestRecover])
 
   useEffect(() => {
     let cancelled = false
@@ -1109,12 +1117,6 @@ export default function TodoManage() {
           >菜单</Button>
         ) : (
           <>
-            <Button
-              icon={<SearchOutlined />}
-              size="small"
-              onClick={() => setTranscriptDrawerOpen(true)}
-              title="历史会话找回"
-            >找回</Button>
             <Dropdown
               menu={{
                 items: [

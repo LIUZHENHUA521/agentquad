@@ -1,4 +1,5 @@
 import { Tooltip } from 'antd'
+import { SearchOutlined } from '@ant-design/icons'
 import { StatPill } from '../StatPill'
 import { ThemeToggle } from '../ThemeToggle'
 import { useDispatchStore } from '../../store/dispatchStore'
@@ -113,6 +114,16 @@ export function TopbarDispatch() {
         <kbd>⌘K</kbd>
       </button>
 
+      <Tooltip title="历史会话找回">
+        <button
+          className="topbar-icon-btn"
+          onClick={() => useDispatchStore.getState().requestRecoverOpen()}
+          aria-label="Recover session"
+          data-testid="topbar-recover-btn"
+        >
+          <SearchOutlined />
+        </button>
+      </Tooltip>
       <Tooltip title="Stats &amp; Reports">
         <button className="topbar-icon-btn" onClick={() => openDrawer('statsReports')} data-testid="topbar-stats-btn">📊</button>
       </Tooltip>

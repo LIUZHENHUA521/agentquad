@@ -34,6 +34,10 @@ interface DispatchState {
   jumpToTodoId: string | null
   /** When true, TodoManage should open its new-todo drawer and clear the flag */
   requestNewTodo: boolean
+  /** When true, TodoManage should open its transcript-recover drawer */
+  requestRecover: boolean
+  requestRecoverOpen: () => void
+  consumeRequestRecover: () => void
 
   setJumpTo: (id: string | null) => void
   requestNewTodoOpen: () => void
@@ -64,6 +68,9 @@ export const useDispatchStore = create<DispatchState>((set) => ({
 
   jumpToTodoId: null,
   requestNewTodo: false,
+  requestRecover: false,
+  requestRecoverOpen: () => set(() => ({ requestRecover: true, palette: false })),
+  consumeRequestRecover: () => set(() => ({ requestRecover: false })),
 
   setJumpTo: (id) => set(() => ({ jumpToTodoId: id })),
   requestNewTodoOpen: () => set(() => ({ requestNewTodo: true })),
