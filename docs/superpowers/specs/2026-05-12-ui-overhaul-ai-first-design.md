@@ -143,7 +143,7 @@ AgentQuad 当前 UI 现状：
 
 - 顶部：象限色点 + 标题
 - AI 状态行：tool 名称（mono）+ 状态 + 运行时长
-- Activity sparkline：基于真实 token rate（窗口数据）
+- Activity sparkline：**基于已有的 AI 会话消息事件频率**（WS 推送的 message 计数，每 N 秒一个 bucket），不依赖新增后端字段。真实 token rate（per-todo 窗口）当前后端无此数据，列入 stretch / 后续迭代
 - 底部：标签 + 键盘焦点提示
 - hover 时浮出操作按钮：fork / archive / open terminal
 
@@ -153,6 +153,7 @@ AgentQuad 当前 UI 现状：
 - 点击展开：分屏 —— 左侧 conversation 渲染（已有 `TranscriptView`）/ 右侧 raw xterm
 - "thinking" 状态用 `--accent-electric` 脉动呼吸（CSS animation）
 - xterm 主题与 design token 对齐（`terminalThemes.ts` 接入 token）
+- **xterm 切换主题的实现注意**：xterm 渲染到 canvas/WebGL，**不能仅靠 CSS 变量**。切主题时必须重置 `terminal.options.theme = newTheme` 并触发 `terminal.refresh(0, terminal.rows - 1)`，确保 scrollback 历史输出也变色
 
 ## 5. 组件清单
 
@@ -173,10 +174,10 @@ AgentQuad 当前 UI 现状：
 ```
 web/src/
 ├── design/                        # 新增
-│   ├── tokens.ts                  # JS 引用入口（导出 token 常量）
+│   ├── tokens.ts                  # JS 引用入口 + 动画预设（duration / easing 直接放这）
 │   ├── tokens.css                 # CSS variables（light + dark）
 │   ├── antd-theme.ts              # AntD ConfigProvider theme（映射 token）
-│   └── motion.ts                  # 动画预设
+│   └── ThemeProvider.tsx          # React Context + data-theme 切换 + localStorage 持久化
 ├── components/                    # 新增（自建 hero 组件）
 │   ├── TodoCard/
 │   ├── TopbarDispatch/
@@ -208,11 +209,15 @@ web/src/
 ### M1 (W1) — Design tokens + AntD theme + dark mode 基础设施
 
 **交付**：
-- `web/src/design/` 全部文件
+- `web/src/design/` 全部文件（tokens、CSS variables、ConfigProvider theme、ThemeProvider）
 - 主题切换按钮可用，所有 AntD 组件随主题变
-- xterm 主题接入 token
+- xterm 主题接入 token，切主题时正确 refresh
+- **迁移所有静态 `message.*` / `notification.*` / `Modal.confirm` 调用**为 `App.useApp()` hook 形式（当前 `TranscriptView`、`TemplateDrawer`、`ForkDialog`、`ExportDialog` 等至少 6 处使用），否则 toast / 通知不会跟着主题变
 
-**验证**：手动切 light/dark，所有 AntD 组件不裸露默认色；xterm 配色随之变。
+**验证**：
+- 手动切 light/dark，所有 AntD 组件不裸露默认色（包含 toast / notification / confirm）
+- xterm 配色随之变，scrollback 历史输出也变
+- **`rg '#[0-9a-fA-F]{3,8}' web/src --type css` 输出为空**（除 design tokens.css 自身定义处外）
 
 ### M2 (W2) — 顶栏调度面板 + ⌘K 命令面板
 
@@ -223,23 +228,26 @@ web/src/
 
 **验证**：⌘K 能完成"新建 todo / 跳转象限 / 启动 AI / 切主题 / 打开 drawer"五类核心动作；顶栏实时状态数字与现有数据源对齐。
 
-### M3 (W3) — Hero TodoCard + QuadrantBoard 重构 + TodoManage 拆分
+### M3 (W3) — Hero TodoCard + QuadrantBoard 重构 + TodoManage 拆分 + 终端状态条
 
 **交付**：
 - `TodoCard` 取代当前卡片
 - `QuadrantBoard` / `QuadrantHeader` 从 TodoManage 拆出
-- `TodoManage.tsx` ≤ 400 行
-- Activity sparkline 接入真实 token rate
+- `TodoManage.tsx` 行数大幅瘦身（**目标 ≤ 400 行**；如确实拆不到，最低门槛 ≤ 600 行 + 在 PR 描述里说明剩余职责）
+- Activity sparkline（基于 WS 消息频率，不依赖新增后端字段）
+- AI 终端状态条 + thinking 呼吸动画（嵌在卡片上）
 
-**验证**：四象限拖拽、新建、删除、归档全路径回归通过；视觉对照 token；主文件行数达标。
+**验证**：
+- 拖拽路径回归：象限间拖拽 / 象限内重排 / AI 会话运行中拖拽 / 键盘 sensor（如有）
+- 新建 / 删除 / 归档 / 编辑全路径回归
+- 视觉对照 token；hero 卡片在 light/dark 下都正确
 
-### M4 (W4) — AI 终端升级 + drawer 整合 + mobile + 收尾
+### M4 (W4) — 终端分屏 + drawer 整合 + mobile + 收尾
 
 **交付**：
-- AI 终端默认收起 + 展开分屏
-- thinking 呼吸动画
+- AI 终端展开分屏（左 conversation 渲染 / 右 raw xterm）
 - Stats + Report drawer 合并
-- Template / Telegram 下沉到 ⌘K
+- Template / Telegram 下沉到 ⌘K（旧入口移除前确保 ⌘K 路径覆盖等效功能）
 - mobile 响应式审查（iPhone Safari 走核心路径）
 - 全 UI 一致性 walkthrough，修补遗留
 
@@ -247,6 +255,7 @@ web/src/
 - 全 UI 在 light/dark 都无残留旧色
 - iPhone Safari 上看板 / AI 终端可读可用
 - 浏览器 perf timeline 对比首屏与 xterm mount 不退化
+- 旧 Template / Telegram drawer 调用方均已迁移到 ⌘K 或 Settings 子页
 
 ## 9. 验证策略
 
@@ -265,7 +274,7 @@ web/src/
 |---|---|
 | AntD 视觉痕迹"洗不掉" | 接受 AntD 在二级组件上的痕迹；hero 组件全自建，集中在用户高频可见处 |
 | dark mode 改造范围大（CSS 硬编码颜色多） | M1 一次性梳理，扫描所有硬编码 hex/rgb 替换为 token |
-| TodoManage 拆分破坏 dnd-kit / 拖拽逻辑 | M3 拆分时先抽组件再调样式；拆完先回归拖拽路径 |
+| TodoManage 拆分破坏 dnd-kit / 拖拽逻辑 | M3 拆分时先抽组件再调样式；拆完按以下场景逐一回归：象限间拖拽 / 象限内重排 / AI 会话运行中拖拽不丢状态 / 拖拽过程中卡片 hover 操作不误触 |
 | 性能退化（卡片实时 sparkline + 脉动动画） | sparkline 限频更新（≥ 1s/帧）；脉动用 CSS animation 不用 JS |
 | 4 周时间被新需求打断 | 每个 milestone 独立 ship，被打断也有阶段性收益 |
 
@@ -280,16 +289,24 @@ web/src/
 
 ## 12. 验收标准
 
-| 维度 | 标准 |
-|---|---|
-| 视觉一致性 | 所有页面/Drawer 走同一份 design token；CSS 中无硬编码颜色 hex |
-| 可维护性 | `TodoManage.tsx` ≤ 400 行；`TodoManage.css` 大幅瘦身（量级目标 ≤ 300 行） |
-| 关键路径不退化 | 核心动作 click 数 ≤ 现状；拖拽 / 新建 / 启动 AI / 切象限 全部可用 |
-| Dark mode | 全 UI 在 light / dark 下均可读、无残留旧色 |
-| Mobile | iPhone Safari 上四象限可用、AI 终端可读 |
-| 性能 | 首屏 paint 不退化；xterm mount 不退化 |
-| 主观体验 | 自己用一周后觉得"比之前更愿意打开"——这条最重要 |
+| 维度 | 标准 | 检查方式 |
+|---|---|---|
+| 视觉一致性 | 所有页面/Drawer 走同一份 design token | `rg '#[0-9a-fA-F]{3,8}' web/src --type css` 输出为空（除 tokens.css 自身） |
+| 可维护性 | `TodoManage.tsx` ≤ 400 行（最低门槛 ≤ 600 行） | `wc -l web/src/TodoManage.tsx` |
+| CSS 瘦身 | `TodoManage.css` 量级目标 ≤ 300 行 | `wc -l web/src/TodoManage.css` |
+| 关键路径不退化 | 核心动作 click 数 ≤ 现状 | 手动 walkthrough：新建 / 启动 AI / 切象限 / 拖拽 / Telegram 同步 |
+| Dark mode | 全 UI 在 light / dark 下均可读、无残留旧色 | 手动 walkthrough，包含 toast / notification / modal confirm / xterm scrollback |
+| Mobile | iPhone Safari 上四象限可用、AI 终端可读 | iPhone Safari + Tailscale 实测 |
+| 性能 | 首屏 paint 不退化；xterm mount 不退化 | 浏览器 perf timeline 前后对比 |
+| 主观体验（北极星） | 自己用一周后觉得"比之前更愿意打开" | 主观判断，不作为单 PR 阻塞条件 |
 
-## 13. Open questions
+## 13. Open questions（执行前需确认默认值）
 
-（暂无；用户已确认方向 C + 5 项决策，详见对话历史。）
+| # | 问题 | 默认建议 |
+|---|---|---|
+| Q1 | CommandPalette 用 `cmdk` 还是自写？ | **优先 cmdk**；如果 bundle 体积或样式定制成本高，则自写简化版（搜索 + ↑↓ + Enter） |
+| Q2 | TodoCard 的 Activity sparkline 数据源 | **基于已有 WS 消息事件计数**（每 N 秒一个 bucket）；真实 token rate 列入 stretch / 后续迭代（需要新增后端字段） |
+| Q3 | Template / Telegram drawer 下沉 ⌘K 后，旧路由入口是否保留 | **保留（兜底）**：⌘K 是新主路径，但旧入口短期保留以防回归；M4 验证完成后再决定是否移除 |
+| Q4 | mobile 适配的边界 | **核心路径可用即可**：四象限浏览 / 看 todo 详情 / 看 AI 输出可读；不追求拖拽 / 多手势 / 原生 app 质感 |
+
+如果对默认值有不同意见，在执行 plan 之前调整本节即可。
