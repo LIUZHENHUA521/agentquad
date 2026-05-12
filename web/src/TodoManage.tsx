@@ -49,6 +49,7 @@ import { useWelcomeDismissed } from './onboarding/useWelcomeDismissed'
 import ForkDialog from './ForkDialog'
 import ReportDrawer from './ReportDrawer'
 import TranscriptSearchDrawer from './transcripts/TranscriptSearchDrawer'
+import { ThemeToggle } from './components/ThemeToggle'
 import { useAiSessionStore } from './store/aiSessionStore'
 import {
   buildUnreadSessionItems,
@@ -1696,6 +1697,8 @@ export default function TodoManage() {
               onClick={() => setTranscriptDrawerOpen(true)}
               title="历史会话找回"
             >找回</Button>
+            {/* TODO(M2): move to TopbarDispatch */}
+            <ThemeToggle />
             <Button
               icon={<SettingOutlined />}
               size="small"
