@@ -1,4 +1,4 @@
-import { useCallback, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useSyncExternalStore } from 'react'
 import type { ITheme } from '@xterm/xterm'
 import {
   TERMINAL_PRESETS,
@@ -63,6 +63,33 @@ function readCustomPresets(): Record<string, ITheme> {
     }
     return out
   } catch { return {} }
+}
+
+/**
+ * 纯函数：判断 localStorage 原始字符串是否携带需要迁移的旧 preset。
+ * 返回需要写回的 StoredTheme；如果不需要写回（值非法 / 已是新 key / 没有 preset 字段），返回 null。
+ */
+export function shouldPersistMigration(rawStored: string | null): StoredTheme | null {
+  if (!rawStored) return null
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(rawStored)
+  } catch {
+    return null
+  }
+  if (!parsed || typeof parsed !== 'object') return null
+  const rawPreset = (parsed as { preset?: unknown }).preset
+  if (typeof rawPreset !== 'string') return null
+  const { value, migrated } = migratePreset(rawPreset)
+  if (!migrated) return null
+  const rawOverride = (parsed as { override?: unknown }).override
+  const override: ThemeOverride = {}
+  if (rawOverride && typeof rawOverride === 'object') {
+    const o = rawOverride as ThemeOverride
+    if (isValidColor(o.background)) override.background = o.background
+    if (isValidColor(o.foreground)) override.foreground = o.foreground
+  }
+  return { preset: value, override }
 }
 
 function writeStored(next: StoredTheme) {
@@ -142,6 +169,15 @@ export interface UseTerminalTheme {
 
 export function useTerminalTheme(): UseTerminalTheme {
   const { stored, customPresets } = useSyncExternalStore(subscribe, getCombinedSnapshot, getCombinedSnapshot)
+
+  // 一次性持久化：把旧 preset key 替换为新 key（spec 验收 #6）
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY)
+      const next = shouldPersistMigration(raw)
+      if (next) writeStored(next)
+    } catch { /* ignore */ }
+  }, [])
 
   const setPreset = useCallback((name: string) => {
     if (!isPresetName(name) && !name.startsWith(CUSTOM_PREFIX)) return
