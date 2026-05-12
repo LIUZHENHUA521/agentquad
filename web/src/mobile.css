@@ -210,6 +210,50 @@
     padding: 0 8px; /* 紧凑水平内边距 */
     gap: 6px; /* 减少元素间距 */
   }
+
+  /* ── M3: Hero TodoCard AI status row — 窄屏允许换行 ── */
+  .todo-ai-status-row {
+    flex-wrap: wrap;
+    padding: 6px 10px;
+  }
+
+  /* ── M4: TopbarDispatch — 收窄整体 padding / gap ── */
+  .topbar-dispatch {
+    padding: 0 8px;
+    gap: 6px;
+  }
+
+  /* M4: 状态 pill 隐藏文字标签，只保留数字 + 图标 */
+  .topbar-dispatch .stat-pill-label {
+    display: none;
+  }
+
+  /* M4: CmdK 按钮收起说明文字和 kbd 快捷键提示 */
+  .topbar-cmdk-btn span:not(.anticon):nth-of-type(n+1) {
+    display: none;
+  }
+  .topbar-cmdk-btn kbd {
+    display: none;
+  }
+
+  /* M4: StatsReportsDrawer — 保证抽屉不超出视口（antd 全屏规则已在上面，此处加固） */
+  .stats-reports-drawer .ant-drawer-content-wrapper {
+    max-width: 100vw;
+  }
+
+  /* M4: StatsReportsDrawer Tabs — 允许 Tab 标题换行以防溢出 */
+  .stats-reports-drawer .ant-tabs-nav-list {
+    flex-wrap: wrap;
+  }
+  .stats-reports-drawer .ant-tabs-tab {
+    padding: 6px 10px;
+    font-size: 13px;
+  }
+
+  /* M4: TodoCard ⇆ 按钮（dispatch 触发）确保不消失 */
+  .todo-card-dispatch-btn {
+    display: inline-flex !important;
+  }
 }
 
 /* ── AI 终端方向键浮层 ──
@@ -303,4 +347,9 @@
   .todo-detail-chip__value { max-width: 200px; }
   .todo-detail-meta { gap: 6px; }
   .todo-detail-chip { padding: 4px 8px; font-size: 11px; }
+
+  /* M4: 极窄屏（<480px）隐藏 TopbarDispatch 的 "AgentQuad" 文字，只留 logo 图标 */
+  .topbar-logo-text {
+    display: none;
+  }
 }
