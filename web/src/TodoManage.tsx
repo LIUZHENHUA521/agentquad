@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import {
-  Button, Space, Tag, Drawer, Form, Input, DatePicker,
+  Button, Space, Tag, Drawer, Form, Input, DatePicker, Empty, Image,
   Radio, message, Popconfirm, Spin, Tooltip, Dropdown, Select, Switch, Segmented, Modal,
 } from 'antd'
 import {
@@ -12,7 +12,7 @@ import {
   DownOutlined, RightOutlined,
   DashboardOutlined, FileTextOutlined, ExportOutlined,
   BookOutlined, LineChartOutlined, TrophyOutlined, BranchesOutlined,
-  MenuOutlined, MoreOutlined,
+  MenuOutlined, MoreOutlined, WarningOutlined,
 } from '@ant-design/icons'
 import { useIsMobile } from './hooks/useIsMobile'
 import {
@@ -2141,9 +2141,10 @@ export default function TodoManage() {
         title={detailTodo?.title || '待办详情'}
         open={detailOpen}
         onClose={() => { setDetailOpen(false); setDetailTodo(null); setDetailRule(null) }}
-        width={640}
+        width={720}
+        rootClassName="todo-detail-drawer"
         extra={
-          <Space>
+          <Space size={4}>
             {detailTodo?.status === 'ai_done' && (
               <Button size="small" type="primary" icon={<CheckOutlined />} onClick={async () => {
                 if (!detailTodo) return
@@ -2154,108 +2155,188 @@ export default function TodoManage() {
               }}>验收通过</Button>
             )}
             {detailTodo && (
-              <Button
-                size="small"
-                onClick={() => handleMemorize(detailTodo)}
-                loading={memorizing}
-              >
-                {todoCoverage[detailTodo.id] ? '已沉淀 · 重新沉淀' : '沉淀到记忆'}
-              </Button>
-            )}
-            {detailTodo && (
               <Tooltip title="coder ↔ reviewer 自动循环，每个 agent 独立 worktree">
                 <Button
-                  size="small"
+                  size="small" type="text"
                   icon={<BranchesOutlined />}
                   loading={pipelineStarting}
                   onClick={() => detailTodo && handleStartPipeline(detailTodo)}
-                >
-                  启动 Pipeline
-                </Button>
+                >Pipeline</Button>
               </Tooltip>
             )}
             {detailTodo && (
-              <Button size="small" onClick={() => { setDetailOpen(false); handleEdit(detailTodo) }}>编辑</Button>
+              <Button
+                size="small" type="text"
+                onClick={() => handleMemorize(detailTodo)}
+                loading={memorizing}
+              >
+                {todoCoverage[detailTodo.id] ? '已沉淀' : '沉淀'}
+              </Button>
+            )}
+            {detailTodo && (
+              <Button size="small" icon={<EditOutlined />} onClick={() => { setDetailOpen(false); handleEdit(detailTodo) }}>编辑</Button>
             )}
           </Space>
         }
       >
-        {detailTodo && (
-          <div>
-            <p style={{ color: '#666' }}>{detailTodo.description || '无描述'}</p>
-            {detailRule && (
-              <div style={{ marginBottom: 12, padding: '8px 12px', background: '#f6ffed', border: '1px solid #b7eb8f', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
-                <Space size="small">
-                  <Tag color={detailRule.active ? 'green' : 'default'}>{detailRule.active ? '重复中' : '已停止'}</Tag>
-                  <span style={{ fontSize: 13, color: '#555' }}>{describeRule(detailRule)}</span>
-                </Space>
-                {detailRule.active && (
-                  <Space size="small">
-                    <Button size="small" onClick={() => openRuleEdit(detailRule)}>编辑规则</Button>
-                    <Popconfirm title="停止后今天的待办保留，明天起不再重复" onConfirm={() => handleStopRule(detailRule.id)}>
-                      <Button size="small" danger>停止重复</Button>
-                    </Popconfirm>
+        {detailTodo && (() => {
+          const quad = QUADRANT_CONFIG.find(c => c.q === detailTodo.quadrant)
+          const due = formatDueDate(detailTodo.dueDate)
+          const status = currentStatusLabel(detailTodo.status)
+          const segments = parseDescription(detailTodo.description)
+          const textValue = segments
+            .filter((s): s is { type: 'text'; value: string } => s.type === 'text')
+            .map(s => s.value)
+            .join('')
+            .trim()
+          const imageSegments = segments
+            .filter((s): s is { type: 'image'; path: string } => s.type === 'image')
+          const hasText = textValue.length > 0
+          const hasImage = imageSegments.length > 0
+
+          const handleChipClick = () => { setDetailOpen(false); handleEdit(detailTodo) }
+
+          return (
+            <div className="todo-detail">
+              {/* Section A — meta chips */}
+              <div className="todo-detail-meta">
+                <Tooltip title="点击编辑象限">
+                  <button type="button" className="todo-detail-chip todo-detail-chip--quadrant" onClick={handleChipClick}>
+                    <span className="todo-detail-chip__dot" style={{ background: quad?.color }} />
+                    <span className="todo-detail-chip__label">象限</span>
+                    <span className="todo-detail-chip__value">{quad?.label}</span>
+                  </button>
+                </Tooltip>
+                <span className={`todo-detail-chip todo-detail-chip--status ${status.className}`}>
+                  <span className="todo-detail-chip__label">状态</span>
+                  <span className="todo-detail-chip__value">{status.text}</span>
+                </span>
+                <span className="todo-detail-chip todo-detail-chip--level">
+                  <span className="todo-detail-chip__label">层级</span>
+                  <span className="todo-detail-chip__value">{detailTodo.parentId ? '子待办' : '顶级待办'}</span>
+                </span>
+                <Tooltip title="点击编辑截止时间">
+                  <button
+                    type="button"
+                    className={`todo-detail-chip todo-detail-chip--due ${due.overdue ? 'is-overdue' : ''}`}
+                    onClick={handleChipClick}
+                  >
+                    {due.overdue && <WarningOutlined />}
+                    <span className="todo-detail-chip__label">截止</span>
+                    <span className="todo-detail-chip__value">{due.label}</span>
+                  </button>
+                </Tooltip>
+                <Tooltip title="点击复制路径">
+                  <button
+                    type="button"
+                    className="todo-detail-chip todo-detail-chip--workdir"
+                    onClick={() => {
+                      const v = detailTodo.workDir || ''
+                      if (!v) return
+                      navigator.clipboard?.writeText(v).then(
+                        () => message.success('已复制工作目录'),
+                        () => message.error('复制失败'),
+                      )
+                    }}
+                  >
+                    <span className="todo-detail-chip__label">工作目录</span>
+                    <code className="todo-detail-chip__value">{detailTodo.workDir || '默认目录'}</code>
+                    <CopyOutlined />
+                  </button>
+                </Tooltip>
+              </div>
+
+              {/* Section B — recurring rule banner */}
+              {detailRule && (
+                <div className="todo-detail-recurring">
+                  <Space size="small" wrap>
+                    <Tag color={detailRule.active ? 'green' : 'default'}>{detailRule.active ? '重复中' : '已停止'}</Tag>
+                    <span className="todo-detail-recurring__text">{describeRule(detailRule)}</span>
                   </Space>
-                )}
-              </div>
-            )}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, fontSize: 13, marginBottom: 16 }}>
-              <div><strong>象限：</strong>{QUADRANT_CONFIG.find(c => c.q === detailTodo.quadrant)?.label}</div>
-              <div><strong>状态：</strong>{detailTodo.status === 'done' ? '已完成' : '待办'}</div>
-              <div><strong>层级：</strong>{detailTodo.parentId ? '子待办' : '顶级待办'}</div>
-              <div><strong>截止：</strong>{formatDate(detailTodo.dueDate) || '无'}</div>
-              <div><strong>工作目录：</strong>{detailTodo.workDir || '默认目录'}</div>
-            </div>
-
-            <div style={{ borderTop: '1px solid #f0f0f0', paddingTop: 16 }}>
-              <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 12 }}>评论 ({comments.length})</div>
-
-              <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-                <Input.TextArea
-                  value={commentText}
-                  onChange={e => setCommentText(e.target.value)}
-                  placeholder="添加评论..."
-                  autoSize={{ minRows: 1, maxRows: 4 }}
-                  onPressEnter={e => {
-                    if (!e.shiftKey) { e.preventDefault(); handleAddComment() }
-                  }}
-                  style={{ flex: 1 }}
-                />
-                <Button
-                  type="primary"
-                  icon={<SendOutlined />}
-                  loading={commentSubmitting}
-                  disabled={!commentText.trim()}
-                  onClick={handleAddComment}
-                  style={{ alignSelf: 'flex-end' }}
-                />
-              </div>
-
-              <Spin spinning={commentsLoading}>
-                {comments.length === 0 && !commentsLoading && (
-                  <div style={{ color: '#bbb', fontSize: 13, textAlign: 'center', padding: 16 }}>暂无评论</div>
-                )}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  {comments.map(c => (
-                    <div key={c.id} style={{
-                      padding: '10px 12px', borderRadius: 8, background: '#fafafa',
-                      border: '1px solid #f0f0f0', fontSize: 13, position: 'relative',
-                    }}>
-                      <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', paddingRight: 24 }}>{c.content}</div>
-                      <div style={{ fontSize: 11, color: '#999', marginTop: 6 }}>{dayjs(c.createdAt).format('YYYY-MM-DD HH:mm')}</div>
-                      <Popconfirm title="删除该评论？" onConfirm={() => handleDeleteComment(c.id)}>
-                        <Button
-                          type="text" size="small" danger icon={<DeleteOutlined />}
-                          style={{ position: 'absolute', right: 4, top: 4, width: 20, height: 20, minWidth: 20, fontSize: 11 }}
-                        />
+                  {detailRule.active && (
+                    <Space size="small">
+                      <Button size="small" onClick={() => openRuleEdit(detailRule)}>编辑规则</Button>
+                      <Popconfirm title="停止后今天的待办保留，明天起不再重复" onConfirm={() => handleStopRule(detailRule.id)}>
+                        <Button size="small" danger>停止重复</Button>
                       </Popconfirm>
-                    </div>
-                  ))}
+                    </Space>
+                  )}
                 </div>
-              </Spin>
+              )}
+
+              {/* Section C — description card */}
+              <div className="todo-detail-description">
+                {!hasText && !hasImage && (
+                  <p className="todo-detail-description__empty">无描述</p>
+                )}
+                {hasText && (
+                  <p className="todo-detail-description__text">{textValue}</p>
+                )}
+                {hasImage && (
+                  <Image.PreviewGroup>
+                    <div className="todo-detail-description__images">
+                      {imageSegments.map((s, i) => (
+                        <Image
+                          key={`${s.path}-${i}`}
+                          src={`/api/uploads/file?path=${encodeURIComponent(s.path)}`}
+                          alt=""
+                          className="todo-detail-description__image"
+                        />
+                      ))}
+                    </div>
+                  </Image.PreviewGroup>
+                )}
+              </div>
+
+              {/* Section D — comments */}
+              <div className="todo-detail-comments">
+                <div className="todo-detail-comments__header">评论 ({comments.length})</div>
+
+                <div className="todo-detail-comments__composer">
+                  <Input.TextArea
+                    value={commentText}
+                    onChange={e => setCommentText(e.target.value)}
+                    placeholder="添加评论..."
+                    autoSize={{ minRows: 1, maxRows: 4 }}
+                    onPressEnter={e => {
+                      const ke = e as React.KeyboardEvent
+                      if (!ke.shiftKey) { e.preventDefault(); handleAddComment() }
+                    }}
+                  />
+                  <Button
+                    type="primary"
+                    icon={<SendOutlined />}
+                    loading={commentSubmitting}
+                    disabled={!commentText.trim()}
+                    onClick={handleAddComment}
+                  />
+                </div>
+
+                <Spin spinning={commentsLoading}>
+                  {comments.length === 0 && !commentsLoading && (
+                    <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无评论" />
+                  )}
+                  <div className="todo-detail-comments__list">
+                    {comments.map(c => (
+                      <div key={c.id} className="todo-detail-comment">
+                        <div className="todo-detail-comment__avatar">✍️</div>
+                        <div className="todo-detail-comment__body">
+                          <div className="todo-detail-comment__meta">
+                            <span className="todo-detail-comment__time">{dayjs(c.createdAt).format('YYYY-MM-DD HH:mm')}</span>
+                            <Popconfirm title="删除该评论？" onConfirm={() => handleDeleteComment(c.id)}>
+                              <Button type="text" size="small" danger icon={<DeleteOutlined />} className="todo-detail-comment__delete" />
+                            </Popconfirm>
+                          </div>
+                          <div className="todo-detail-comment__text">{c.content}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </Spin>
+              </div>
             </div>
-          </div>
-        )}
+          )
+        })()}
       </Drawer>
 
       <Modal
