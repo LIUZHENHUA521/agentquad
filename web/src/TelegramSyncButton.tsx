@@ -5,11 +5,12 @@
  *   - close_topic / close_thread: PTY 死但还绑着 → 关 + mark done
  *   - clear_route: 孤儿路由 → 清
  */
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Button, Modal, Tag, Tooltip } from 'antd'
 import { SyncOutlined } from '@ant-design/icons'
 import { syncChannels, SyncResponse, SyncActionType } from './api'
 import { useAppMessages } from './design/useAppMessages'
+import { useDispatchStore } from './store/dispatchStore'
 
 const TYPE_LABEL: Record<SyncActionType, string> = {
   open_topic: '建 TG 话题',
@@ -32,6 +33,16 @@ export default function TelegramSyncButton() {
   const [plan, setPlan] = useState<SyncResponse | null>(null)
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [executing, setExecuting] = useState(false)
+
+  // M4-T4: react to CommandPalette "Telegram sync" command via dispatchStore signal.
+  const requestSync = useDispatchStore((s) => s.requestTelegramSync)
+  const consumeRequestSync = useDispatchStore((s) => s.consumeRequestTelegramSync)
+  useEffect(() => {
+    if (!requestSync) return
+    void preview()
+    consumeRequestSync()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requestSync, consumeRequestSync])
 
   async function preview() {
     setLoading(true)

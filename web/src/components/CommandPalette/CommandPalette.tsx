@@ -166,6 +166,14 @@ export function CommandPalette() {
                   <span className="cmdk-icon">📈</span>
                   <span>Open Stats</span>
                 </Command.Item>
+                <Command.Item onSelect={() => { openDrawer('template'); closePalette() }}>
+                  <span className="cmdk-icon">📋</span>
+                  <span>Insert from Template…</span>
+                </Command.Item>
+                <Command.Item onSelect={() => { useDispatchStore.getState().requestTelegramSyncOpen(); closePalette() }}>
+                  <span className="cmdk-icon">📨</span>
+                  <span>Telegram sync</span>
+                </Command.Item>
               </Command.Group>
 
               <Command.Group heading="System">

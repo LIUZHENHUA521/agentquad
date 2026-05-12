@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import {
   Button, Space, Tag, Drawer, Form, Input, DatePicker, Empty, Image,
-  Radio, Popconfirm, Spin, Tooltip, Dropdown, Select, Switch, Segmented, Modal,
+  Radio, Popconfirm, Spin, Tooltip, Select, Switch, Segmented, Modal,
 } from 'antd'
 import { useAppMessages } from './design/useAppMessages'
 import {
@@ -12,7 +12,7 @@ import {
   CodeOutlined, DesktopOutlined, SendOutlined, EditOutlined,
   FileTextOutlined, ExportOutlined,
   BookOutlined, LineChartOutlined, TrophyOutlined, BranchesOutlined,
-  MenuOutlined, MoreOutlined, WarningOutlined,
+  MenuOutlined, WarningOutlined,
 } from '@ant-design/icons'
 import { useIsMobile } from './hooks/useIsMobile'
 import {
@@ -274,7 +274,7 @@ export default function TodoManage() {
   // Note: `stats` + `report` flags are now consumed by <StatsReportsDrawer/>.
   const openDrawer = useDispatchStore((s) => s.openDrawer)
   const closeDrawer = useDispatchStore((s) => s.closeDrawer)
-  const [templateDrawerOpen, setTemplateDrawerOpen] = useState(false)
+  const templateDrawerOpen = useDispatchStore((s) => s.template)
   const [transcriptDrawerOpen, setTranscriptDrawerOpen] = useState(false)
   const [toolMissing, setToolMissing] = useState<null | { tool: string; bin: string; fix: string }>(null)
   const [, setUnboundTranscripts] = useState(0)
@@ -320,7 +320,7 @@ export default function TodoManage() {
   // stats + report are merged into a single StatsReportsDrawer (M4-T2);
   // that component owns its own useDrawerStack('statsReports', ...) registration.
   useDrawerStack('wiki', wikiOpen, () => closeDrawer('wiki'))
-  useDrawerStack('template', templateDrawerOpen, () => setTemplateDrawerOpen(false))
+  useDrawerStack('template', templateDrawerOpen, () => closeDrawer('template'))
   useDrawerStack('transcript', transcriptDrawerOpen, () => setTranscriptDrawerOpen(false))
   useDrawerStack('pipeline', pipelineDrawerOpen, () => setPipelineDrawerOpen(false))
 
@@ -1115,35 +1115,12 @@ export default function TodoManage() {
             onClick={() => setMobileMenuOpen(true)}
             title="更多"
           >菜单</Button>
-        ) : (
-          <>
-            <Dropdown
-              menu={{
-                items: [
-                  {
-                    key: 'telegram',
-                    label: (
-                      <div onClick={(e) => e.stopPropagation()}>
-                        <TelegramSyncButton />
-                      </div>
-                    ),
-                  },
-                  { type: 'divider' as const },
-                  {
-                    key: 'template',
-                    icon: <FileTextOutlined />,
-                    label: '模板',
-                    onClick: () => setTemplateDrawerOpen(true),
-                  },
-                ],
-              }}
-              trigger={['click']}
-              placement="bottomRight"
-            >
-              <Button icon={<MoreOutlined />} size="small" title="更多">更多</Button>
-            </Dropdown>
-          </>
-        )}
+        ) : null}
+        {/* Mounted invisibly so the CommandPalette "Telegram sync" command can trigger
+            its preview/sync flow via dispatchStore.requestTelegramSync (M4-T4). */}
+        <div style={{ display: 'none' }}>
+          <TelegramSyncButton />
+        </div>
       </div>
 
       </div>
@@ -1685,7 +1662,7 @@ export default function TodoManage() {
           >找回历史会话</Button>
           <Button
             icon={<FileTextOutlined />}
-            onClick={() => { setMobileMenuOpen(false); setTemplateDrawerOpen(true) }}
+            onClick={() => { setMobileMenuOpen(false); openDrawer('template') }}
             block
           >Prompt 模板</Button>
           <Button
@@ -1721,7 +1698,7 @@ export default function TodoManage() {
       />
       <TemplateDrawer
         open={templateDrawerOpen}
-        onClose={() => setTemplateDrawerOpen(false)}
+        onClose={() => closeDrawer('template')}
         onChanged={refreshTemplates}
       />
       <TranscriptSearchDrawer

@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { useFocusStore } from './focusStore'
 
-export type DrawerKey = 'settings' | 'stats' | 'wiki' | 'report' | 'statsReports'
+export type DrawerKey = 'settings' | 'stats' | 'wiki' | 'report' | 'statsReports' | 'template'
 
 interface DispatchState {
   // Drawer open flags (lifted from TodoManage local state)
@@ -11,6 +11,8 @@ interface DispatchState {
   report: boolean
   /** Unified flag for the merged Stats + Reports drawer (M4-T2). */
   statsReports: boolean
+  /** Prompt template drawer (M4-T4: surfaced via CommandPalette). */
+  template: boolean
 
   // Command palette open state
   palette: boolean
@@ -39,6 +41,11 @@ interface DispatchState {
   requestRecoverOpen: () => void
   consumeRequestRecover: () => void
 
+  /** When true, the mounted TelegramSyncButton should fire its preview/sync flow (M4-T4). */
+  requestTelegramSync: boolean
+  requestTelegramSyncOpen: () => void
+  consumeRequestTelegramSync: () => void
+
   setJumpTo: (id: string | null) => void
   requestNewTodoOpen: () => void
   consumeRequestNewTodo: () => void
@@ -50,11 +57,12 @@ export const useDispatchStore = create<DispatchState>((set) => ({
   wiki: false,
   report: false,
   statsReports: false,
+  template: false,
   palette: false,
 
   openDrawer: (key) => set((s) => ({ ...s, [key]: true, palette: false })),
   closeDrawer: (key) => set(() => ({ [key]: false } as Partial<DispatchState>)),
-  closeAllDrawers: () => set(() => ({ settings: false, stats: false, wiki: false, report: false, statsReports: false })),
+  closeAllDrawers: () => set(() => ({ settings: false, stats: false, wiki: false, report: false, statsReports: false, template: false })),
 
   openPalette: () => set(() => ({ palette: true })),
   closePalette: () => set(() => ({ palette: false })),
@@ -62,7 +70,7 @@ export const useDispatchStore = create<DispatchState>((set) => ({
 
   openFocus: (todoId, sessionId) => {
     // Close any open palette/drawers, then activate focus mode
-    set(() => ({ palette: false, settings: false, stats: false, wiki: false, report: false, statsReports: false }))
+    set(() => ({ palette: false, settings: false, stats: false, wiki: false, report: false, statsReports: false, template: false }))
     useFocusStore.getState().setFocus(todoId, sessionId ?? null)
   },
 
@@ -71,6 +79,10 @@ export const useDispatchStore = create<DispatchState>((set) => ({
   requestRecover: false,
   requestRecoverOpen: () => set(() => ({ requestRecover: true, palette: false })),
   consumeRequestRecover: () => set(() => ({ requestRecover: false })),
+
+  requestTelegramSync: false,
+  requestTelegramSyncOpen: () => set(() => ({ requestTelegramSync: true, palette: false })),
+  consumeRequestTelegramSync: () => set(() => ({ requestTelegramSync: false })),
 
   setJumpTo: (id) => set(() => ({ jumpToTodoId: id })),
   requestNewTodoOpen: () => set(() => ({ requestNewTodo: true })),
