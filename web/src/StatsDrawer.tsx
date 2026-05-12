@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Drawer, Segmented, DatePicker, Card, Table, Collapse, Button, message, Empty, Spin } from 'antd'
+import { Drawer, Segmented, DatePicker, Card, Table, Collapse, Button, Empty, Spin } from 'antd'
+import { useAppMessages } from './design/useAppMessages'
 import { LineChartOutlined } from '@ant-design/icons'
 import { Line, Pie } from '@ant-design/charts'
 import dayjs, { Dayjs } from 'dayjs'
@@ -41,6 +42,7 @@ const fmtTok = (n: number) => n >= 1e6 ? (n/1e6).toFixed(1)+'M' : n >= 1e3 ? (n/
 const fmtCost = (c: Cost) => `$${c.usd.toFixed(2)} / ¥${c.cny.toFixed(1)}`
 
 export default function StatsDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { message } = useAppMessages()
   const [range, setRange] = useState<Range>('week')
   const [custom, setCustom] = useState<[Dayjs, Dayjs] | undefined>()
   const [report, setReport] = useState<Report | null>(null)

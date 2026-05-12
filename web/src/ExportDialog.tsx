@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
-import { Modal, Segmented, Button, Input, Space, message, Typography } from 'antd'
+import { Modal, Segmented, Button, Input, Space, Typography } from 'antd'
+import { useAppMessages } from './design/useAppMessages'
 import { CopyOutlined, DownloadOutlined, ShareAltOutlined } from '@ant-design/icons'
 import type { Todo } from './api'
 
@@ -14,6 +15,7 @@ interface Props {
 const LARK_PROMPT_PREFIX = '请把下面的 Markdown 推送到飞书（调用 lark-doc skill，创建新文档）：\n\n'
 
 export default function ExportDialog({ todo, open, onClose }: Props) {
+	const { message } = useAppMessages()
 	const [turns, setTurns] = useState<TurnsMode>('summary')
 	const [markdown, setMarkdown] = useState('')
 	const [loading, setLoading] = useState(false)

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Drawer, Tag, Button, Spin, message, Empty, Tooltip, Popconfirm, Space } from 'antd'
+import { Drawer, Tag, Button, Spin, Empty, Tooltip, Popconfirm, Space } from 'antd'
+import { useAppMessages } from '../design/useAppMessages'
 import { StopOutlined, ReloadOutlined, BranchesOutlined, CheckCircleOutlined, WarningOutlined, DeleteOutlined, MergeCellsOutlined } from '@ant-design/icons'
 import SessionViewer from '../SessionViewer'
 import {
@@ -44,6 +45,7 @@ function runStatusMeta(s: PipelineRun['status']) {
 }
 
 export default function PipelineRunDrawer({ open, runId, todoId, template, todoStatus, cwd, onClose, onSessionRecovered }: Props) {
+  const { message } = useAppMessages()
   const [run, setRun] = useState<PipelineRun | null>(null)
   const [loading, setLoading] = useState(false)
   const [stopping, setStopping] = useState(false)

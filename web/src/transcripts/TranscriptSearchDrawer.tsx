@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import { Drawer, Input, Select, Button, Tag, Space, message, Modal, Empty, Spin, Typography, Tooltip } from 'antd'
+import { Drawer, Input, Select, Button, Tag, Space, Modal, Empty, Spin, Typography, Tooltip } from 'antd'
+import { useAppMessages } from '../design/useAppMessages'
 import { ReloadOutlined, LinkOutlined, DisconnectOutlined, SearchOutlined, CopyOutlined } from '@ant-design/icons'
 import {
   scanTranscripts, searchTranscripts, bindTranscript, unbindTranscript, previewTranscript,
@@ -59,6 +60,7 @@ function roleStyle(role: string): { color: string; tagColor?: string } {
 }
 
 export default function TranscriptSearchDrawer({ open, onClose, preselectTodoId, initialQuery, initialCwd, onBindingChanged }: Props) {
+  const { message, modal } = useAppMessages()
   const [q, setQ] = useState('')
   const [tool, setTool] = useState<AiTool | ''>('')
   const [cwd, setCwd] = useState('')
@@ -136,7 +138,7 @@ export default function TranscriptSearchDrawer({ open, onClose, preselectTodoId,
       const r = await bindTranscript(bindTargetFile.id, bindTodoId, force)
       if (r.conflict) {
         const other = todos.find(t => t.id === r.currentTodoId)
-        Modal.confirm({
+        modal.confirm({
           title: '该会话已挂在另一个 todo',
           content: `当前挂在《${other?.title || r.currentTodoId}》，是否移动到目标 todo？`,
           okText: '移动',

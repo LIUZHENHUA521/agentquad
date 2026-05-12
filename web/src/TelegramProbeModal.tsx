@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from 'react'
-import { Modal, Table, Tag, message, Empty, Typography } from 'antd'
+import { Modal, Table, Tag, Empty, Typography } from 'antd'
+import { useAppMessages } from './design/useAppMessages'
 import { startProbeChatId, stopProbeChatId, subscribeProbeChatId, type ProbeHit } from './api'
 
 const { Text } = Typography
@@ -11,6 +12,7 @@ interface Props {
 }
 
 export function TelegramProbeModal({ open, onClose, onPick }: Props) {
+  const { message } = useAppMessages()
   const [hits, setHits] = useState<ProbeHit[]>([])
   const [expiresAt, setExpiresAt] = useState<number | null>(null)
   const [secondsLeft, setSecondsLeft] = useState(0)

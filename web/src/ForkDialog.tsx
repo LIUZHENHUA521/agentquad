@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
-import { Modal, Form, Select, Slider, Switch, Input, Button, message, Spin } from 'antd'
+import { Modal, Form, Select, Slider, Switch, Input, Button, Spin } from 'antd'
+import { useAppMessages } from './design/useAppMessages'
 import { AiTool, Todo, forkAiSession } from './api'
 
 interface Props {
@@ -12,6 +13,7 @@ interface Props {
 }
 
 export default function ForkDialog({ open, sourceTodo, sourceSessionId, todos, onCancel, onConfirm }: Props) {
+  const { message } = useAppMessages()
   const [tool, setTool] = useState<AiTool>('claude')
   const [targetTodoId, setTargetTodoId] = useState<string>('')
   const [keepLastTurns, setKeepLastTurns] = useState<number>(6)

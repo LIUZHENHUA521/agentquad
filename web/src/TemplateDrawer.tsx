@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import {
-  Drawer, Button, Space, List, Tag, Modal, Form, Input, message, Popconfirm, Empty, Tooltip, Typography,
+  Drawer, Button, Space, List, Tag, Modal, Form, Input, Popconfirm, Empty, Tooltip, Typography,
 } from 'antd'
+import { useAppMessages } from './design/useAppMessages'
 import { PlusOutlined, EditOutlined, DeleteOutlined, CopyOutlined, EyeOutlined } from '@ant-design/icons'
 import {
   listTemplates, createTemplate, updateTemplate, deleteTemplate,
@@ -35,6 +36,7 @@ interface Props {
 }
 
 export default function TemplateDrawer({ open, onClose, onChanged }: Props) {
+  const { message } = useAppMessages()
   const [list, setList] = useState<PromptTemplate[]>([])
   const [loading, setLoading] = useState(false)
   const [editing, setEditing] = useState<PromptTemplate | null>(null)

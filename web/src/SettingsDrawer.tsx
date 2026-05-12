@@ -1,4 +1,5 @@
-import { Drawer, Descriptions, Alert, Typography, Form, Input, InputNumber, Button, Radio, Space, message, Tag, Switch, Collapse, Tabs, Segmented } from 'antd'
+import { Drawer, Descriptions, Alert, Typography, Form, Input, InputNumber, Button, Radio, Space, Tag, Switch, Collapse, Tabs, Segmented } from 'antd'
+import { useAppMessages } from './design/useAppMessages'
 import { MinusCircleOutlined, PlusOutlined, BookOutlined } from '@ant-design/icons'
 import { useEffect, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
@@ -93,6 +94,7 @@ const TOOL_LABEL: Record<ToolKey, string> = {
 }
 
 export default function SettingsDrawer({ open, onClose }: Props) {
+  const { message } = useAppMessages()
   const [status, setStatus] = useState<{ version: string; activeSessions: number } | null>(null)
   const [config, setConfig] = useState<AppConfig | null>(null)
   const [toolDiagnostics, setToolDiagnostics] = useState<Record<ToolKey, ToolDiagnostic> | null>(null)

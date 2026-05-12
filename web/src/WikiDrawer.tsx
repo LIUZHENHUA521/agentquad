@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Drawer, Button, Checkbox, Empty, Spin, Space, Tag, Alert, message, Modal } from 'antd'
+import { Drawer, Button, Checkbox, Empty, Spin, Space, Tag, Alert } from 'antd'
+import { useAppMessages } from './design/useAppMessages'
 import { FolderOpenOutlined, SyncOutlined, FileTextOutlined, BookOutlined } from '@ant-design/icons'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -52,6 +53,7 @@ function TreeSection({
 export default function WikiDrawer({
   open, onClose,
 }: { open: boolean; onClose: () => void }) {
+  const { message, modal } = useAppMessages()
   const [status, setStatus] = useState<WikiStatus | null>(null)
   const [pending, setPending] = useState<WikiPendingTodo[]>([])
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -177,7 +179,7 @@ export default function WikiDrawer({
             沉淀选中（{selected.size}）
           </Button>
           <Button disabled={selected.size === 0} loading={running} onClick={() => {
-            Modal.confirm({
+            modal.confirm({
               title: '只生成 sources（不调 LLM）',
               content: '用于预览素材规模；不会更新 topics/projects，选中 todo 仍显示在未沉淀列表。',
               onOk: () => handleRun(true),
