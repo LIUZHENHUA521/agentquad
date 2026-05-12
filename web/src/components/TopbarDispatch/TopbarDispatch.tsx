@@ -114,7 +114,7 @@ export function TopbarDispatch() {
       </button>
 
       <Tooltip title="Stats &amp; Reports">
-        <button className="topbar-icon-btn" onClick={() => openDrawer('report')} data-testid="topbar-stats-btn">📊</button>
+        <button className="topbar-icon-btn" onClick={() => openDrawer('statsReports')} data-testid="topbar-stats-btn">📊</button>
       </Tooltip>
       <Tooltip title="Wiki">
         <button className="topbar-icon-btn" onClick={() => openDrawer('wiki')} data-testid="topbar-wiki-btn">📖</button>

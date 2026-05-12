@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { useFocusStore } from './focusStore'
 
-export type DrawerKey = 'settings' | 'stats' | 'wiki' | 'report'
+export type DrawerKey = 'settings' | 'stats' | 'wiki' | 'report' | 'statsReports'
 
 interface DispatchState {
   // Drawer open flags (lifted from TodoManage local state)
@@ -9,6 +9,8 @@ interface DispatchState {
   stats: boolean
   wiki: boolean
   report: boolean
+  /** Unified flag for the merged Stats + Reports drawer (M4-T2). */
+  statsReports: boolean
 
   // Command palette open state
   palette: boolean
@@ -43,11 +45,12 @@ export const useDispatchStore = create<DispatchState>((set) => ({
   stats: false,
   wiki: false,
   report: false,
+  statsReports: false,
   palette: false,
 
   openDrawer: (key) => set((s) => ({ ...s, [key]: true, palette: false })),
   closeDrawer: (key) => set(() => ({ [key]: false } as Partial<DispatchState>)),
-  closeAllDrawers: () => set(() => ({ settings: false, stats: false, wiki: false, report: false })),
+  closeAllDrawers: () => set(() => ({ settings: false, stats: false, wiki: false, report: false, statsReports: false })),
 
   openPalette: () => set(() => ({ palette: true })),
   closePalette: () => set(() => ({ palette: false })),
@@ -55,7 +58,7 @@ export const useDispatchStore = create<DispatchState>((set) => ({
 
   openFocus: (todoId, sessionId) => {
     // Close any open palette/drawers, then activate focus mode
-    set(() => ({ palette: false, settings: false, stats: false, wiki: false, report: false }))
+    set(() => ({ palette: false, settings: false, stats: false, wiki: false, report: false, statsReports: false }))
     useFocusStore.getState().setFocus(todoId, sessionId ?? null)
   },
 

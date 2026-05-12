@@ -162,7 +162,7 @@ export function CommandPalette() {
                   <span className="cmdk-icon">⚙</span>
                   <span>Open Settings</span>
                 </Command.Item>
-                <Command.Item onSelect={() => { openDrawer('stats'); closePalette() }}>
+                <Command.Item onSelect={() => { openDrawer('statsReports'); closePalette() }}>
                   <span className="cmdk-icon">📈</span>
                   <span>Open Stats</span>
                 </Command.Item>

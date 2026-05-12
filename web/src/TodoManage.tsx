@@ -38,7 +38,7 @@ import {
 } from './api'
 import { renderAppliedTemplates } from './promptRender'
 import SettingsDrawer from './SettingsDrawer'
-import StatsDrawer from './StatsDrawer'
+import { StatsReportsDrawer } from './components/StatsReportsDrawer'
 import TelegramSyncButton from './TelegramSyncButton'
 import WikiDrawer from './WikiDrawer'
 import ExportDialog from './ExportDialog'
@@ -46,7 +46,6 @@ import TemplateDrawer from './TemplateDrawer'
 import { WelcomeModal } from './onboarding/WelcomeModal'
 import { useWelcomeDismissed } from './onboarding/useWelcomeDismissed'
 import ForkDialog from './ForkDialog'
-import ReportDrawer from './ReportDrawer'
 import TranscriptSearchDrawer from './transcripts/TranscriptSearchDrawer'
 import { useAiSessionStore } from './store/aiSessionStore'
 import {
@@ -271,9 +270,8 @@ export default function TodoManage() {
 
   // 设置 (4 drawers lifted to dispatchStore in M2 T9)
   const settingsOpen = useDispatchStore((s) => s.settings)
-  const statsOpen = useDispatchStore((s) => s.stats)
   const wikiOpen = useDispatchStore((s) => s.wiki)
-  const reportOpen = useDispatchStore((s) => s.report)
+  // Note: `stats` + `report` flags are now consumed by <StatsReportsDrawer/>.
   const openDrawer = useDispatchStore((s) => s.openDrawer)
   const closeDrawer = useDispatchStore((s) => s.closeDrawer)
   const [templateDrawerOpen, setTemplateDrawerOpen] = useState(false)
@@ -319,9 +317,9 @@ export default function TodoManage() {
 
   // Wire each drawer into the shared drawer stack so ESC can close just the topmost.
   useDrawerStack('settings', settingsOpen, () => closeDrawer('settings'))
-  useDrawerStack('stats', statsOpen, () => closeDrawer('stats'))
+  // stats + report are merged into a single StatsReportsDrawer (M4-T2);
+  // that component owns its own useDrawerStack('statsReports', ...) registration.
   useDrawerStack('wiki', wikiOpen, () => closeDrawer('wiki'))
-  useDrawerStack('report', reportOpen, () => closeDrawer('report'))
   useDrawerStack('template', templateDrawerOpen, () => setTemplateDrawerOpen(false))
   useDrawerStack('transcript', transcriptDrawerOpen, () => setTranscriptDrawerOpen(false))
   useDrawerStack('pipeline', pipelineDrawerOpen, () => setPipelineDrawerOpen(false))
@@ -1712,9 +1710,8 @@ export default function TodoManage() {
       </Drawer>
 
       <SettingsDrawer open={settingsOpen} onClose={() => closeDrawer('settings')} />
-      <StatsDrawer open={statsOpen} onClose={() => closeDrawer('stats')} />
       <WikiDrawer open={wikiOpen} onClose={() => closeDrawer('wiki')} />
-      <ReportDrawer open={reportOpen} onClose={() => closeDrawer('report')} />
+      <StatsReportsDrawer />
       <ExportDialog
         todo={exportTarget}
         open={!!exportTarget}
