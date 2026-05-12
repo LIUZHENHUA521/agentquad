@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest'
-import { deriveChrome, TERMINAL_PRESETS } from '../web/src/terminalThemes.ts'
+import {
+  deriveChrome,
+  TERMINAL_PRESETS,
+  PRESET_ORDER,
+} from '../web/src/terminalThemes.ts'
 
 function parseHex(hex) {
   const m = /^#([0-9a-f]{6})$/i.exec(hex)
@@ -36,7 +40,7 @@ describe('deriveChrome', () => {
   })
 
   it('浅色主题：surface 比 background 更暗（sunken）', () => {
-    const light = TERMINAL_PRESETS['solarized-light']
+    const light = TERMINAL_PRESETS['catppuccin-latte']
     const c = deriveChrome(light)
     expect(c.isLight).toBe(true)
     expect(relLum(parseHex(c.surface))).toBeLessThan(relLum(parseHex(light.background)))
@@ -44,32 +48,29 @@ describe('deriveChrome', () => {
   })
 
   it('outer 颜色直接采用 background，避免与内容区出现双层夹色', () => {
-    for (const name of ['default', 'dracula', 'solarized-dark', 'one-dark', 'solarized-light']) {
+    for (const name of PRESET_ORDER) {
       const t = TERMINAL_PRESETS[name]
       expect(deriveChrome(t).outer.toLowerCase()).toBe(t.background.toLowerCase())
     }
   })
 
   it('mutedText 对 surface 的对比度足够区分但不抢眼（≥ 2.0）', () => {
-    for (const name of ['default', 'dracula', 'solarized-dark', 'one-dark', 'solarized-light']) {
+    for (const name of PRESET_ORDER) {
       const c = deriveChrome(TERMINAL_PRESETS[name])
-      expect(contrast(c.mutedText, c.surface)).toBeGreaterThanOrEqual(2.0)
+      expect(contrast(c.mutedText, c.surface), `${name} mutedText vs surface`)
+        .toBeGreaterThanOrEqual(2.0)
     }
   })
 
-  it('accent 对所选 surface 满足对比度 ≥ 4.5；不满足时降级到深蓝 fallback', () => {
-    for (const name of ['default', 'dracula', 'solarized-dark', 'one-dark', 'solarized-light']) {
+  it('accent 对所选 surface 满足对比度 ≥ 4.5；不满足时降级到 fallback', () => {
+    for (const name of PRESET_ORDER) {
       const c = deriveChrome(TERMINAL_PRESETS[name])
-      expect(contrast(c.accent, c.surface)).toBeGreaterThanOrEqual(4.5)
+      expect(contrast(c.accent, c.surface), `${name} accent vs surface`)
+        .toBeGreaterThanOrEqual(4.5)
     }
-    // solarized-light 浅色背景应触发 accent 降级到深蓝
-    const lightC = deriveChrome(TERMINAL_PRESETS['solarized-light'])
-    expect(lightC.accent).toBe('#155b9b')
-    // 默认 quadtodo 深色 + 高饱和品牌蓝对比度足够，保留品牌蓝
-    const darkC = deriveChrome(TERMINAL_PRESETS['default'])
-    expect(darkC.accent).toBe('#569cd6')
-    // dracula / one-dark / solarized-dark 的 surface 不够暗，应切到更亮的蓝
-    expect(deriveChrome(TERMINAL_PRESETS['dracula']).accent).toBe('#7cc1ff')
+    expect(deriveChrome(TERMINAL_PRESETS['catppuccin-latte']).accent).toBe('#155b9b')
+    expect(deriveChrome(TERMINAL_PRESETS['default']).accent).toBe('#569cd6')
+    expect(deriveChrome(TERMINAL_PRESETS['catppuccin-frappe']).accent).toBe('#7cc1ff')
   })
 
   it('用户自定义主题（仅 background/foreground）也能产出有效 chrome', () => {
