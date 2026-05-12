@@ -58,6 +58,7 @@ import {
 import { getTranscriptStats, listPipelineTemplates, listPipelineRunsForTodo, startPipelineRun, PipelineTemplate, PipelineRun } from './api'
 import PipelineRunDrawer from './pipeline/PipelineRunDrawer'
 import AttentionRail from './dock/AttentionRail'
+import { ActivitySparkline } from './components/ActivitySparkline'
 import { useUnreadStore, isSessionUnread } from './store/unreadStore'
 import { useDrawerStackStore } from './store/drawerStackStore'
 import { useDrawerStack } from './hooks/useDrawerStack'
@@ -237,11 +238,21 @@ function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo = false,
       id={`todo-card-${todo.id}`}
       data-todo-id={todo.id}
     >
+      {todo.aiSession && (
+        <span className="todo-card-focus-hint">⌘ to focus</span>
+      )}
       <div className="todo-card-shell">
         <div
           {...listeners}
           className="todo-card-head"
-          onClick={(e) => { e.stopPropagation(); onClick(todo) }}
+          onClick={(e) => {
+            e.stopPropagation()
+            if (todo.aiSession?.sessionId) {
+              useDispatchStore.getState().openFocus(todo.id, todo.aiSession.sessionId)
+            } else {
+              onClick(todo)
+            }
+          }}
         >
           <input
             type="checkbox"
@@ -282,6 +293,24 @@ function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo = false,
               </span>
             )}
           </div>
+
+          {todo.aiSession && (
+            <div className="todo-ai-status-row" onClick={(e) => e.stopPropagation()}>
+              <span className="todo-ai-tag">{todo.aiSession.tool}</span>
+              <span className={`todo-ai-state todo-ai-state-${liveSessionsMap.get(todo.aiSession.sessionId)?.status ?? 'idle'}`}>
+                {(() => {
+                  const status = liveSessionsMap.get(todo.aiSession.sessionId)?.status
+                  if (status === 'running') return '● running'
+                  if (status === 'pending_confirm') return '⚠ pending confirm'
+                  if (status === 'done') return '✓ done'
+                  if (status === 'failed') return '✕ failed'
+                  if (status === 'stopped') return '○ stopped'
+                  return '○ idle'
+                })()}
+              </span>
+              <ActivitySparkline sessionId={todo.aiSession.sessionId} width={70} height={14} />
+            </div>
+          )}
 
           <div className="todo-card-toolbar" onClick={(e) => e.stopPropagation()}>
           <Tooltip title="复制标题和描述">

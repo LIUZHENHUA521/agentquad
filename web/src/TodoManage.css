@@ -149,6 +149,7 @@ body {
 
 /* ─── 任务卡片 ─── */
 .todo-card {
+  position: relative;
   border-left: 3px solid;
   padding: 12px 12px 10px;
   margin-bottom: 10px;
@@ -1037,4 +1038,58 @@ button.todo-detail-chip:hover { background: var(--surface-2); }
 @keyframes todo-card-flash {
   0% { box-shadow: 0 0 0 2px var(--accent-electric); }
   100% { box-shadow: 0 0 0 0 transparent; }
+}
+
+/* M3 Hero card additions */
+.todo-ai-status-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  border-top: 1px solid var(--border-subtle);
+  background: color-mix(in srgb, var(--surface-2) 50%, transparent);
+}
+
+.todo-ai-tag {
+  background: var(--surface-3);
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  color: var(--text-tertiary);
+  border: 1px solid var(--border-subtle);
+  font-size: 10px;
+}
+
+.todo-ai-state-running {
+  color: var(--ai-running);
+  animation: todo-ai-pulse 1.6s ease-in-out infinite;
+}
+.todo-ai-state-pending_confirm {
+  color: var(--ai-pending-confirm);
+  animation: todo-ai-pulse 1.2s ease-in-out infinite;
+}
+.todo-ai-state-done { color: var(--ai-running); }
+.todo-ai-state-failed { color: var(--ai-error); }
+.todo-ai-state-stopped, .todo-ai-state-idle { color: var(--ai-idle); }
+
+@keyframes todo-ai-pulse {
+  0%, 100% { opacity: 0.85; }
+  50% { opacity: 1; text-shadow: 0 0 8px currentColor; }
+}
+
+.todo-card-focus-hint {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  opacity: 0;
+  transition: opacity var(--motion-fast) var(--ease-standard);
+  pointer-events: none;
+}
+.todo-card:hover .todo-card-focus-hint {
+  opacity: 1;
 }
