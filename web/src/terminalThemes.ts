@@ -285,7 +285,7 @@ export function deriveChrome(theme: { background?: string; foreground?: string }
   const isLight = relativeLuminance(bgRgb) > 0.5
   const surface = isLight ? darkenHex(bgHex, 0.06) : lightenHex(bgHex, 0.08)
   const border = isLight ? darkenHex(bgHex, 0.14) : lightenHex(bgHex, 0.18)
-  // 30% bg / 70% fg：保留 fg 主导色，避免低饱和主题（solarized-dark 等）混色后对比度过低
+  // 30% bg / 70% fg：保留 fg 主导色，避免低饱和主题混色后对比度过低
   const mutedText = rgbToHex(mixRgb(fgRgb, bgRgb, 0.3))
 
   // 浅色 surface 下用更深的品牌蓝；深色 surface 下若品牌色不够亮则切到更亮的蓝
