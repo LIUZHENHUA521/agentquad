@@ -1,6 +1,6 @@
 .session-focus {
   position: fixed;
-  inset: 52px 0 0 0;  /* below TopbarDispatch */
+  inset: var(--topbar-dispatch-h, 52px) 0 0 0;  /* below TopbarDispatch */
   background: var(--surface-0);
   z-index: 80;        /* below cmdk overlay (200), above dock */
   display: flex;

@@ -13,7 +13,7 @@ import {
   DownOutlined, RightOutlined,
   FileTextOutlined, ExportOutlined,
   BookOutlined, LineChartOutlined, TrophyOutlined, BranchesOutlined,
-  MenuOutlined, MoreOutlined, WarningOutlined,
+  MenuOutlined, MoreOutlined, WarningOutlined, SwapOutlined,
 } from '@ant-design/icons'
 import { useIsMobile } from './hooks/useIsMobile'
 import {
@@ -323,6 +323,7 @@ function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo = false,
             <Tooltip title="Open in Focus Mode (full-screen)">
               <Button
                 size="small"
+                icon={<SwapOutlined />}
                 className="todo-primary-action"
                 onClick={() => {
                   const sid = todo.aiSession?.sessionId
@@ -330,9 +331,7 @@ function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo = false,
                     useDispatchStore.getState().openFocus(todo.id, sid)
                   }
                 }}
-              >
-                ⇆
-              </Button>
+              />
             </Tooltip>
           )}
           {!isSubtodo && onCreateSubtodo && (
