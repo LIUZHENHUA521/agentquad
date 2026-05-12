@@ -1029,3 +1029,12 @@ button.todo-detail-chip:hover { background: var(--surface-2); }
   color: var(--text-primary);
 }
 .attention-rail__more { font-size: 11px; }
+
+/* M2 T9: flash highlight when CommandPalette jumps to a todo */
+.todo-card-flash {
+  animation: todo-card-flash 1.2s ease-out;
+}
+@keyframes todo-card-flash {
+  0% { box-shadow: 0 0 0 2px var(--accent-electric); }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}

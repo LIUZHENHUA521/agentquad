@@ -50,7 +50,6 @@ import { useWelcomeDismissed } from './onboarding/useWelcomeDismissed'
 import ForkDialog from './ForkDialog'
 import ReportDrawer from './ReportDrawer'
 import TranscriptSearchDrawer from './transcripts/TranscriptSearchDrawer'
-import { ThemeToggle } from './components/ThemeToggle'
 import { useAiSessionStore } from './store/aiSessionStore'
 import {
   buildUnreadSessionItems,
@@ -64,6 +63,8 @@ import { useTerminalDockStore } from './store/terminalDockStore'
 import { useUnreadStore, isSessionUnread } from './store/unreadStore'
 import { useDrawerStackStore } from './store/drawerStackStore'
 import { useDrawerStack } from './hooks/useDrawerStack'
+import { useDispatchStore } from './store/dispatchStore'
+import { TopbarDispatch } from './components/TopbarDispatch'
 import './TodoManage.css'
 
 const { TextArea } = Input
@@ -841,13 +842,15 @@ export default function TodoManage() {
   const [commentText, setCommentText] = useState('')
   const [commentSubmitting, setCommentSubmitting] = useState(false)
 
-  // 设置
-  const [settingsOpen, setSettingsOpen] = useState(false)
-  const [statsOpen, setStatsOpen] = useState(false)
-  const [wikiOpen, setWikiOpen] = useState(false)
+  // 设置 (4 drawers lifted to dispatchStore in M2 T9)
+  const settingsOpen = useDispatchStore((s) => s.settings)
+  const statsOpen = useDispatchStore((s) => s.stats)
+  const wikiOpen = useDispatchStore((s) => s.wiki)
+  const reportOpen = useDispatchStore((s) => s.report)
+  const openDrawer = useDispatchStore((s) => s.openDrawer)
+  const closeDrawer = useDispatchStore((s) => s.closeDrawer)
   const [templateDrawerOpen, setTemplateDrawerOpen] = useState(false)
   const [transcriptDrawerOpen, setTranscriptDrawerOpen] = useState(false)
-  const [reportOpen, setReportOpen] = useState(false)
   const [toolMissing, setToolMissing] = useState<null | { tool: string; bin: string; fix: string }>(null)
   const [, setUnboundTranscripts] = useState(0)
   const isMobile = useIsMobile()
@@ -888,13 +891,37 @@ export default function TodoManage() {
   }, [])
 
   // Wire each drawer into the shared drawer stack so ESC can close just the topmost.
-  useDrawerStack('settings', settingsOpen, () => setSettingsOpen(false))
-  useDrawerStack('stats', statsOpen, () => setStatsOpen(false))
-  useDrawerStack('wiki', wikiOpen, () => setWikiOpen(false))
-  useDrawerStack('report', reportOpen, () => setReportOpen(false))
+  useDrawerStack('settings', settingsOpen, () => closeDrawer('settings'))
+  useDrawerStack('stats', statsOpen, () => closeDrawer('stats'))
+  useDrawerStack('wiki', wikiOpen, () => closeDrawer('wiki'))
+  useDrawerStack('report', reportOpen, () => closeDrawer('report'))
   useDrawerStack('template', templateDrawerOpen, () => setTemplateDrawerOpen(false))
   useDrawerStack('transcript', transcriptDrawerOpen, () => setTranscriptDrawerOpen(false))
   useDrawerStack('pipeline', pipelineDrawerOpen, () => setPipelineDrawerOpen(false))
+
+  // M2 T9: react to dispatchStore signals (jump-to-todo + request-new-todo from CommandPalette)
+  const jumpToTodoId = useDispatchStore((s) => s.jumpToTodoId)
+  const setJumpTo = useDispatchStore((s) => s.setJumpTo)
+  const requestNewTodo = useDispatchStore((s) => s.requestNewTodo)
+  const consumeRequestNewTodo = useDispatchStore((s) => s.consumeRequestNewTodo)
+
+  useEffect(() => {
+    if (!jumpToTodoId) return
+    const el = document.querySelector(`[data-todo-id="${jumpToTodoId}"]`) as HTMLElement | null
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      el.classList.add('todo-card-flash')
+      window.setTimeout(() => el.classList.remove('todo-card-flash'), 1200)
+    }
+    setJumpTo(null)
+  }, [jumpToTodoId, setJumpTo])
+
+  useEffect(() => {
+    if (!requestNewTodo) return
+    // Reuse the existing new-todo entry (local state at line ~738).
+    setDrawerOpen(true)
+    consumeRequestNewTodo()
+  }, [requestNewTodo, consumeRequestNewTodo])
 
   useEffect(() => {
     let cancelled = false
@@ -1657,6 +1684,7 @@ export default function TodoManage() {
         onActivate={handleOpenAttentionItem}
       />
       <div className="todo-manage__main" style={{ padding: '0 16px 16px' }}>
+      {!isMobile && <TopbarDispatch />}
       <div className="todo-sticky-header">
       {/* 工具栏 + 筛选（同一行） */}
       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginBottom: 12 }}>
@@ -1700,14 +1728,6 @@ export default function TodoManage() {
               onClick={() => setTranscriptDrawerOpen(true)}
               title="历史会话找回"
             >找回</Button>
-            {/* TODO(M2): move to TopbarDispatch */}
-            <ThemeToggle />
-            <Button
-              icon={<SettingOutlined />}
-              size="small"
-              onClick={() => setSettingsOpen(true)}
-              title="设置"
-            >设置</Button>
             <Dropdown
               menu={{
                 items: [
@@ -1725,24 +1745,6 @@ export default function TodoManage() {
                     icon: <FileTextOutlined />,
                     label: '模板',
                     onClick: () => setTemplateDrawerOpen(true),
-                  },
-                  {
-                    key: 'report',
-                    icon: <TrophyOutlined />,
-                    label: '报表',
-                    onClick: () => setReportOpen(true),
-                  },
-                  {
-                    key: 'wiki',
-                    icon: <BookOutlined />,
-                    label: '记忆',
-                    onClick: () => setWikiOpen(true),
-                  },
-                  {
-                    key: 'stats',
-                    icon: <LineChartOutlined />,
-                    label: '统计',
-                    onClick: () => setStatsOpen(true),
                   },
                 ],
               }}
@@ -2392,31 +2394,31 @@ export default function TodoManage() {
           >Prompt 模板</Button>
           <Button
             icon={<TrophyOutlined />}
-            onClick={() => { setMobileMenuOpen(false); setReportOpen(true) }}
+            onClick={() => { setMobileMenuOpen(false); openDrawer('report') }}
             block
           >每日报表</Button>
           <Button
             icon={<BookOutlined />}
-            onClick={() => { setMobileMenuOpen(false); setWikiOpen(true) }}
+            onClick={() => { setMobileMenuOpen(false); openDrawer('wiki') }}
             block
           >记忆</Button>
           <Button
             icon={<LineChartOutlined />}
-            onClick={() => { setMobileMenuOpen(false); setStatsOpen(true) }}
+            onClick={() => { setMobileMenuOpen(false); openDrawer('stats') }}
             block
           >统计</Button>
           <Button
             icon={<SettingOutlined />}
-            onClick={() => { setMobileMenuOpen(false); setSettingsOpen(true) }}
+            onClick={() => { setMobileMenuOpen(false); openDrawer('settings') }}
             block
           >设置</Button>
         </div>
       </Drawer>
 
-      <SettingsDrawer open={settingsOpen} onClose={() => setSettingsOpen(false)} />
-      <StatsDrawer open={statsOpen} onClose={() => setStatsOpen(false)} />
-      <WikiDrawer open={wikiOpen} onClose={() => setWikiOpen(false)} />
-      <ReportDrawer open={reportOpen} onClose={() => setReportOpen(false)} />
+      <SettingsDrawer open={settingsOpen} onClose={() => closeDrawer('settings')} />
+      <StatsDrawer open={statsOpen} onClose={() => closeDrawer('stats')} />
+      <WikiDrawer open={wikiOpen} onClose={() => closeDrawer('wiki')} />
+      <ReportDrawer open={reportOpen} onClose={() => closeDrawer('report')} />
       <ExportDialog
         todo={exportTarget}
         open={!!exportTarget}
