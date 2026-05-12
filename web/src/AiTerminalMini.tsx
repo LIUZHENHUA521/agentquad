@@ -13,6 +13,7 @@ import { getTerminalWsUrl, startAiExec, stopAiExec, openTraeCN, TodoStatus, Resu
 import { useTerminalTheme } from './hooks/useTerminalTheme'
 import { PRESET_LABELS, PRESET_ORDER, TerminalPresetName, TERMINAL_PRESETS, deriveChrome } from './terminalThemes'
 import { useTerminalDockStore } from './store/terminalDockStore'
+import { decideNearBottomAction, NEAR_BOTTOM_LINES } from './AiTerminalMini.scrollSnap'
 import { useUnreadStore } from './store/unreadStore'
 import {
   getBrowserNotificationPermission,
@@ -70,6 +71,10 @@ const DECTCEM_HIDE_SHOW_RE = /\x1b\[\?25[lh]/g
 function stripCursorVisibility(data: string): string {
   return data.replace(DECTCEM_HIDE_SHOW_RE, '')
 }
+
+// 整个页面生命周期内仅打印一次诊断 warn（跨多 tab 共享）。出现 = 已经被兜底吸附到底了。
+// 不是计数器，仅用于排查"卡在近底"现象第一次发生时抓取数值。
+let warnedNearBottomOnce = false
 
 // Wait until (a) the container has settled layout and is visible, AND
 // (b) the bundled JetBrains Mono font is loaded, before letting xterm measure
@@ -152,6 +157,9 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
   useEffect(() => { sessionExpiredRef.current = sessionExpired }, [sessionExpired])
   useEffect(() => { followTailRef.current = followTail }, [followTail])
   const dragRef = useRef<{ startY: number; startH: number } | null>(null)
+  // 反回声：我们自己调 term.scrollToBottom() 后 xterm 也会 fire onScroll，
+  // 该次事件不应再触发判定逻辑（否则会形成不必要的 setState 抖动）。
+  const suppressNextScrollEventRef = useRef<boolean>(false)
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const reconnectDelayRef = useRef(INITIAL_RECONNECT_DELAY)
   const reconnectCountRef = useRef(0)
@@ -556,6 +564,52 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
       // throttled and would otherwise leave term at xterm's constructor default 80×24.
       try { fit.fit() } catch (e) { console.warn('[AiTerminalMini] initial fit failed:', e) }
 
+      // ─── 近底自动吸附 ───
+      // 手动滚动（wheel / touch / 拖 scrollbar）在某些边角下停在 baseY 前 1~2 行无法
+      // 到达绝对底部；这里订阅 onScroll，距底 ≤ NEAR_BOTTOM_LINES 行就主动 scrollToBottom，
+      // 同时跟 followTail 状态联动：用户主动往上翻 > NEAR_BOTTOM_LINES 行则取消跟随。
+      // 详细设计见 docs/superpowers/specs/2026-05-12-ai-terminal-scroll-near-bottom-snap-design.md。
+      const scrollSnapDisposable = term.onScroll(() => {
+        if (suppressNextScrollEventRef.current) {
+          suppressNextScrollEventRef.current = false
+          return
+        }
+        const buf = term.buffer.active
+        const baseY = buf.baseY
+        const dispY = buf.viewportY
+        const action = decideNearBottomAction(
+          baseY,
+          dispY,
+          followTailRef.current,
+          NEAR_BOTTOM_LINES,
+        )
+
+        if (action.snap) {
+          if (!warnedNearBottomOnce) {
+            warnedNearBottomOnce = true
+            try {
+              const v = container.querySelector('.xterm-viewport') as HTMLElement | null
+              console.warn('[AiTerminalMini] near-bottom snap engaged', {
+                baseY, dispY, delta: baseY - dispY,
+                rows: term.rows, cols: term.cols,
+                scrollTop: v?.scrollTop,
+                scrollH: v?.scrollHeight,
+                clientH: v?.clientHeight,
+              })
+            } catch { /* console 不可用就算了 */ }
+          }
+          suppressNextScrollEventRef.current = true
+          term.scrollToBottom()
+        }
+
+        if (action.nextFollowTail !== null) {
+          setFollowTail(action.nextFollowTail)
+          try {
+            localStorage.setItem('quadtodo.followTail', action.nextFollowTail ? '1' : '0')
+          } catch { /* ignore */ }
+        }
+      })
+
       function connectWs() {
         if (disposedRef.current || stopReconnectRef.current) return
 
@@ -921,6 +975,7 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
         const ws = wsRef.current
         if (ws) ws.close()
         try { linkProviderRef.current?.dispose() } catch {}
+        try { scrollSnapDisposable.dispose() } catch {}
         linkProviderRef.current = null
         term.dispose()
         termRef.current = null
