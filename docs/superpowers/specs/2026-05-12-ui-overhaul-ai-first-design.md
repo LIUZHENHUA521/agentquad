@@ -1,9 +1,10 @@
 # AgentQuad UI Overhaul — AI-First Dispatch Console
 
 **Date**: 2026-05-12
-**Status**: Draft (awaiting user review)
+**Status**: Approved (visual direction validated via mockup)
 **Owner**: lzh
 **Scope**: `web/` 前端整体视觉与信息架构升级；不动后端、不动云函数、不动 CLI 行为。
+**Visual reference**: `mockups/ui-overhaul-preview.html`（grid + focus mode 全屏 mockup，`python3 -m http.server` 即可预览）
 
 ## 1. 背景与动机
 

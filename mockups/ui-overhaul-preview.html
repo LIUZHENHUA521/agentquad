@@ -1,0 +1,1437 @@
+<!DOCTYPE html>
+<html lang="zh" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AgentQuad — UI Overhaul Preview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  /* ============ Design Tokens ============ */
+  :root,
+  [data-theme="dark"] {
+    --surface-0: #0a0d12;
+    --surface-1: #13171f;
+    --surface-2: #1a1f2a;
+    --surface-3: #1f2532;
+
+    --border-subtle: rgba(255, 255, 255, 0.06);
+    --border-default: rgba(255, 255, 255, 0.1);
+    --border-strong: rgba(255, 255, 255, 0.18);
+
+    --text-primary: #e5e9f0;
+    --text-secondary: #a0a8b8;
+    --text-tertiary: #6b7280;
+    --text-disabled: #4a5160;
+
+    --accent-electric: #4DE5FF;
+    --accent-electric-soft: rgba(77, 229, 255, 0.12);
+    --accent-electric-glow: rgba(77, 229, 255, 0.45);
+
+    --q1: #ff5cb1;
+    --q2: #4DE5FF;
+    --q3: #ffb84d;
+    --q4: #8a93a5;
+
+    --ai-running: #4ade80;
+    --ai-thinking: #4DE5FF;
+    --ai-pending-confirm: #ffb84d;
+    --ai-idle: #6b7280;
+    --ai-error: #ef4444;
+
+    --shadow-subtle: 0 1px 2px rgba(0,0,0,0.3);
+    --shadow-elevated: 0 6px 18px rgba(0,0,0,0.45);
+    --shadow-floating: 0 18px 40px rgba(0,0,0,0.55);
+  }
+
+  [data-theme="light"] {
+    --surface-0: #f5f6f9;
+    --surface-1: #ffffff;
+    --surface-2: #eef0f5;
+    --surface-3: #ffffff;
+
+    --border-subtle: rgba(0, 0, 0, 0.05);
+    --border-default: rgba(0, 0, 0, 0.1);
+    --border-strong: rgba(0, 0, 0, 0.18);
+
+    --text-primary: #0a0d12;
+    --text-secondary: #4a5160;
+    --text-tertiary: #6b7280;
+    --text-disabled: #a0a8b8;
+
+    --accent-electric: #00a3c4;
+    --accent-electric-soft: rgba(0, 163, 196, 0.1);
+    --accent-electric-glow: rgba(0, 163, 196, 0.4);
+
+    --q1: #d63384;
+    --q2: #00a3c4;
+    --q3: #d97706;
+    --q4: #6b7280;
+
+    --shadow-subtle: 0 1px 2px rgba(0,0,0,0.04);
+    --shadow-elevated: 0 6px 18px rgba(0,0,0,0.08);
+    --shadow-floating: 0 18px 40px rgba(0,0,0,0.14);
+  }
+
+  /* ============ Reset ============ */
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    height: 100%;
+    background: var(--surface-0);
+    color: var(--text-primary);
+    font-family: 'Inter', -apple-system, system-ui, sans-serif;
+    font-size: 13px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    transition: background 200ms ease, color 200ms ease;
+  }
+  .mono { font-family: 'JetBrains Mono', 'SF Mono', Menlo, monospace; }
+  button { font-family: inherit; cursor: pointer; }
+
+  /* ============ Topbar Dispatch ============ */
+  .topbar {
+    height: 52px;
+    background: var(--surface-1);
+    border-bottom: 1px solid var(--border-subtle);
+    display: flex;
+    align-items: center;
+    padding: 0 14px;
+    gap: 10px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 600;
+    font-size: 13px;
+    margin-right: 8px;
+    color: var(--text-primary);
+  }
+  .logo-mark {
+    width: 26px; height: 26px;
+    border-radius: 7px;
+    background: linear-gradient(135deg, var(--accent-electric) 0%, var(--q1) 100%);
+    display: grid;
+    place-items: center;
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 700;
+    color: #0a0d12;
+    font-size: 12px;
+    box-shadow: 0 0 14px var(--accent-electric-glow);
+  }
+
+  .stat-pill {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 10px;
+    background: var(--surface-2);
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--text-secondary);
+    transition: all 160ms ease;
+  }
+  .stat-pill:hover { border-color: var(--border-default); }
+  .stat-pill.alert {
+    background: rgba(255, 184, 77, 0.1);
+    border-color: rgba(255, 184, 77, 0.3);
+    color: var(--ai-pending-confirm);
+  }
+  .stat-pill .num { color: var(--text-primary); font-weight: 600; }
+  .stat-pill .accent-num { color: var(--accent-electric); font-weight: 600; }
+  .stat-pill .arrow { color: var(--accent-electric); font-size: 10px; }
+
+  .dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--ai-running);
+    position: relative;
+  }
+  .dot.amber { background: var(--ai-pending-confirm); }
+  .dot.electric { background: var(--accent-electric); }
+  .dot.pulse::after {
+    content: '';
+    position: absolute;
+    inset: -3px;
+    border-radius: 50%;
+    background: inherit;
+    opacity: 0.4;
+    animation: pulse-ring 2s ease-out infinite;
+  }
+  .dot.amber.pulse::after { animation-duration: 1.4s; }
+
+  @keyframes pulse-ring {
+    0% { transform: scale(0.8); opacity: 0.6; }
+    100% { transform: scale(2.2); opacity: 0; }
+  }
+
+  .topbar-spacer { flex: 1; }
+  .topbar-actions { display: flex; gap: 4px; align-items: center; }
+
+  .icon-btn {
+    width: 32px; height: 32px;
+    border-radius: 6px;
+    background: transparent;
+    border: 1px solid transparent;
+    display: grid;
+    place-items: center;
+    color: var(--text-secondary);
+    transition: all 120ms ease;
+    font-size: 14px;
+  }
+  .icon-btn:hover {
+    background: var(--surface-2);
+    color: var(--text-primary);
+    border-color: var(--border-subtle);
+  }
+
+  .cmdk-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 10px;
+    height: 32px;
+    background: var(--surface-2);
+    border: 1px solid var(--border-default);
+    border-radius: 6px;
+    color: var(--text-tertiary);
+    font-size: 12px;
+    transition: all 120ms ease;
+  }
+  .cmdk-btn:hover {
+    border-color: var(--accent-electric);
+    color: var(--text-primary);
+    box-shadow: 0 0 0 3px var(--accent-electric-soft);
+  }
+  .cmdk-btn .cmdk-prefix { color: var(--accent-electric); font-weight: 600; }
+  kbd {
+    font-family: 'JetBrains Mono', monospace;
+    background: var(--surface-3);
+    border: 1px solid var(--border-default);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 10px;
+    color: var(--text-secondary);
+  }
+
+  /* ============ Quadrant grid ============ */
+  .quad-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
+    gap: 1px;
+    background: var(--border-subtle);
+    height: calc(100vh - 52px);
+  }
+  .quad {
+    background: var(--surface-0);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .quad-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border-subtle);
+    background: var(--surface-0);
+  }
+  .quad-dot {
+    width: 9px; height: 9px; border-radius: 50%;
+  }
+  .quad-q1 .quad-dot { background: var(--q1); box-shadow: 0 0 10px var(--q1); }
+  .quad-q2 .quad-dot { background: var(--q2); box-shadow: 0 0 10px var(--q2); }
+  .quad-q3 .quad-dot { background: var(--q3); box-shadow: 0 0 10px var(--q3); }
+  .quad-q4 .quad-dot { background: var(--q4); }
+  .quad-title { font-weight: 600; font-size: 12px; letter-spacing: 0.02em; color: var(--text-primary); }
+  .quad-meta {
+    margin-left: auto;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--text-tertiary);
+    padding: 2px 6px;
+    background: var(--surface-1);
+    border: 1px solid var(--border-subtle);
+    border-radius: 4px;
+  }
+
+  .quad-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  /* ============ TodoCard ============ */
+  .card {
+    background: var(--surface-1);
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    padding: 12px 14px;
+    transition: all 160ms ease;
+    position: relative;
+    overflow: hidden;
+  }
+  .card:hover {
+    border-color: var(--border-default);
+    background: var(--surface-2);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-elevated);
+  }
+  .card-q1 { border-left: 2px solid var(--q1); }
+  .card-q2 { border-left: 2px solid var(--q2); }
+  .card-q3 { border-left: 2px solid var(--q3); }
+  .card-q4 { border-left: 2px solid var(--q4); }
+
+  .card-title {
+    font-weight: 500;
+    font-size: 13px;
+    color: var(--text-primary);
+    margin-bottom: 8px;
+    line-height: 1.4;
+  }
+
+  .card-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-bottom: 8px;
+  }
+  .ai-tag {
+    background: var(--surface-3);
+    padding: 1px 6px;
+    border-radius: 3px;
+    color: var(--text-tertiary);
+    border: 1px solid var(--border-subtle);
+    font-size: 10px;
+  }
+  .ai-state.running { color: var(--ai-running); }
+  .ai-state.thinking {
+    color: var(--ai-thinking);
+    animation: thinking-glow 1.6s ease-in-out infinite;
+  }
+  .ai-state.pending { color: var(--ai-pending-confirm); }
+  .ai-state.idle { color: var(--ai-idle); }
+
+  @keyframes thinking-glow {
+    0%, 100% { opacity: 0.85; text-shadow: 0 0 4px var(--accent-electric-glow); }
+    50% { opacity: 1; text-shadow: 0 0 14px var(--accent-electric); }
+  }
+
+  .sparkline-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+  .sparkline {
+    height: 18px;
+    width: 88px;
+    color: var(--accent-electric);
+  }
+  .sparkline.idle { color: var(--text-disabled); }
+  .sparkline-meta {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--text-tertiary);
+  }
+
+  .card-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 11px;
+  }
+  .tags { display: flex; gap: 6px; }
+  .tag {
+    color: var(--text-tertiary);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+  }
+  .focus-hint {
+    color: var(--text-tertiary);
+    font-family: 'JetBrains Mono', monospace;
+    opacity: 0;
+    transition: opacity 120ms ease;
+  }
+  .card:hover .focus-hint { opacity: 1; }
+
+  .card-actions {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    display: flex;
+    gap: 4px;
+    opacity: 0;
+    transform: translateY(-2px);
+    transition: all 160ms ease;
+  }
+  .card:hover .card-actions { opacity: 1; transform: translateY(0); }
+  .card-action {
+    width: 24px; height: 24px;
+    border-radius: 5px;
+    background: var(--surface-3);
+    border: 1px solid var(--border-default);
+    display: grid;
+    place-items: center;
+    color: var(--text-secondary);
+    font-size: 11px;
+    transition: all 120ms ease;
+  }
+  .card-action:hover {
+    background: var(--accent-electric-soft);
+    color: var(--accent-electric);
+    border-color: var(--accent-electric);
+  }
+
+  /* ============ Command Palette ============ */
+  .cmdk-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.55);
+    backdrop-filter: blur(6px);
+    z-index: 200;
+    display: none;
+    align-items: flex-start;
+    justify-content: center;
+    padding-top: 100px;
+    animation: fade-in 160ms ease;
+  }
+  .cmdk-overlay.open { display: flex; }
+  @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+
+  .cmdk {
+    width: 580px;
+    max-width: calc(100vw - 32px);
+    background: var(--surface-3);
+    border: 1px solid var(--border-strong);
+    border-radius: 12px;
+    box-shadow: var(--shadow-floating);
+    overflow: hidden;
+    animation: cmdk-in 200ms cubic-bezier(0.2, 0.9, 0.3, 1.2);
+  }
+  @keyframes cmdk-in {
+    from { transform: translateY(-8px) scale(0.98); opacity: 0; }
+    to { transform: translateY(0) scale(1); opacity: 1; }
+  }
+  .cmdk-input-wrap {
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border-subtle);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .cmdk-input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 14px;
+    outline: none;
+  }
+  .cmdk-input::placeholder { color: var(--text-tertiary); }
+  .cmdk-list { max-height: 400px; overflow-y: auto; padding: 6px; }
+  .cmdk-section {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-tertiary);
+    padding: 10px 10px 4px;
+    font-weight: 600;
+  }
+  .cmdk-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 13px;
+    transition: all 80ms ease;
+  }
+  .cmdk-item.active, .cmdk-item:hover {
+    background: var(--accent-electric-soft);
+    color: var(--text-primary);
+  }
+  .cmdk-item .icon {
+    color: var(--accent-electric);
+    width: 18px;
+    text-align: center;
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 600;
+  }
+  .cmdk-item .meta {
+    margin-left: auto;
+    font-size: 10px;
+    color: var(--text-tertiary);
+  }
+
+  /* ============ Focus Mode (Session View) ============ */
+  .focus-view {
+    position: fixed;
+    inset: 52px 0 0 0;
+    background: var(--surface-0);
+    z-index: 80;
+    display: none;
+    flex-direction: column;
+    animation: focus-in 200ms ease;
+  }
+  .focus-view.open { display: flex; }
+  @keyframes focus-in {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .focus-subbar {
+    height: 44px;
+    background: var(--surface-1);
+    border-bottom: 1px solid var(--border-subtle);
+    display: flex;
+    align-items: center;
+    padding: 0 14px;
+    gap: 10px;
+  }
+  .focus-back {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    background: transparent;
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    transition: all 120ms ease;
+  }
+  .focus-back:hover {
+    background: var(--surface-2);
+    color: var(--text-primary);
+    border-color: var(--border-default);
+  }
+  .focus-task-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 500;
+    font-size: 13px;
+    color: var(--text-primary);
+  }
+  .focus-task-id {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--text-tertiary);
+    margin-left: 6px;
+  }
+  .focus-actions {
+    margin-left: auto;
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+  .pill-select {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 9px;
+    background: var(--surface-2);
+    border: 1px solid var(--border-subtle);
+    border-radius: 5px;
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .pill-select.electric {
+    border-color: var(--accent-electric);
+    color: var(--accent-electric);
+    background: var(--accent-electric-soft);
+  }
+  .pill-select.green {
+    border-color: var(--ai-running);
+    color: var(--ai-running);
+    background: rgba(74, 222, 128, 0.1);
+  }
+  .focus-icon-btn {
+    width: 26px; height: 26px;
+    display: grid;
+    place-items: center;
+    border: 1px solid transparent;
+    border-radius: 5px;
+    background: transparent;
+    color: var(--text-tertiary);
+    font-size: 12px;
+    transition: all 120ms ease;
+  }
+  .focus-icon-btn:hover {
+    background: var(--surface-2);
+    color: var(--text-primary);
+    border-color: var(--border-subtle);
+  }
+
+  /* Tabs */
+  .focus-tabs {
+    display: flex;
+    align-items: center;
+    padding: 0 14px;
+    border-bottom: 1px solid var(--border-subtle);
+    background: var(--surface-0);
+    gap: 2px;
+  }
+  .focus-tab {
+    padding: 10px 14px;
+    font-size: 12px;
+    color: var(--text-tertiary);
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 120ms ease;
+  }
+  .focus-tab:hover { color: var(--text-secondary); }
+  .focus-tab.active {
+    color: var(--accent-electric);
+    border-bottom-color: var(--accent-electric);
+  }
+  .focus-tab .badge {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    background: var(--surface-2);
+    padding: 1px 5px;
+    border-radius: 3px;
+    color: var(--text-tertiary);
+  }
+  .focus-tab.active .badge { background: var(--accent-electric-soft); color: var(--accent-electric); }
+  .focus-tab-spacer { flex: 1; }
+  .focus-tab-meta {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--text-tertiary);
+    padding: 0 8px;
+  }
+  .focus-tab-meta .live-dot {
+    display: inline-block;
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--ai-thinking);
+    margin-right: 5px;
+    vertical-align: middle;
+    animation: thinking-glow 1.6s ease-in-out infinite;
+  }
+
+  /* Conversation feed */
+  .focus-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 18px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    font-size: 13px;
+    line-height: 1.6;
+  }
+  .turn { display: flex; gap: 12px; }
+  .turn-marker {
+    width: 18px;
+    flex-shrink: 0;
+    color: var(--text-tertiary);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    padding-top: 2px;
+    text-align: center;
+  }
+  .turn-marker.user { color: var(--accent-electric); font-weight: 600; }
+  .turn-marker.assistant { color: var(--ai-running); }
+  .turn-marker.tool { color: var(--text-tertiary); }
+  .turn-content { flex: 1; min-width: 0; }
+  .turn-content p { margin-bottom: 6px; color: var(--text-primary); }
+  .turn-content p:last-child { margin-bottom: 0; }
+  .turn-content .text-muted { color: var(--text-secondary); }
+  .turn.user .turn-content {
+    background: var(--accent-electric-soft);
+    border-left: 2px solid var(--accent-electric);
+    padding: 8px 12px;
+    border-radius: 0 6px 6px 0;
+  }
+
+  .tool-call {
+    background: var(--surface-1);
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--text-primary);
+  }
+  .tool-call .tool-name {
+    color: var(--accent-electric);
+    font-weight: 600;
+  }
+  .tool-call .tool-args {
+    color: var(--text-secondary);
+  }
+  .tool-call .tool-result {
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px dashed var(--border-subtle);
+    color: var(--text-secondary);
+    font-size: 11px;
+  }
+  .tool-call .tool-result.success::before {
+    content: '✓ ';
+    color: var(--ai-running);
+  }
+
+  .code-block {
+    background: var(--surface-3);
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+    padding: 10px 12px;
+    margin-top: 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11.5px;
+    color: var(--text-secondary);
+    overflow-x: auto;
+    white-space: pre;
+  }
+  .code-block .code-add { color: #4ade80; }
+  .code-block .code-del { color: #ef4444; }
+  .code-block .code-comment { color: var(--text-tertiary); }
+
+  .thinking-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    background: var(--accent-electric-soft);
+    border: 1px solid var(--accent-electric);
+    border-radius: 999px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--accent-electric);
+    align-self: flex-start;
+    animation: thinking-glow 1.6s ease-in-out infinite;
+  }
+  .thinking-indicator .dots::after {
+    content: '...';
+    animation: dots 1.4s steps(4, end) infinite;
+  }
+  @keyframes dots {
+    0%, 20% { content: '.'; }
+    40% { content: '..'; }
+    60%, 100% { content: '...'; }
+  }
+
+  /* Footer (status + input) */
+  .focus-footer {
+    border-top: 1px solid var(--border-subtle);
+    background: var(--surface-1);
+  }
+  .focus-status-line {
+    padding: 6px 16px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--text-tertiary);
+    border-bottom: 1px solid var(--border-subtle);
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .focus-status-line .baked {
+    color: var(--ai-running);
+  }
+  .focus-status-line .baked::before {
+    content: '✻ ';
+  }
+  .focus-status-line .sep { color: var(--text-disabled); }
+
+  .focus-input-wrap {
+    padding: 12px 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--surface-1);
+  }
+  .focus-input-prefix {
+    color: var(--accent-electric);
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 700;
+    font-size: 14px;
+  }
+  .focus-input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    color: var(--text-primary);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    outline: none;
+    padding: 6px 0;
+  }
+  .focus-input::placeholder { color: var(--text-disabled); }
+  .focus-input-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--text-tertiary);
+  }
+
+  /* ============ Floating note ============ */
+  .preview-note {
+    position: fixed;
+    bottom: 16px;
+    right: 16px;
+    background: var(--surface-3);
+    border: 1px solid var(--border-default);
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 11px;
+    color: var(--text-tertiary);
+    font-family: 'JetBrains Mono', monospace;
+    box-shadow: var(--shadow-elevated);
+    max-width: 340px;
+    z-index: 50;
+    line-height: 1.6;
+  }
+  .preview-note strong { color: var(--text-primary); display: block; margin-bottom: 4px; font-family: 'Inter', sans-serif; font-weight: 600; }
+
+  /* ============ Scrollbar ============ */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border-default); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--border-strong); }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="logo">
+    <div class="logo-mark">A</div>
+    <span>AgentQuad</span>
+  </div>
+
+  <div class="stat-pill">
+    <span class="dot pulse"></span>
+    <span class="num">3</span>
+    <span>active</span>
+  </div>
+  <div class="stat-pill">
+    <span class="arrow">▲</span>
+    <span class="accent-num">24.5k</span>
+    <span>tok</span>
+  </div>
+  <div class="stat-pill alert">
+    <span class="dot amber pulse"></span>
+    <span class="num" style="color: var(--ai-pending-confirm);">1</span>
+    <span>pending</span>
+  </div>
+
+  <div class="topbar-spacer"></div>
+
+  <div class="topbar-actions">
+    <button class="cmdk-btn" onclick="toggleCmdk()">
+      <span class="cmdk-prefix">⌘</span>
+      <span>Search or run a command</span>
+      <kbd>⌘K</kbd>
+    </button>
+    <button class="icon-btn" title="Stats &amp; Reports">📊</button>
+    <button class="icon-btn" title="Wiki">📖</button>
+    <button class="icon-btn" title="Settings">⚙</button>
+    <button class="icon-btn" title="Toggle theme" onclick="toggleTheme()" id="themeBtn">🌙</button>
+  </div>
+</div>
+
+<div class="quad-grid">
+  <!-- Q1 -->
+  <div class="quad quad-q1">
+    <div class="quad-header">
+      <span class="quad-dot"></span>
+      <span class="quad-title">Q1 — 紧急 &amp; 重要</span>
+      <span class="quad-meta">3</span>
+    </div>
+    <div class="quad-body">
+
+      <div class="card card-q1">
+        <div class="card-title">优化首屏性能</div>
+        <div class="card-status">
+          <span class="ai-tag">claude</span>
+          <span class="ai-state running">● running</span>
+          <span>▶ 12m</span>
+        </div>
+        <div class="sparkline-row">
+          <svg class="sparkline" viewBox="0 0 88 18" preserveAspectRatio="none">
+            <polyline points="0,15 8,12 16,9 24,5 32,3 40,7 48,4 56,8 64,9 72,11 80,13 88,11"
+              fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+          </svg>
+          <span class="sparkline-meta">2.4k tok · 18 msg</span>
+        </div>
+        <div class="card-footer">
+          <div class="tags"><span class="tag">#perf</span><span class="tag">#frontend</span></div>
+          <span class="focus-hint">⌘ focus</span>
+        </div>
+        <div class="card-actions">
+          <div class="card-action" title="Fork">⑂</div>
+          <div class="card-action" title="Open terminal">▶</div>
+          <div class="card-action" title="Archive">▽</div>
+        </div>
+      </div>
+
+      <div class="card card-q1">
+        <div class="card-title">线上 503 错误排查</div>
+        <div class="card-status">
+          <span class="ai-tag">claude</span>
+          <span class="ai-state thinking">● thinking</span>
+          <span>▶ 2m</span>
+        </div>
+        <div class="sparkline-row">
+          <svg class="sparkline" viewBox="0 0 88 18" preserveAspectRatio="none">
+            <polyline points="0,14 8,11 16,8 24,5 32,3 40,6 48,3 56,2 64,1 72,1 80,0 88,1"
+              fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+          </svg>
+          <span class="sparkline-meta">8.2k tok · 41 msg</span>
+        </div>
+        <div class="card-footer">
+          <div class="tags"><span class="tag">#bug</span><span class="tag">#prod</span></div>
+          <span class="focus-hint">⌘ focus</span>
+        </div>
+        <div class="card-actions">
+          <div class="card-action" title="Fork">⑂</div>
+          <div class="card-action" title="Open terminal">▶</div>
+          <div class="card-action" title="Archive">▽</div>
+        </div>
+      </div>
+
+      <div class="card card-q1">
+        <div class="card-title">部署回滚 v1.4.2</div>
+        <div class="card-status">
+          <span class="ai-tag">codex</span>
+          <span class="ai-state pending">⚠ pending confirm</span>
+          <span>▶ 5m</span>
+        </div>
+        <div class="sparkline-row">
+          <svg class="sparkline" viewBox="0 0 88 18" preserveAspectRatio="none">
+            <polyline points="0,13 8,9 16,10 24,7 32,4 40,5 48,4 56,4 64,4 72,4 80,4 88,4"
+              fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+          </svg>
+          <span class="sparkline-meta">1.1k tok · 9 msg</span>
+        </div>
+        <div class="card-footer">
+          <div class="tags"><span class="tag">#deploy</span></div>
+          <span class="focus-hint">⌘ focus</span>
+        </div>
+        <div class="card-actions">
+          <div class="card-action" title="Fork">⑂</div>
+          <div class="card-action" title="Open terminal">▶</div>
+          <div class="card-action" title="Archive">▽</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Q2 -->
+  <div class="quad quad-q2">
+    <div class="quad-header">
+      <span class="quad-dot"></span>
+      <span class="quad-title">Q2 — 重要 &amp; 不紧急</span>
+      <span class="quad-meta">4</span>
+    </div>
+    <div class="quad-body">
+
+      <div class="card card-q2">
+        <div class="card-title">UI 整体升级 — AI Console 调度台</div>
+        <div class="card-status">
+          <span class="ai-tag">claude</span>
+          <span class="ai-state idle">○ idle</span>
+        </div>
+        <div class="sparkline-row">
+          <svg class="sparkline idle" viewBox="0 0 88 18" preserveAspectRatio="none">
+            <polyline points="0,9 8,9 16,9 24,9 32,9 40,9 48,9 56,9 64,9 72,9 80,9 88,9"
+              fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.4"/>
+          </svg>
+          <span class="sparkline-meta">— · idle</span>
+        </div>
+        <div class="card-footer">
+          <div class="tags"><span class="tag">#design</span><span class="tag">#frontend</span></div>
+          <span class="focus-hint">⌘ focus</span>
+        </div>
+        <div class="card-actions">
+          <div class="card-action" title="Fork">⑂</div>
+          <div class="card-action" title="Open terminal">▶</div>
+          <div class="card-action" title="Archive">▽</div>
+        </div>
+      </div>
+
+      <div class="card card-q2">
+        <div class="card-title">重构 PVP server 房间生命周期</div>
+        <div class="card-status">
+          <span class="ai-tag">claude</span>
+          <span class="ai-state running">● running</span>
+          <span>▶ 34m</span>
+        </div>
+        <div class="sparkline-row">
+          <svg class="sparkline" viewBox="0 0 88 18" preserveAspectRatio="none">
+            <polyline points="0,12 8,9 16,8 24,6 32,5 40,7 48,5 56,4 64,5 72,3 80,4 88,5"
+              fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+          </svg>
+          <span class="sparkline-meta">14.6k tok · 73 msg</span>
+        </div>
+        <div class="card-footer">
+          <div class="tags"><span class="tag">#refactor</span><span class="tag">#pvp</span></div>
+          <span class="focus-hint">⌘ focus</span>
+        </div>
+        <div class="card-actions">
+          <div class="card-action" title="Fork">⑂</div>
+          <div class="card-action" title="Open terminal">▶</div>
+          <div class="card-action" title="Archive">▽</div>
+        </div>
+      </div>
+
+      <div class="card card-q2">
+        <div class="card-title">写一篇 AB 实验设计的复盘</div>
+        <div class="card-status">
+          <span class="ai-tag">codex</span>
+          <span class="ai-state idle">○ idle</span>
+        </div>
+        <div class="sparkline-row">
+          <svg class="sparkline idle" viewBox="0 0 88 18" preserveAspectRatio="none">
+            <polyline points="0,9 8,9 16,9 24,9 32,9 40,9 48,9 56,9 64,9 72,9 80,9 88,9"
+              fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.4"/>
+          </svg>
+          <span class="sparkline-meta">— · idle</span>
+        </div>
+        <div class="card-footer">
+          <div class="tags"><span class="tag">#writing</span></div>
+          <span class="focus-hint">⌘ focus</span>
+        </div>
+        <div class="card-actions">
+          <div class="card-action" title="Fork">⑂</div>
+          <div class="card-action" title="Open terminal">▶</div>
+          <div class="card-action" title="Archive">▽</div>
+        </div>
+      </div>
+
+      <div class="card card-q2">
+        <div class="card-title">调研 cmdk 库 vs 自写命令面板</div>
+        <div class="card-status">
+          <span class="ai-tag">claude</span>
+          <span class="ai-state idle">○ idle</span>
+        </div>
+        <div class="sparkline-row">
+          <svg class="sparkline idle" viewBox="0 0 88 18" preserveAspectRatio="none">
+            <polyline points="0,9 8,9 16,9 24,9 32,9 40,9 48,9 56,9 64,9 72,9 80,9 88,9"
+              fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.4"/>
+          </svg>
+          <span class="sparkline-meta">— · idle</span>
+        </div>
+        <div class="card-footer">
+          <div class="tags"><span class="tag">#research</span></div>
+          <span class="focus-hint">⌘ focus</span>
+        </div>
+        <div class="card-actions">
+          <div class="card-action" title="Fork">⑂</div>
+          <div class="card-action" title="Open terminal">▶</div>
+          <div class="card-action" title="Archive">▽</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Q3 -->
+  <div class="quad quad-q3">
+    <div class="quad-header">
+      <span class="quad-dot"></span>
+      <span class="quad-title">Q3 — 紧急 &amp; 不重要</span>
+      <span class="quad-meta">2</span>
+    </div>
+    <div class="quad-body">
+
+      <div class="card card-q3">
+        <div class="card-title">回 Slack 上的小红书审核反馈</div>
+        <div class="card-status">
+          <span class="ai-tag">codex</span>
+          <span class="ai-state idle">○ idle</span>
+        </div>
+        <div class="sparkline-row">
+          <svg class="sparkline idle" viewBox="0 0 88 18" preserveAspectRatio="none">
+            <polyline points="0,9 8,9 16,9 24,9 32,9 40,9 48,9 56,9 64,9 72,9 80,9 88,9"
+              fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.4"/>
+          </svg>
+          <span class="sparkline-meta">— · idle</span>
+        </div>
+        <div class="card-footer">
+          <div class="tags"><span class="tag">#chore</span></div>
+          <span class="focus-hint">⌘ focus</span>
+        </div>
+        <div class="card-actions">
+          <div class="card-action" title="Fork">⑂</div>
+          <div class="card-action" title="Open terminal">▶</div>
+          <div class="card-action" title="Archive">▽</div>
+        </div>
+      </div>
+
+      <div class="card card-q3">
+        <div class="card-title">每周自动签到云函数失败通知</div>
+        <div class="card-status">
+          <span class="ai-tag">claude</span>
+          <span class="ai-state idle">○ idle</span>
+        </div>
+        <div class="sparkline-row">
+          <svg class="sparkline idle" viewBox="0 0 88 18" preserveAspectRatio="none">
+            <polyline points="0,9 8,9 16,9 24,9 32,9 40,9 48,9 56,9 64,9 72,9 80,9 88,9"
+              fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.4"/>
+          </svg>
+          <span class="sparkline-meta">— · idle</span>
+        </div>
+        <div class="card-footer">
+          <div class="tags"><span class="tag">#chore</span><span class="tag">#cron</span></div>
+          <span class="focus-hint">⌘ focus</span>
+        </div>
+        <div class="card-actions">
+          <div class="card-action" title="Fork">⑂</div>
+          <div class="card-action" title="Open terminal">▶</div>
+          <div class="card-action" title="Archive">▽</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Q4 -->
+  <div class="quad quad-q4">
+    <div class="quad-header">
+      <span class="quad-dot"></span>
+      <span class="quad-title">Q4 — 不紧急 &amp; 不重要</span>
+      <span class="quad-meta">2</span>
+    </div>
+    <div class="quad-body">
+
+      <div class="card card-q4">
+        <div class="card-title">看 Linear 的 design system 公开博客</div>
+        <div class="card-status">
+          <span class="ai-tag">—</span>
+          <span class="ai-state idle">○ no session</span>
+        </div>
+        <div class="sparkline-row">
+          <svg class="sparkline idle" viewBox="0 0 88 18" preserveAspectRatio="none">
+            <polyline points="0,9 8,9 16,9 24,9 32,9 40,9 48,9 56,9 64,9 72,9 80,9 88,9"
+              fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3"/>
+          </svg>
+          <span class="sparkline-meta">— · no session</span>
+        </div>
+        <div class="card-footer">
+          <div class="tags"><span class="tag">#read</span></div>
+          <span class="focus-hint">⌘ focus</span>
+        </div>
+        <div class="card-actions">
+          <div class="card-action" title="Fork">⑂</div>
+          <div class="card-action" title="Open terminal">▶</div>
+          <div class="card-action" title="Archive">▽</div>
+        </div>
+      </div>
+
+      <div class="card card-q4">
+        <div class="card-title">整理 Notion 旧的灵感笔记</div>
+        <div class="card-status">
+          <span class="ai-tag">—</span>
+          <span class="ai-state idle">○ no session</span>
+        </div>
+        <div class="sparkline-row">
+          <svg class="sparkline idle" viewBox="0 0 88 18" preserveAspectRatio="none">
+            <polyline points="0,9 8,9 16,9 24,9 32,9 40,9 48,9 56,9 64,9 72,9 80,9 88,9"
+              fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3"/>
+          </svg>
+          <span class="sparkline-meta">— · no session</span>
+        </div>
+        <div class="card-footer">
+          <div class="tags"><span class="tag">#chore</span></div>
+          <span class="focus-hint">⌘ focus</span>
+        </div>
+        <div class="card-actions">
+          <div class="card-action" title="Fork">⑂</div>
+          <div class="card-action" title="Open terminal">▶</div>
+          <div class="card-action" title="Archive">▽</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- Command Palette -->
+<div class="cmdk-overlay" id="cmdkOverlay" onclick="if(event.target===this) toggleCmdk()">
+  <div class="cmdk">
+    <div class="cmdk-input-wrap">
+      <span style="color: var(--accent-electric); font-weight: 600;">⌘</span>
+      <input class="cmdk-input" placeholder="Type a command or search a todo..." autofocus />
+      <kbd>esc</kbd>
+    </div>
+    <div class="cmdk-list">
+      <div class="cmdk-section">Quick actions</div>
+      <div class="cmdk-item active">
+        <span class="icon">+</span>
+        <span>Create new todo</span>
+        <span class="meta">N</span>
+      </div>
+      <div class="cmdk-item">
+        <span class="icon">▶</span>
+        <span>Start AI session (claude)</span>
+        <span class="meta">⌘⏎</span>
+      </div>
+      <div class="cmdk-item">
+        <span class="icon">▶</span>
+        <span>Start AI session (codex)</span>
+        <span class="meta">⌘⇧⏎</span>
+      </div>
+
+      <div class="cmdk-section">Navigate</div>
+      <div class="cmdk-item">
+        <span class="icon">1</span>
+        <span>Go to Q1 — Urgent &amp; Important</span>
+        <span class="meta">1</span>
+      </div>
+      <div class="cmdk-item">
+        <span class="icon">2</span>
+        <span>Go to Q2 — Important</span>
+        <span class="meta">2</span>
+      </div>
+      <div class="cmdk-item">
+        <span class="icon">3</span>
+        <span>Go to Q3 — Urgent</span>
+        <span class="meta">3</span>
+      </div>
+      <div class="cmdk-item">
+        <span class="icon">4</span>
+        <span>Go to Q4 — Backlog</span>
+        <span class="meta">4</span>
+      </div>
+
+      <div class="cmdk-section">Drawers</div>
+      <div class="cmdk-item">
+        <span class="icon">📊</span>
+        <span>Open Stats &amp; Reports</span>
+      </div>
+      <div class="cmdk-item">
+        <span class="icon">📖</span>
+        <span>Open Wiki</span>
+      </div>
+      <div class="cmdk-item">
+        <span class="icon">⚙</span>
+        <span>Open Settings</span>
+      </div>
+      <div class="cmdk-item">
+        <span class="icon">📨</span>
+        <span>Telegram sync</span>
+      </div>
+      <div class="cmdk-item">
+        <span class="icon">📋</span>
+        <span>Insert from Template…</span>
+      </div>
+
+      <div class="cmdk-section">System</div>
+      <div class="cmdk-item">
+        <span class="icon">🌙</span>
+        <span>Toggle theme (dark / light)</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ Focus Mode (AI Session View) ============ -->
+<div class="focus-view" id="focusView">
+  <div class="focus-subbar">
+    <button class="focus-back" onclick="closeFocus()">← Grid</button>
+    <div class="focus-task-title">
+      <span class="quad-dot" style="background: var(--q1); box-shadow: 0 0 8px var(--q1);"></span>
+      <span>线上 503 错误排查</span>
+      <span class="focus-task-id">#0937e199</span>
+    </div>
+    <div class="focus-actions">
+      <span class="pill-select green">claude · 全托管 ▾</span>
+      <span class="pill-select">我的 ▾</span>
+      <span class="pill-select electric">● 跟随</span>
+      <button class="focus-icon-btn" title="Notify">🔔</button>
+      <button class="focus-icon-btn" title="Copy session">📋</button>
+      <button class="focus-icon-btn" title="Save">⤓</button>
+      <button class="focus-icon-btn" title="Cancel">⊘</button>
+      <button class="focus-icon-btn" title="Split view">⇆</button>
+      <button class="focus-icon-btn" title="Close" onclick="closeFocus()">✕</button>
+    </div>
+  </div>
+
+  <div class="focus-tabs">
+    <button class="focus-tab active">
+      <span>Conversation</span>
+      <span class="badge">41</span>
+    </button>
+    <button class="focus-tab">
+      <span>Live 终端</span>
+    </button>
+    <button class="focus-tab">
+      <span>Log 日志</span>
+      <span class="badge">2.1k</span>
+    </button>
+    <div class="focus-tab-spacer"></div>
+    <span class="focus-tab-meta"><span class="live-dot"></span>thinking · 2m 14s · 8.2k tok</span>
+  </div>
+
+  <div class="focus-body">
+    <div class="turn user">
+      <div class="turn-marker user">›</div>
+      <div class="turn-content">
+        <p>线上 PVP server 在过去 30 分钟出现一波 503，麻烦你查一下是不是 ws 连接耗尽了。优先看 src/websocket.ts 里的 room 清理逻辑。</p>
+      </div>
+    </div>
+
+    <div class="turn assistant">
+      <div class="turn-marker assistant">●</div>
+      <div class="turn-content">
+        <p>先扫一下房间生命周期相关代码，再对比 redis 里的 room 数量。</p>
+        <div class="tool-call">
+          <span class="tool-name">Read</span><span class="tool-args">(server/src/websocket.ts, lines: 240-380)</span>
+          <div class="tool-result success">read 140 lines · cleanup hook 在 onClose 触发，但只删 ws set 不删 redis key</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="turn assistant">
+      <div class="turn-marker tool">⟫</div>
+      <div class="turn-content">
+        <div class="tool-call">
+          <span class="tool-name">Bash</span><span class="tool-args">(redis-cli --scan --pattern 'room:*' | wc -l)</span>
+          <div class="tool-result success">17,432</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="turn assistant">
+      <div class="turn-marker assistant">●</div>
+      <div class="turn-content">
+        <p>找到了 — Redis 里囤了 1.7w 个 <span class="mono" style="color: var(--accent-electric);">room:*</span> key 没清。<span class="text-muted">原因是 onClose 只在 ws 主动 close 时触发，长连接被网络层中断（client crash / nat timeout）走的是 onError，那条路径漏了 cleanup。</span></p>
+        <div class="code-block"><span class="code-comment">// websocket.ts:312 — 当前实现</span>
+ws.on('close', () =&gt; {
+<span class="code-del">- cleanupRoom(roomId);  // 只覆盖正常断开</span>
+});
+
+<span class="code-comment">// 应该补上 onError 路径</span>
+ws.on('error', () =&gt; {
+<span class="code-add">+ cleanupRoom(roomId);</span>
+<span class="code-add">+ logger.warn('ws_error_cleanup', { roomId });</span>
+});</div>
+      </div>
+    </div>
+
+    <div class="turn assistant">
+      <div class="turn-marker tool">⟫</div>
+      <div class="turn-content">
+        <div class="tool-call">
+          <span class="tool-name">Edit</span><span class="tool-args">(server/src/websocket.ts)</span>
+          <div class="tool-result success">applied 6 lines insert · ready to test</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="turn assistant">
+      <div class="turn-marker assistant">●</div>
+      <div class="turn-content">
+        <p>修好了。我跑下 ws 集成测试再确认一下，ok?</p>
+      </div>
+    </div>
+
+    <div class="thinking-indicator">
+      <span>● thinking</span>
+      <span class="dots"></span>
+    </div>
+  </div>
+
+  <div class="focus-footer">
+    <div class="focus-status-line">
+      <span class="baked">Baked for 4m 31s</span>
+      <span class="sep">·</span>
+      <span>1 shell still running</span>
+      <span class="sep">·</span>
+      <span>workdir: ~/code/crazyCombo/server</span>
+      <span class="sep">·</span>
+      <span>branch: <span style="color: var(--accent-electric);">fix/ws-cleanup</span></span>
+    </div>
+    <div class="focus-input-wrap">
+      <span class="focus-input-prefix">›</span>
+      <input class="focus-input" placeholder="type your message or paste anything..." />
+      <div class="focus-input-meta">
+        <span style="color: var(--accent-electric);">bypass permissions on</span>
+        <span class="sep">·</span>
+        <span>1 shell</span>
+        <span class="sep">·</span>
+        <kbd>⌘⏎</kbd> send
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="preview-note">
+  <strong>UI Mockup Preview</strong>
+  hover 卡片看 actions · 点卡片或 ▶ 开 <strong style="color: var(--accent-electric); font-family: 'JetBrains Mono', monospace;">focus mode (session view)</strong> · 按 <kbd>⌘K</kbd> 开命令面板 · 🌙 切主题
+</div>
+
+<script>
+  function toggleTheme() {
+    const html = document.documentElement;
+    const cur = html.getAttribute('data-theme') || 'dark';
+    const next = cur === 'dark' ? 'light' : 'dark';
+    html.setAttribute('data-theme', next);
+    document.getElementById('themeBtn').textContent = next === 'dark' ? '🌙' : '☀️';
+  }
+  function toggleCmdk() {
+    const overlay = document.getElementById('cmdkOverlay');
+    overlay.classList.toggle('open');
+    if (overlay.classList.contains('open')) {
+      setTimeout(() => overlay.querySelector('.cmdk-input').focus(), 80);
+    }
+  }
+  function openFocus() {
+    document.getElementById('focusView').classList.add('open');
+  }
+  function closeFocus() {
+    document.getElementById('focusView').classList.remove('open');
+  }
+  // Wire up cards: click anywhere on card or the ▶ action button → open focus
+  document.querySelectorAll('.card').forEach(card => {
+    card.addEventListener('click', (e) => {
+      // ignore clicks on other action buttons (fork / archive)
+      const action = e.target.closest('.card-action');
+      if (action && !action.title.includes('terminal')) return;
+      openFocus();
+    });
+  });
+
+  document.addEventListener('keydown', e => {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+      e.preventDefault();
+      toggleCmdk();
+    }
+    if (e.key === 'Escape') {
+      document.getElementById('cmdkOverlay').classList.remove('open');
+      closeFocus();
+    }
+  });
+</script>
+
+</body>
+</html>
