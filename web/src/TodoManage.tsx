@@ -58,7 +58,6 @@ import {
 import { getTranscriptStats, listPipelineTemplates, listPipelineRunsForTodo, startPipelineRun, PipelineTemplate, PipelineRun } from './api'
 import PipelineRunDrawer from './pipeline/PipelineRunDrawer'
 import AttentionRail from './dock/AttentionRail'
-import { useTerminalDockStore } from './store/terminalDockStore'
 import { useUnreadStore, isSessionUnread } from './store/unreadStore'
 import { useDrawerStackStore } from './store/drawerStackStore'
 import { useDrawerStack } from './hooks/useDrawerStack'
@@ -192,39 +191,17 @@ interface SortableTodoCardProps {
   onOpenNativeResume: (todo: Todo, session: Todo['aiSessions'][number]) => void
   onCopyPrompt: (todo: Todo) => void
   onExport: (todo: Todo) => void
-  onOpenSessionInDock: (todo: Todo, sessionId: string) => void
   isNarrow: boolean
   onRequestFork: (todo: Todo, sessionId: string) => void
   onRefresh: () => void
   highlightTodoId?: string | null
 }
 
-type HistoryDockStatus = 'closed' | 'active' | 'background' | 'popout'
-
-const DOCK_STATUS_TIP: Record<Exclude<HistoryDockStatus, 'closed'>, string> = {
-  active: '已在 AI 终端中打开（活动 tab）',
-  background: '已在 AI 终端中打开（后台 tab）',
-  popout: '已弹出为独立窗口',
-}
-
 // AI session 的"已结束"状态——只在这些状态下显示"未正常结束"标签，
 // 避免 running / pending_confirm 期间因为 nativeId 还没到位而误报。
 const TERMINAL_AI_STATUSES = new Set<string>(['done', 'failed', 'stopped'])
 
-function dockStatusOf(
-  sessionId: string,
-  openTabIds: Set<string>,
-  activeTabId: string | null,
-  splitSecondaryTabId: string | null,
-  poppedOutTabIds: Set<string>,
-): HistoryDockStatus {
-  if (!openTabIds.has(sessionId)) return 'closed'
-  if (poppedOutTabIds.has(sessionId)) return 'popout'
-  if (sessionId === activeTabId || sessionId === splitSecondaryTabId) return 'active'
-  return 'background'
-}
-
-function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo = false, onCreateSubtodo, onClick, onToggleDone, onAiExec, onDeleteAiSession, onUpdateSessionLabel, onDelete, onOpenTrae, onOpenTerminal, onOpenNativeResume, onCopyPrompt, onExport, onOpenSessionInDock, isNarrow, onRequestFork, onRefresh, highlightTodoId }: SortableTodoCardProps) {
+function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo = false, onCreateSubtodo, onClick, onToggleDone, onAiExec, onDeleteAiSession, onUpdateSessionLabel, onDelete, onOpenTrae, onOpenTerminal, onOpenNativeResume, onCopyPrompt, onExport, isNarrow, onRequestFork, onRefresh, highlightTodoId }: SortableTodoCardProps) {
   const { message } = useAppMessages()
   const [editingLabelSessionId, setEditingLabelSessionId] = useState<string | null>(null)
   const [editingLabelText, setEditingLabelText] = useState('')
@@ -242,26 +219,8 @@ function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo = false,
   const hasHistory = historySessions.length > 0
   const statusChip = currentStatusLabel(todo.status)
 
-  const dockOpenTabs = useTerminalDockStore(s => s.openTabs)
-  const dockActiveTabId = useTerminalDockStore(s => s.activeTabId)
-  const dockSplitSecondaryTabId = useTerminalDockStore(s => s.splitSecondaryTabId)
-  const dockPoppedOutTabIds = useTerminalDockStore(s => s.poppedOutTabIds)
-  const dockSetActive = useTerminalDockStore(s => s.setActive)
-  const dockToggleCollapsed = useTerminalDockStore(s => s.toggleCollapsed)
-  const dockDockTab = useTerminalDockStore(s => s.dock)
-  const dockIsCollapsed = useTerminalDockStore(s => s.isCollapsed)
-  const dockOpenTabIdSet = useMemo(() => new Set(dockOpenTabs.map(t => t.id)), [dockOpenTabs])
-  const dockPoppedSet = useMemo(() => new Set(dockPoppedOutTabIds), [dockPoppedOutTabIds])
   const lastSeenMap = useUnreadStore(s => s.lastSeenAt)
   const liveSessionsMap = useAiSessionStore(s => s.sessions)
-
-  const focusSessionInDock = useCallback((sid: string) => {
-    if (!dockOpenTabIdSet.has(sid)) return false
-    if (dockPoppedSet.has(sid)) dockDockTab(sid)
-    dockSetActive(sid)
-    if (dockIsCollapsed) dockToggleCollapsed()
-    return true
-  }, [dockOpenTabIdSet, dockPoppedSet, dockDockTab, dockSetActive, dockIsCollapsed, dockToggleCollapsed])
 
   const aiMenuItems = [
     { key: 'start:claude', label: '▶ 启动 Claude' },
@@ -353,16 +312,6 @@ function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo = false,
                 const [action, value] = key.split(':')
                 if (action === 'start') {
                   onAiExec(todo, value as AiTool)
-                  return
-                }
-                const target = historySessions.find(item => item.sessionId === value)
-                if (!target) return
-                if (action === 'open') {
-                  onOpenSessionInDock(todo, target.sessionId)
-                  return
-                }
-                if (action === 'resume') {
-                  onAiExec(todo, target.tool, target)
                 }
               },
             }}
@@ -405,7 +354,6 @@ function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo = false,
             <div className="todo-history-title">历史会话 ({historySessions.length})</div>
             <div className="todo-history-list">
               {historySessions.map((session) => {
-                const isPrimarySession = session.sessionId === dockActiveTabId
                 const nativeSessionId = session.nativeSessionId || ''
                 const baseResumeCommand = session.tool === 'codex'
                   ? `codex resume ${nativeSessionId}`
@@ -421,14 +369,6 @@ function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo = false,
                 const terminalCommand = sessionCwd
                   ? `cd ${shellQuoted} && ${baseResumeCommand}`
                   : baseResumeCommand
-                const dockStatus = dockStatusOf(
-                  session.sessionId,
-                  dockOpenTabIdSet,
-                  dockActiveTabId,
-                  dockSplitSecondaryTabId,
-                  dockPoppedSet,
-                )
-                const isOpenInDock = dockStatus !== 'closed'
                 // 未读优先取 live session（in-memory，最新），其次 historical（持久化值）
                 const liveTurnDoneAt = liveSessionsMap.get(session.sessionId)?.lastTurnDoneAt ?? null
                 const turnDoneAt = liveTurnDoneAt || session.lastTurnDoneAt || null
@@ -437,28 +377,21 @@ function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo = false,
                   <button
                     key={session.sessionId}
                     type="button"
-                    className={`todo-history-item ${isPrimarySession ? 'is-primary-session' : ''} ${isOpenInDock ? `dock-${dockStatus}` : ''}`}
+                    className="todo-history-item"
                     onClick={() => {
                       // 如果用户正在拖蓝选中里面的 session id / 命令文字，就别触发展开
                       if (typeof window !== 'undefined' && window.getSelection()?.toString()) return
-                      onOpenSessionInDock(todo, session.sessionId)
+                      useDispatchStore.getState().openFocus(todo.id, session.sessionId)
                     }}
                   >
-                    {(sessionUnread || isOpenInDock) && (() => {
-                      // 一个点位多重含义：有未读时优先显示红色（更紧急），其次才是 dock 状态色
-                      const dotKind = sessionUnread ? 'unread' : dockStatus
-                      const tip = sessionUnread
-                        ? '此 AI 会话有新回复未读'
-                        : DOCK_STATUS_TIP[dockStatus as Exclude<HistoryDockStatus, 'closed'>]
-                      return (
-                        <Tooltip title={tip}>
-                          <span
-                            className={`todo-history-dock-dot is-${dotKind}`}
-                            aria-label={tip}
-                          />
-                        </Tooltip>
-                      )
-                    })()}
+                    {sessionUnread && (
+                      <Tooltip title="此 AI 会话有新回复未读">
+                        <span
+                          className="todo-history-dock-dot is-unread"
+                          aria-label="此 AI 会话有新回复未读"
+                        />
+                      </Tooltip>
+                    )}
                     <div className="todo-history-body">
                       {editingLabelSessionId === session.sessionId ? (
                         <div style={{ display: 'flex', gap: 4, marginBottom: 4 }} onClick={(e) => e.stopPropagation()}>
@@ -546,15 +479,11 @@ function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo = false,
                             className="todo-history-link"
                             onClick={(e) => {
                               e.stopPropagation()
-                              if (isOpenInDock) {
-                                focusSessionInDock(session.sessionId)
-                              } else {
-                                onAiExec(todo, session.tool, session)
-                              }
+                              onAiExec(todo, session.tool, session)
                             }}
-                            title={isOpenInDock ? '该会话已在 AI 终端中打开，点击切到该 tab' : '恢复该会话（重新挂载到 AI 终端）'}
+                            title="恢复该会话（重新挂载到 AI 终端）"
                           >
-                            {isOpenInDock ? '切到该 tab' : '恢复'}
+                            恢复
                           </button>
                           {session.nativeSessionId ? (
                             <button
@@ -633,7 +562,6 @@ function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo = false,
                       onOpenNativeResume={onOpenNativeResume}
                       onCopyPrompt={onCopyPrompt}
                       onExport={onExport}
-                      onOpenSessionInDock={onOpenSessionInDock}
                       isNarrow={isNarrow}
                       onRefresh={onRefresh}
                       highlightTodoId={highlightTodoId}
@@ -645,8 +573,6 @@ function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo = false,
           </div>
         )}
       </div>
-
-      {/* 内嵌 AI 终端已迁移到 TerminalDock（Task 5） */}
     </div>
   )
 }
@@ -671,14 +597,13 @@ interface QuadrantZoneProps {
   onCopyPrompt: (todo: Todo) => void
   onExport: (todo: Todo) => void
   style?: React.CSSProperties
-  onOpenSessionInDock: (todo: Todo, sessionId: string) => void
   isNarrow: boolean
   onRequestFork: (todo: Todo, sessionId: string) => void
   onRefresh: () => void
   highlightTodoId?: string | null
 }
 
-function QuadrantZone({ config, todos, childrenByParentId, childHitIdsByParentId, onCreateSubtodo, onCardClick, onToggleDone, onAiExec, onDeleteAiSession, onUpdateSessionLabel, onDelete, onOpenTrae, onOpenTerminal, onOpenNativeResume, onCopyPrompt, onExport, style, onOpenSessionInDock, isNarrow, onRequestFork, onRefresh, highlightTodoId }: QuadrantZoneProps) {
+function QuadrantZone({ config, todos, childrenByParentId, childHitIdsByParentId, onCreateSubtodo, onCardClick, onToggleDone, onAiExec, onDeleteAiSession, onUpdateSessionLabel, onDelete, onOpenTrae, onOpenTerminal, onOpenNativeResume, onCopyPrompt, onExport, style, isNarrow, onRequestFork, onRefresh, highlightTodoId }: QuadrantZoneProps) {
   const { setNodeRef, isOver } = useDroppable({ id: `quadrant-${config.q}` })
 
   const header = (
@@ -711,7 +636,6 @@ function QuadrantZone({ config, todos, childrenByParentId, childHitIdsByParentId
             onOpenNativeResume={onOpenNativeResume}
             onCopyPrompt={onCopyPrompt}
             onExport={onExport}
-            onOpenSessionInDock={onOpenSessionInDock}
             isNarrow={isNarrow}
             onRefresh={onRefresh}
             highlightTodoId={highlightTodoId}
@@ -973,10 +897,12 @@ export default function TodoManage() {
     return () => { cancelled = true; clearInterval(t) }
   }, [transcriptDrawerOpen])
 
-  const dockActivate = useTerminalDockStore(s => s.activate)
+  // Open the SessionFocus overlay for this todo+session. The function name is kept so the many
+  // internal callers (attention rail, fork, AI exec, native terminal, etc.) need no further churn —
+  // see M3-T2 cleanup notes.
   const handleOpenTerminalInDock = useCallback((todo: Todo, sessionId: string) => {
-    dockActivate(todo.id, sessionId, todo.title)
-  }, [dockActivate])
+    useDispatchStore.getState().openFocus(todo.id, sessionId)
+  }, [])
 
   const handleOpenAttentionItem = useCallback((item: UnreadSessionItem) => {
     setKeyword('')
@@ -1477,43 +1403,6 @@ export default function TodoManage() {
     }
   }, [fetchTodos, todos, handleOpenTerminalInDock])
 
-  // ─── Dock 集成 ───
-
-  const resolveTabContext = useCallback((tab: { id: string; todoId: string }) => {
-    const todo = todos.find(t => t.id === tab.todoId)
-    if (!todo) return { cwd: null, resumeTarget: null }
-    const sess = (todo.aiSessions || []).find(s => s.sessionId === tab.id)
-    const resumeTarget = sess?.nativeSessionId ? {
-      todoId: todo.id,
-      tool: sess.tool,
-      prompt: sess.prompt,
-      cwd: sess.cwd || todo.workDir || undefined,
-      nativeSessionId: sess.nativeSessionId,
-    } : null
-    return {
-      cwd: todo.workDir || sess?.cwd || null,
-      resumeTarget,
-    }
-  }, [todos])
-
-  const handleDockSessionRecovered = useCallback((_todoId: string, _next: string) => {
-    fetchTodos()
-  }, [fetchTodos])
-
-  const handleDockSessionSwitch = useCallback((_todoId: string, _next: string) => {
-    fetchTodos()
-  }, [fetchTodos])
-
-  const handleDockDone = useCallback((_todoId: string, _sessionId: string) => {
-    fetchTodos()
-  }, [fetchTodos])
-
-  const handleDockFork = useCallback((todoId: string, sessionId: string) => {
-    const todo = todos.find(t => t.id === todoId)
-    if (!todo) return
-    setForkTarget({ todo, sessionId })
-  }, [todos])
-
   // ─── 拖拽 ───
 
   const handleDragStart = (event: DragStartEvent) => {
@@ -1808,7 +1697,6 @@ export default function TodoManage() {
                       onOpenNativeResume={handleOpenNativeResume}
                       onCopyPrompt={handleCopyPrompt}
                       onExport={handleExport}
-                      onOpenSessionInDock={handleOpenTerminalInDock}
                       isNarrow={isNarrow}
                       onRefresh={fetchTodos}
                       highlightTodoId={highlightTodoId}
@@ -1850,7 +1738,6 @@ export default function TodoManage() {
                 onAiExec={handleAiExec} onRequestFork={handleRequestFork} onDeleteAiSession={handleDeleteAiSession} onUpdateSessionLabel={handleUpdateSessionLabel} onDelete={handleDelete}
                 onOpenTrae={handleOpenTrae} onOpenTerminal={handleOpenTerminal} onOpenNativeResume={handleOpenNativeResume} onCopyPrompt={handleCopyPrompt} onExport={handleExport}
                 style={{ flex: splitV }}
-                onOpenSessionInDock={handleOpenTerminalInDock}
                 isNarrow={isNarrow}
                 onRefresh={fetchTodos}
                 highlightTodoId={highlightTodoId}
@@ -1885,7 +1772,6 @@ export default function TodoManage() {
                 onAiExec={handleAiExec} onRequestFork={handleRequestFork} onDeleteAiSession={handleDeleteAiSession} onUpdateSessionLabel={handleUpdateSessionLabel} onDelete={handleDelete}
                 onOpenTrae={handleOpenTrae} onOpenTerminal={handleOpenTerminal} onOpenNativeResume={handleOpenNativeResume} onCopyPrompt={handleCopyPrompt} onExport={handleExport}
                 style={{ flex: 100 - splitV }}
-                onOpenSessionInDock={handleOpenTerminalInDock}
                 isNarrow={isNarrow}
                 onRefresh={fetchTodos}
                 highlightTodoId={highlightTodoId}
@@ -1926,7 +1812,6 @@ export default function TodoManage() {
                 onAiExec={handleAiExec} onRequestFork={handleRequestFork} onDeleteAiSession={handleDeleteAiSession} onUpdateSessionLabel={handleUpdateSessionLabel} onDelete={handleDelete}
                 onOpenTrae={handleOpenTrae} onOpenTerminal={handleOpenTerminal} onOpenNativeResume={handleOpenNativeResume} onCopyPrompt={handleCopyPrompt} onExport={handleExport}
                 style={{ flex: splitV }}
-                onOpenSessionInDock={handleOpenTerminalInDock}
                 isNarrow={isNarrow}
                 onRefresh={fetchTodos}
                 highlightTodoId={highlightTodoId}
@@ -1961,7 +1846,6 @@ export default function TodoManage() {
                 onAiExec={handleAiExec} onRequestFork={handleRequestFork} onDeleteAiSession={handleDeleteAiSession} onUpdateSessionLabel={handleUpdateSessionLabel} onDelete={handleDelete}
                 onOpenTrae={handleOpenTrae} onOpenTerminal={handleOpenTerminal} onOpenNativeResume={handleOpenNativeResume} onCopyPrompt={handleCopyPrompt} onExport={handleExport}
                 style={{ flex: 100 - splitV }}
-                onOpenSessionInDock={handleOpenTerminalInDock}
                 isNarrow={isNarrow}
                 onRefresh={fetchTodos}
                 highlightTodoId={highlightTodoId}

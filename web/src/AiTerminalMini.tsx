@@ -14,9 +14,9 @@ import { getTerminalWsUrl, startAiExec, stopAiExec, openTraeCN, TodoStatus, Resu
 import { useTerminalTheme } from './hooks/useTerminalTheme'
 import { PRESET_LABELS, PRESET_ORDER, TerminalPresetName, TERMINAL_PRESETS, deriveChrome, getTokenDrivenTheme } from './terminalThemes'
 import { useTheme } from './design/ThemeProvider'
-import { useTerminalDockStore } from './store/terminalDockStore'
 import { decideNearBottomAction, NEAR_BOTTOM_LINES } from './AiTerminalMini.scrollSnap'
 import { useUnreadStore } from './store/unreadStore'
+import { useDispatchStore } from './store/dispatchStore'
 import {
   getBrowserNotificationPermission,
   shouldSendTurnDoneSystemNotification,
@@ -221,25 +221,19 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
     }
   }, [sessionId])
 
-  // 标记已读：仅当用户当前真的能在本窗口看到这个 session（dock active/secondary、
-  // 未折叠、页面可见）时才 markSeen。pop-out 到独立窗口的 tab 由那个窗口的 AiTerminalMini
-  // 实例自己 mark；当前窗口看不到，不要替它 mark。
+  // 标记已读：AiTerminalMini 只会在 SessionFocus overlay 内挂载，所以挂载即"用户能看到"，
+  // 只剩下页面可见性这一个 gate。
   const markSeen = useUnreadStore(s => s.markSeen)
   useEffect(() => {
     function isVisibleHere(): boolean {
       if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return false
-      const dock = useTerminalDockStore.getState()
-      if (dock.poppedOutTabIds.includes(sessionId)) return false
-      if (dock.isCollapsed) return false
-      return dock.activeTabId === sessionId || dock.splitSecondaryTabId === sessionId
+      return true
     }
     function evaluate() { if (isVisibleHere()) markSeen(sessionId) }
     evaluate()
-    const unsub = useTerminalDockStore.subscribe(evaluate)
     document.addEventListener('visibilitychange', evaluate)
     window.addEventListener('focus', evaluate)
     return () => {
-      unsub()
       document.removeEventListener('visibilitychange', evaluate)
       window.removeEventListener('focus', evaluate)
     }
@@ -299,15 +293,9 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
 
   const focusOwnDockTab = useCallback(() => {
     try { window.focus() } catch {}
-    const dock = useTerminalDockStore.getState()
-    const exists = dock.openTabs.some(t => t.id === sessionId)
-    if (!exists) {
-      message.info({ content: '会话已关闭，请从待办列表重新打开', key: `turn-done-${sessionId}-closed` })
-      return
-    }
-    if (dock.activeTabId !== sessionId) dock.setActive(sessionId)
-    if (dock.isCollapsed) dock.toggleCollapsed()
-  }, [sessionId])
+    // Bring the SessionFocus overlay back to this session (closes drawers + palette as a side effect).
+    useDispatchStore.getState().openFocus(todoId, sessionId)
+  }, [sessionId, todoId])
 
   const showTurnDoneReminder = useCallback(() => {
     setTurnDoneNotice(true)
@@ -732,13 +720,10 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
                 break
               case 'turn_done': {
                 showTurnDoneReminder()
-                // 用户当前正盯着这个会话（dock 可见、页面在前台）— turn_done 一到就标已读，
-                // 避免红点闪一下又消失带来的视觉干扰。
-                const dock = useTerminalDockStore.getState()
+                // 用户当前正盯着这个会话（SessionFocus 已挂载本组件、页面在前台）— turn_done
+                // 一到就标已读，避免红点闪一下又消失带来的视觉干扰。
                 const docVisible = typeof document === 'undefined' || document.visibilityState === 'visible'
-                const tabVisible = !dock.isCollapsed && !dock.poppedOutTabIds.includes(sessionId)
-                  && (dock.activeTabId === sessionId || dock.splitSecondaryTabId === sessionId)
-                if (docVisible && tabVisible) markSeen(sessionId)
+                if (docVisible) markSeen(sessionId)
                 break
               }
               case 'done':
