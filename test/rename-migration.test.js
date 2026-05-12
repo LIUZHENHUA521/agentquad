@@ -76,6 +76,72 @@ describe('migrateLegacyHomeDirIfNeeded', () => {
     expect(result.action).toBe('skip')
     expect(result.reason).toBe('no-legacy')
   })
+
+  it('rewrites ~/.claude/settings.json command paths for managed entries', async () => {
+    const oldDir = join(home, '.quadtodo')
+    const newDir = join(home, '.agentquad')
+    const claudeDir = join(home, '.claude')
+    mkdirSync(oldDir, { recursive: true })
+    mkdirSync(claudeDir, { recursive: true })
+    writeFileSync(join(oldDir, 'data.db'), 'x')
+    const settingsPath = join(claudeDir, 'settings.json')
+    const oldHookCmd = `node ${join(oldDir, 'claude-hooks', 'notify.js')} stop`
+    const oldMcpCmd = `node ${join(oldDir, 'src', 'mcp', 'server.js')}`
+    writeFileSync(settingsPath, JSON.stringify({
+      mcpServers: {
+        agentquad: { type: 'stdio', command: oldMcpCmd },
+        other: { type: 'stdio', command: '/usr/bin/other-mcp' },
+      },
+      hooks: {
+        Stop: [
+          {
+            matcher: '*',
+            hooks: [
+              { type: 'command', command: oldHookCmd, _quadtodoManaged: true },
+              { type: 'command', command: oldHookCmd, _quadtodoManaged: false },
+            ],
+          },
+        ],
+      },
+    }, null, 2))
+
+    const { migrateLegacyHomeDirIfNeeded } = await import('../src/config.js')
+    const result = migrateLegacyHomeDirIfNeeded({ home, stderr, isPidAlive: () => false })
+
+    expect(result.action).toBe('migrated')
+    const settings = JSON.parse(readFileSync(settingsPath, 'utf8'))
+    // managed entry was rewritten
+    expect(settings.hooks.Stop[0].hooks[0].command).toBe(
+      `node ${join(newDir, 'claude-hooks', 'notify.js')} stop`
+    )
+    // unmanaged entry was NOT rewritten
+    expect(settings.hooks.Stop[0].hooks[1].command).toBe(oldHookCmd)
+    // mcp entry whose command contains oldDir was rewritten (no marker gating on MCP)
+    expect(settings.mcpServers.agentquad.command).toBe(
+      `node ${join(newDir, 'src', 'mcp', 'server.js')}`
+    )
+    // third-party MCP entry left alone
+    expect(settings.mcpServers.other.command).toBe('/usr/bin/other-mcp')
+  })
+
+  it('does not rewrite sibling-prefix paths in config.json', async () => {
+    const oldDir = join(home, '.quadtodo')
+    const newDir = join(home, '.agentquad')
+    mkdirSync(oldDir, { recursive: true })
+    writeFileSync(join(oldDir, 'data.db'), 'x')
+    writeFileSync(join(oldDir, 'config.json'), JSON.stringify({
+      backupRef: join(home, '.quadtodo-backup', 'foo'),  // sibling, must be preserved
+      wiki: { wikiDir: join(oldDir, 'wiki') },           // canonical, must be migrated
+    }))
+
+    const { migrateLegacyHomeDirIfNeeded } = await import('../src/config.js')
+    const result = migrateLegacyHomeDirIfNeeded({ home, stderr, isPidAlive: () => false })
+
+    expect(result.action).toBe('migrated')
+    const cfg = JSON.parse(readFileSync(join(newDir, 'config.json'), 'utf8'))
+    expect(cfg.wiki.wikiDir).toBe(join(newDir, 'wiki'))
+    expect(cfg.backupRef).toBe(join(home, '.quadtodo-backup', 'foo'))  // unchanged
+  })
 })
 
 describe('auto-run at config.js import', () => {

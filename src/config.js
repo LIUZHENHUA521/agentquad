@@ -540,10 +540,82 @@ function rewriteConfigPaths(configPath, oldHome, newHome) {
 	if (!existsSync(configPath)) return;
 	try {
 		const raw = readFileSync(configPath, "utf8");
-		const rewritten = raw.split(oldHome).join(newHome);
+		// Boundary-aware replace: only rewrite when oldHome is followed by '/' or
+		// a JSON close-quote, so /Users/u/.quadtodo-backup is not mangled.
+		const rewritten = raw
+			.split(oldHome + "/").join(newHome + "/")
+			.split(oldHome + '"').join(newHome + '"');
 		if (rewritten !== raw) writeFileSync(configPath, rewritten);
 	} catch {
 		// Non-fatal: caller will surface the abnormal config on next normalize.
+	}
+}
+
+function rewriteClaudeSettings(home, oldDir, newDir) {
+	const settingsPath = join(home, ".claude", "settings.json");
+	if (!existsSync(settingsPath)) return;
+	let raw;
+	try {
+		raw = readFileSync(settingsPath, "utf8");
+	} catch {
+		return;
+	}
+	let settings;
+	try {
+		settings = JSON.parse(raw);
+	} catch {
+		return;
+	}
+	let changed = false;
+	const oldPrefix = oldDir + "/";
+	const newPrefix = newDir + "/";
+
+	// MCP entries
+	const mcp = settings.mcpServers;
+	if (mcp && typeof mcp === "object") {
+		for (const key of Object.keys(mcp)) {
+			const entry = mcp[key];
+			if (!entry || typeof entry !== "object") continue;
+			if (typeof entry.command === "string" && entry.command.includes(oldPrefix)) {
+				entry.command = entry.command.split(oldPrefix).join(newPrefix);
+				changed = true;
+			}
+			if (Array.isArray(entry.args)) {
+				for (let i = 0; i < entry.args.length; i++) {
+					if (typeof entry.args[i] === "string" && entry.args[i].includes(oldPrefix)) {
+						entry.args[i] = entry.args[i].split(oldPrefix).join(newPrefix);
+						changed = true;
+					}
+				}
+			}
+		}
+	}
+
+	// Hook entries (only ours, gated by _quadtodoManaged marker)
+	const hooks = settings.hooks;
+	if (hooks && typeof hooks === "object") {
+		for (const eventName of Object.keys(hooks)) {
+			const eventHooks = hooks[eventName];
+			if (!Array.isArray(eventHooks)) continue;
+			for (const matcher of eventHooks) {
+				if (!matcher || !Array.isArray(matcher.hooks)) continue;
+				for (const hook of matcher.hooks) {
+					if (!hook || hook._quadtodoManaged !== true) continue;
+					if (typeof hook.command === "string" && hook.command.includes(oldPrefix)) {
+						hook.command = hook.command.split(oldPrefix).join(newPrefix);
+						changed = true;
+					}
+				}
+			}
+		}
+	}
+
+	if (changed) {
+		try {
+			writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+		} catch {
+			// Non-fatal: stderr will surface via migration result; user can re-bootstrap.
+		}
 	}
 }
 
@@ -598,6 +670,7 @@ export function migrateLegacyHomeDirIfNeeded({
 	moveDirectory(oldDir, newDir);
 
 	rewriteConfigPaths(join(newDir, "config.json"), oldDir, newDir);
+	rewriteClaudeSettings(home, oldDir, newDir);
 
 	const stalePid = join(newDir, "quadtodo.pid");
 	if (existsSync(stalePid)) rmSync(stalePid, { force: true });
