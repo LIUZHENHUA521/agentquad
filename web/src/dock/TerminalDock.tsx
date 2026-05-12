@@ -3,7 +3,7 @@ import React, { useCallback, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { Button, Dropdown, Tooltip } from 'antd'
 import { useAppMessages } from '../design/useAppMessages'
-import { CloseOutlined, MenuFoldOutlined, ColumnWidthOutlined, MergeCellsOutlined, ExportOutlined, CodeOutlined } from '@ant-design/icons'
+import { CloseOutlined, MenuFoldOutlined, ColumnWidthOutlined, MergeCellsOutlined, ExportOutlined, CodeOutlined, ExpandAltOutlined } from '@ant-design/icons'
 import {
   DndContext,
   closestCenter,
@@ -22,6 +22,7 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import type { ResumeSessionInput } from '../api'
 import { useTerminalDockStore, DOCK_LIMITS, DockTab } from '../store/terminalDockStore'
+import { useDispatchStore } from '../store/dispatchStore'
 import { useIsMobile } from '../hooks/useIsMobile'
 import TerminalDockTab from './TerminalDockTab'
 import PopOutTerminalWindow from './PopOutTerminalWindow'
@@ -232,6 +233,19 @@ export default function TerminalDock({
             />
           </Tooltip>
         )}
+        {activeTabId && (() => {
+          const activeTab = openTabs.find(t => t.id === activeTabId)
+          return activeTab ? (
+            <Tooltip title="专注模式（全屏）">
+              <Button
+                type="text" size="small"
+                icon={<ExpandAltOutlined />}
+                onClick={() => useDispatchStore.getState().openFocus(activeTab.todoId, activeTab.id)}
+                aria-label="Open in Focus Mode"
+              />
+            </Tooltip>
+          ) : null
+        })()}
         {activeTabId && !poppedOutTabIds.includes(activeTabId) && (
           <Tooltip title="弹出浮层">
             <Button
