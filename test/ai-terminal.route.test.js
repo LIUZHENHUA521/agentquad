@@ -959,6 +959,33 @@ describe('routes/ai-terminal', () => {
     })
   })
 
+  it('superseded old session does not broadcast stopped or done to its WS', async () => {
+    const nativeId = 'abcdef12-3456-7890-abcd-ef1234567890'
+    const todo = ctx.db.createTodo({ title: 'T', quadrant: 1 })
+    const { body } = await request(ctx.app).post('/api/ai-terminal/exec')
+      .send({ todoId: todo.id, prompt: 'hi', tool: 'claude', cwd: '/tmp' })
+    ctx.pty.emit('native-session', { sessionId: body.sessionId, nativeId })
+
+    const sent = []
+    const ws = { readyState: 1, OPEN: 1, send: (d) => sent.push(JSON.parse(d)) }
+    ctx.ait.addBrowser(body.sessionId, ws)
+
+    ctx.ait.handleBrowserMessage(body.sessionId, { type: 'set_auto_mode', autoMode: 'bypass' }, ws)
+
+    // Trigger the replaced old session's exit
+    ctx.pty.emit('done', {
+      sessionId: body.sessionId,
+      exitCode: 0,
+      fullLog: '',
+      nativeId,
+      stopped: true,
+    })
+
+    // No done or stopped should reach the old WS
+    const doneMsgs = sent.filter(m => m.type === 'done' || m.type === 'stopped')
+    expect(doneMsgs).toEqual([])
+  })
+
   it('old session exit during runtime bypass restart does not overwrite replacement state', async () => {
     const nativeId = 'abcdef12-3456-7890-abcd-ef1234567890'
     const todo = ctx.db.createTodo({ title: 'T', quadrant: 1 })

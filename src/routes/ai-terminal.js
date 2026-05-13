@@ -296,7 +296,12 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
     }
 
     writeFullLog(sessionId, fullLog)
-    broadcastToSession(session, { type: 'done', exitCode, status: aiStatus })
+    const replacedByLive = superseded
+      && typeof session.replacedBySessionId === 'string'
+      && session.replacedBySessionId !== '__pending__'
+    if (!replacedByLive) {
+      broadcastToSession(session, { type: 'done', exitCode, status: aiStatus })
+    }
 
     // 落库一条历史记录，供仪表盘 Tab C 统计使用
     try {
