@@ -332,6 +332,11 @@ export default function TranscriptView({ todoId, sessionId, onFork, autoRefreshM
     setOptimisticTurns([])
     setCollapsedTools({})
     setAllToolsCollapsed(false)
+    // 关键：session 切换时把"用户在底部"标志位拨回 true。否则上个 session 用户滚上去留下来的
+    // false 会让所有自动 scroll-to-bottom 被跳过（即使新 session 还没开始读）。
+    isAtBottomRef.current = true
+    setUnreadCount(0)
+    prevCountRef.current = 0
     setLiveOutput(null)
     void fetchData('reset')
   }, [fetchData])
@@ -495,21 +500,41 @@ export default function TranscriptView({ todoId, sessionId, onFork, autoRefreshM
     return () => { ro.disconnect(); mo.disconnect() }
   }, [])
 
-  // 显式的"内容变就粘底"双保险：当 displayedTurns 或 liveOutput 变化触发 React 重渲染时，
-  // RO/MO 在某些场景会错过（比如 liveOutput 改变只让 .tv-raw-pre 内容变长但 max-height: 360px
-  // 截断后外层 .tv-turn 不再变高 → RO 不再触发；或 React 把多次 setData 合并为一次 commit
-  // 时 MO 只看到一次 childList 变化但 stickToBottom 在 layout 完成前读到 stale scrollHeight）。
-  // 用 rAF 等到 layout 完成后再 scroll，幂等无副作用。
+  // "新 turn 必滚到底" + "live output 流式只在底部时跟随"的双策略：
+  //   1. displayedTurns.length 增加 → 强制滚到底（mainstream chat UX：ChatGPT/Claude.ai 都这样）
+  //      并把 isAtBottomRef 拨回 true（视为"用户想跟"）。
+  //   2. liveOutput 变化（流式输出）→ 仅在 isAtBottomRef.current = true 时滚（保留用户阅读旧消息的位置）。
+  // 双 rAF 等当前 commit 后的 layout 完成；120ms setTimeout 兜底等 markdown/hljs 同步阻塞渲染。
+  const lastTurnCountRef = useRef(0)
   useEffect(() => {
     const el = scrollRef.current
     if (!el) return
-    if (!isAtBottomRef.current) return
-    const id = requestAnimationFrame(() => {
+    const prevLen = lastTurnCountRef.current
+    const currLen = displayedTurns.length
+    lastTurnCountRef.current = currLen
+    const newTurnAdded = currLen > prevLen
+    // 用户在读历史 + 仅 liveOutput 在变 → 不打扰
+    if (!newTurnAdded && !isAtBottomRef.current) return
+
+    const doScroll = () => {
       const node = scrollRef.current
       if (!node) return
-      if (isAtBottomRef.current) node.scrollTop = node.scrollHeight
+      node.scrollTop = node.scrollHeight
+      if (newTurnAdded) {
+        isAtBottomRef.current = true
+        setUnreadCount(0)
+      }
+    }
+    let raf2 = 0
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(doScroll)
     })
-    return () => cancelAnimationFrame(id)
+    const t = setTimeout(doScroll, 120)
+    return () => {
+      cancelAnimationFrame(raf1)
+      cancelAnimationFrame(raf2)
+      clearTimeout(t)
+    }
   }, [displayedTurns, liveOutput])
 
   // 未读计数：仅在 turn 数增加且用户不在底部时累加；首次 snapshot 不计
