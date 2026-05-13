@@ -8,17 +8,11 @@
 import { useEffect, useState } from 'react'
 import { Button, Modal, Tag, Tooltip } from 'antd'
 import { SyncOutlined } from '@ant-design/icons'
+import { useTranslation } from 'react-i18next'
 import { syncChannels, SyncResponse, SyncActionType } from './api'
 import { useAppMessages } from './design/useAppMessages'
 import { useDispatchStore } from './store/dispatchStore'
 
-const TYPE_LABEL: Record<SyncActionType, string> = {
-  open_topic: '建 TG 话题',
-  close_topic: '关 TG 话题 + 完成',
-  open_thread: '建 Lark 线程',
-  close_thread: '关 Lark 线程 + 完成',
-  clear_route: '清孤儿路由',
-}
 const TYPE_COLOR: Record<SyncActionType, string> = {
   open_topic: 'green',
   close_topic: 'red',
@@ -28,7 +22,15 @@ const TYPE_COLOR: Record<SyncActionType, string> = {
 }
 
 export default function TelegramSyncButton() {
+  const { t } = useTranslation(['settings', 'common'])
   const { message } = useAppMessages()
+  const TYPE_LABEL: Record<SyncActionType, string> = {
+    open_topic: t('settings:sync.action.openTopic'),
+    close_topic: t('settings:sync.action.closeTopic'),
+    open_thread: t('settings:sync.action.openThread'),
+    close_thread: t('settings:sync.action.closeThread'),
+    clear_route: t('settings:sync.action.clearRoute'),
+  }
   const [loading, setLoading] = useState(false)
   const [plan, setPlan] = useState<SyncResponse | null>(null)
   const [confirmOpen, setConfirmOpen] = useState(false)
@@ -50,12 +52,12 @@ export default function TelegramSyncButton() {
       const res = await syncChannels(true)
       setPlan(res)
       if (res.summary.total === 0) {
-        message.success('一切已同步，无需动作')
+        message.success(t('settings:sync.allSynced'))
       } else {
         setConfirmOpen(true)
       }
     } catch (e) {
-      message.error(`预览失败: ${(e as Error).message}`)
+      message.error(t('settings:sync.previewFailed', { msg: (e as Error).message }))
     } finally {
       setLoading(false)
     }
@@ -68,14 +70,14 @@ export default function TelegramSyncButton() {
       const ok = res.summary.succeeded || 0
       const fail = res.summary.failed || 0
       if (fail > 0) {
-        message.warning(`同步完成：成功 ${ok}，失败 ${fail}`)
+        message.warning(t('settings:sync.execMixed', { ok, fail }))
       } else {
-        message.success(`同步完成：${ok} 个动作全部成功`)
+        message.success(t('settings:sync.execAllOk', { ok }))
       }
       setPlan(res)
       setConfirmOpen(false)
     } catch (e) {
-      message.error(`同步执行失败: ${(e as Error).message}`)
+      message.error(t('settings:sync.execFailed', { msg: (e as Error).message }))
     } finally {
       setExecuting(false)
     }
@@ -83,34 +85,34 @@ export default function TelegramSyncButton() {
 
   return (
     <>
-      <Tooltip title="对账 Telegram topic / Lark thread 与待办状态，预览后确认">
+      <Tooltip title={t('settings:sync.buttonTooltip')}>
         <Button
           icon={<SyncOutlined spin={loading} />}
           size="small"
           loading={loading}
           onClick={preview}
         >
-          同步对账
+          {t('settings:sync.button')}
         </Button>
       </Tooltip>
       <Modal
-        title="同步对账预览"
+        title={t('settings:sync.previewTitle')}
         open={confirmOpen}
         onCancel={() => setConfirmOpen(false)}
         onOk={execute}
-        okText={`确认执行（${plan?.summary.total ?? 0} 项）`}
-        cancelText="取消"
+        okText={t('settings:sync.executeOk', { count: plan?.summary.total ?? 0 })}
+        cancelText={t('settings:sync.cancel')}
         confirmLoading={executing}
         width={680}
       >
         {plan && (
           <>
             <div style={{ marginBottom: 12, fontSize: 12, color: 'var(--text-secondary)' }}>
-              TG 建 <b>{plan.summary.open_topic}</b> · 关 <b>{plan.summary.close_topic}</b>
+              {t('settings:sync.summary.tg')} <b>{plan.summary.open_topic}</b> · {t('settings:sync.summary.close')} <b>{plan.summary.close_topic}</b>
               {' ｜ '}
-              Lark 建 <b>{plan.summary.open_thread}</b> · 关 <b>{plan.summary.close_thread}</b>
+              {t('settings:sync.summary.lark')} <b>{plan.summary.open_thread}</b> · {t('settings:sync.summary.close')} <b>{plan.summary.close_thread}</b>
               {' ｜ '}
-              清孤儿 <b>{plan.summary.clear_route}</b>
+              {t('settings:sync.summary.clear')} <b>{plan.summary.clear_route}</b>
             </div>
             <div style={{ maxHeight: 360, overflowY: 'auto' }}>
               {plan.actions.map((a, i) => (

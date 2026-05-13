@@ -8,7 +8,7 @@ import { useTranslation } from 'react-i18next'
 import { updateTodo, type Todo, type AiTool, type StageTag } from '../../api'
 import { StageTagChip } from '../StageTagChip'
 import { useAppMessages } from '../../design/useAppMessages'
-import { deriveAiState, AI_STATE_LABEL, AI_STATE_ICON } from '../../design/aiPresentationState'
+import { deriveAiState, AI_STATE_LABEL_KEY, AI_STATE_ICON } from '../../design/aiPresentationState'
 import { useAiSessionStore } from '../../store/aiSessionStore'
 import { useUnreadStore, isSessionUnread } from '../../store/unreadStore'
 import { useDispatchStore } from '../../store/dispatchStore'
@@ -64,7 +64,7 @@ const TERMINAL_AI_STATUSES = new Set<string>(['done', 'failed', 'stopped'])
 
 export function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo = false, onCreateSubtodo, onClick, onToggleDone, onAiExec, onDeleteAiSession, onUpdateSessionLabel, onDelete, onOpenTrae, onOpenTerminal, onOpenNativeResume, onCopyPrompt, onExport, isNarrow, onRequestFork, onRefresh, highlightTodoId }: SortableTodoCardProps) {
   const { message } = useAppMessages()
-  const { t } = useTranslation(['todo', 'errors'])
+  const { t } = useTranslation(['todo', 'errors', 'session'])
   const [editingLabelSessionId, setEditingLabelSessionId] = useState<string | null>(null)
   const [editingLabelText, setEditingLabelText] = useState('')
   const [childrenExpanded, setChildrenExpanded] = useState(true)
@@ -278,7 +278,7 @@ export function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo =
                         <span className="todo-history-tool">{toolDisplayName(session.tool)}</span>
                         <span className="todo-history-time">{formatSessionTime(session.startedAt || session.completedAt)}</span>
                         {sessionState !== 'idle' && (
-                          <span className={`todo-ai-state todo-ai-state-${sessionState}`}>{AI_STATE_ICON[sessionState]()}{' '}{AI_STATE_LABEL[sessionState]}</span>
+                          <span className={`todo-ai-state todo-ai-state-${sessionState}`}>{AI_STATE_ICON[sessionState]()}{' '}{t(AI_STATE_LABEL_KEY[sessionState])}</span>
                         )}
                         {session.localResume?.openedAt && (
                           <span

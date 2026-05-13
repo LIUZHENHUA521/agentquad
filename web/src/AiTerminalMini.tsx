@@ -21,9 +21,9 @@ import { useDispatchStore } from './store/dispatchStore'
 import {
   getBrowserNotificationPermission,
   shouldSendTurnDoneSystemNotification,
-  TURN_DONE_NOTIFICATION_BUTTON_LABEL,
+  TURN_DONE_NOTIFICATION_BUTTON_LABEL_KEY,
   TURN_DONE_NOTIFICATION_BUTTON_STYLE,
-  TURN_DONE_TEXT,
+  TURN_DONE_TEXT_KEY,
   BrowserNotificationPermission,
 } from './terminalTurnNotifications'
 
@@ -298,7 +298,7 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
             }}
             style={{ cursor: 'pointer' }}
           >
-            {TURN_DONE_TEXT}
+            {t(TURN_DONE_TEXT_KEY)}
             <span style={{ marginLeft: 6, opacity: 0.7, fontSize: 12 }}>{t('session:terminal.turnDoneClickHint')}</span>
           </span>
         ),
@@ -319,7 +319,7 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
 
     try {
       const notification = new window.Notification('AgentQuad', {
-        body: TURN_DONE_TEXT,
+        body: t(TURN_DONE_TEXT_KEY),
         tag: `agentquad-turn-done-${sessionId}`,
       })
       notification.onclick = () => {

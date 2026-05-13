@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { Modal, Form, Select, Slider, Switch, Input, Button, Spin } from 'antd'
+import { useTranslation } from 'react-i18next'
 import { useAppMessages } from './design/useAppMessages'
 import { AiTool, Todo, forkAiSession } from './api'
 
@@ -13,6 +14,7 @@ interface Props {
 }
 
 export default function ForkDialog({ open, sourceTodo, sourceSessionId, todos, onCancel, onConfirm }: Props) {
+  const { t } = useTranslation(['transcript', 'common'])
   const { message } = useAppMessages()
   const [tool, setTool] = useState<AiTool>('claude')
   const [targetTodoId, setTargetTodoId] = useState<string>('')
@@ -47,7 +49,7 @@ export default function ForkDialog({ open, sourceTodo, sourceSessionId, todos, o
       setPreview(r.prompt)
       return r
     } catch (e: any) {
-      message.error(e?.message || 'Fork 预览失败')
+      message.error(e?.message || t('transcript:forkDialog.previewFailed'))
     } finally {
       setLoading(false)
     }
@@ -66,7 +68,7 @@ export default function ForkDialog({ open, sourceTodo, sourceSessionId, todos, o
       })
       onConfirm({ prompt: r.prompt, targetTodoId: r.targetTodoId, tool: r.tool, cwd: r.cwd })
     } catch (e: any) {
-      message.error(e?.message || 'Fork 失败')
+      message.error(e?.message || t('transcript:forkDialog.forkFailed'))
     } finally {
       setLoading(false)
     }
@@ -75,51 +77,51 @@ export default function ForkDialog({ open, sourceTodo, sourceSessionId, todos, o
   return (
     <Modal
       open={open}
-      title="从当前会话 Fork 新对话"
+      title={t('transcript:forkDialog.title')}
       onCancel={onCancel}
       onOk={handleOk}
-      okText="确认 Fork 并启动"
+      okText={t('transcript:forkDialog.okText')}
       confirmLoading={loading}
       width={720}
       destroyOnClose
     >
       <Spin spinning={loading}>
         <Form layout="vertical" size="small">
-          <Form.Item label="工具">
+          <Form.Item label={t('transcript:forkDialog.toolLabel')}>
             <Select value={tool} onChange={setTool} options={[
               { value: 'claude', label: 'Claude' },
               { value: 'codex', label: 'Codex' },
               { value: 'cursor', label: 'Cursor' },
             ]} />
           </Form.Item>
-          <Form.Item label="目标待办">
+          <Form.Item label={t('transcript:forkDialog.targetTodoLabel')}>
             <Select
               value={targetTodoId}
               onChange={setTargetTodoId}
               showSearch
               optionFilterProp="label"
-              options={todos.map(t => ({ value: t.id, label: `[Q${t.quadrant}] ${t.title}` }))}
+              options={todos.map(td => ({ value: td.id, label: t('transcript:forkDialog.todoOption', { quadrant: td.quadrant, title: td.title }) }))}
             />
           </Form.Item>
-          <Form.Item label={`保留最后 ${keepLastTurns} 轮原始对话`}>
+          <Form.Item label={t('transcript:forkDialog.keepLastTurnsLabel', { count: keepLastTurns })}>
             <Slider min={0} max={20} value={keepLastTurns} onChange={setKeepLastTurns} />
           </Form.Item>
-          <Form.Item label="对更早的对话自动生成摘要">
+          <Form.Item label={t('transcript:forkDialog.summarizeLabel')}>
             <Switch checked={summarize} onChange={setSummarize} />
           </Form.Item>
-          <Form.Item label="新指令（可选）">
+          <Form.Item label={t('transcript:forkDialog.newInstructionLabel')}>
             <Input.TextArea
               rows={3}
               value={newInstruction}
               onChange={e => setNewInstruction(e.target.value)}
-              placeholder="继续推进的新需求 / 调整方向..."
+              placeholder={t('transcript:forkDialog.newInstructionPlaceholder')}
             />
           </Form.Item>
           <Form.Item>
-            <Button onClick={generatePreview} loading={loading}>生成 Prompt 预览</Button>
+            <Button onClick={generatePreview} loading={loading}>{t('transcript:forkDialog.generatePreview')}</Button>
           </Form.Item>
           {preview && (
-            <Form.Item label="Prompt 预览">
+            <Form.Item label={t('transcript:forkDialog.previewLabel')}>
               <Input.TextArea rows={10} value={preview} readOnly style={{ fontSize: 12, fontFamily: 'ui-monospace, Menlo, monospace' }} />
             </Form.Item>
           )}

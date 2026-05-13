@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { FormInstance } from 'antd'
+import { useTranslation } from 'react-i18next'
 import {
   getWorkDirOptions,
   pickDirectory,
@@ -32,6 +33,7 @@ export function useWorkDirPicker(
   active: boolean,
   opts?: { onLoadError?: (err: unknown) => void },
 ) {
+  const { t } = useTranslation(['todo'])
   const onLoadError = opts?.onLoadError
   const [workDirOptions, setWorkDirOptions] = useState<WorkDirOption[]>([])
   const [workDirRoot, setWorkDirRoot] = useState<string>('')
@@ -66,14 +68,14 @@ export function useWorkDirPicker(
     try {
       const result = await pickDirectory({
         defaultPath: form.getFieldValue('workDir') || workDirRoot,
-        prompt: '选择待办工作目录',
+        prompt: t('todo:workDirPrompt'),
       })
       if (result.cancelled || !result.path) return
       form.setFieldValue('workDir', result.path)
     } finally {
       setPickingWorkDir(false)
     }
-  }, [form, workDirRoot])
+  }, [form, workDirRoot, t])
 
   return {
     workDirOptions,

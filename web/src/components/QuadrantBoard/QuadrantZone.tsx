@@ -1,6 +1,7 @@
 import React from 'react'
 import { useDroppable } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
+import { useTranslation } from 'react-i18next'
 import type { Todo, AiTool } from '../../api'
 import { todoDndId } from '../../TodoManage'
 import { SortableTodoCard } from '../TodoCard'
@@ -31,12 +32,13 @@ export interface QuadrantZoneProps {
 }
 
 export function QuadrantZone({ config, todos, childrenByParentId, childHitIdsByParentId, onCreateSubtodo, onCardClick, onToggleDone, onAiExec, onDeleteAiSession, onUpdateSessionLabel, onDelete, onOpenTrae, onOpenTerminal, onOpenNativeResume, onCopyPrompt, onExport, style, isNarrow, onRequestFork, onRefresh, highlightTodoId }: QuadrantZoneProps) {
+  const { t } = useTranslation(['todo'])
   const { setNodeRef, isOver } = useDroppable({ id: `quadrant-${config.q}` })
 
   const header = (
     <div className="todo-quadrant-header">
       <span className={`priority-tag priority-tag-${config.priority}`}>{config.priority}</span>
-      <span className="quadrant-title">{config.label}</span>
+      <span className="quadrant-title">{t(config.labelKey)}</span>
       <span className={`count-badge ${config.bgBadge}`}>{todos.length}</span>
     </div>
   )
@@ -69,7 +71,7 @@ export function QuadrantZone({ config, todos, childrenByParentId, childHitIdsByP
           />
         ))}
         {todos.length === 0 && (
-          <div className="todo-drop-placeholder">拖拽任务到此处</div>
+          <div className="todo-drop-placeholder">{t('todo:dropPlaceholder')}</div>
         )}
       </div>
     </SortableContext>

@@ -43,11 +43,14 @@ export function isClosedAiStatus(status: AiStatus | undefined | null): boolean {
   return !!status && CLOSED_AI_STATUSES.has(status)
 }
 
-/** 卡片内联展示用，纯文字 */
-export const AI_STATE_LABEL: Record<AiPresentationState, string> = {
-  running: 'running',
-  pending: '待确认',
-  idle:    '空闲',
+/**
+ * 卡片内联展示用 label 的 i18n key（在组件里用 t(...) 翻译）。
+ * 之前是直写中文字符串，i18n 迁移后改成键，让消费者翻译。
+ */
+export const AI_STATE_LABEL_KEY: Record<AiPresentationState, 'session:aiState.label.running' | 'session:aiState.label.pending' | 'session:aiState.label.idle'> = {
+  running: 'session:aiState.label.running',
+  pending: 'session:aiState.label.pending',
+  idle:    'session:aiState.label.idle',
 }
 
 /** 卡片内联展示用图标，与顶栏 StatPill 一致 */
@@ -57,9 +60,9 @@ export const AI_STATE_ICON: Record<AiPresentationState, () => ReactNode> = {
   idle:    () => createElement(Pause, { size: 11 }),
 }
 
-/** 顶栏 pill 用，纯文字 */
-export const AI_STATE_PILL_LABEL: Record<AiPresentationState, string> = {
-  running: 'running',
-  pending: '待确认',
-  idle:    'idle',
+/** 顶栏 pill 用 label 的 i18n key */
+export const AI_STATE_PILL_LABEL_KEY: Record<AiPresentationState, 'session:aiState.pill.running' | 'session:aiState.pill.pending' | 'session:aiState.pill.idle'> = {
+  running: 'session:aiState.pill.running',
+  pending: 'session:aiState.pill.pending',
+  idle:    'session:aiState.pill.idle',
 }

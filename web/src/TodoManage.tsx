@@ -1302,7 +1302,7 @@ export default function TodoManage() {
             <Radio.Group disabled={!!parentForCreate}>
               {QUADRANT_CONFIG.map(c => (
                 <Radio.Button key={c.q} value={c.q} style={{ fontSize: 12 }}>
-                  {c.label}
+                  {t(c.labelKey)}
                 </Radio.Button>
               ))}
             </Radio.Group>
@@ -1428,7 +1428,7 @@ export default function TodoManage() {
                   <button type="button" className="todo-detail-chip todo-detail-chip--quadrant" onClick={handleChipClick}>
                     <span className="todo-detail-chip__dot" style={{ background: quad?.color }} />
                     <span className="todo-detail-chip__label">{t('todo:detail.quadrantLabel')}</span>
-                    <span className="todo-detail-chip__value">{quad?.label}</span>
+                    <span className="todo-detail-chip__value">{quad ? t(quad.labelKey) : ''}</span>
                   </button>
                 </Tooltip>
                 <span className={`todo-detail-chip todo-detail-chip--status ${status.className}`}>

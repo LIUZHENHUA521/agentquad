@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { Modal, Segmented, Button, Input, Space, Typography } from 'antd'
+import { useTranslation } from 'react-i18next'
 import { useAppMessages } from './design/useAppMessages'
 import { CopyOutlined, DownloadOutlined, ShareAltOutlined } from '@ant-design/icons'
 import type { Todo } from './api'
@@ -12,13 +13,14 @@ interface Props {
 	onClose: () => void
 }
 
-const LARK_PROMPT_PREFIX = '请把下面的 Markdown 推送到飞书（调用 lark-doc skill，创建新文档）：\n\n'
-
 export default function ExportDialog({ todo, open, onClose }: Props) {
+	const { t } = useTranslation(['transcript', 'common'])
 	const { message } = useAppMessages()
 	const [turns, setTurns] = useState<TurnsMode>('summary')
 	const [markdown, setMarkdown] = useState('')
 	const [loading, setLoading] = useState(false)
+
+	const larkPromptPrefix = t('transcript:export.larkPromptPrefix')
 
 	useEffect(() => {
 		if (!open || !todo) return
@@ -27,7 +29,7 @@ export default function ExportDialog({ todo, open, onClose }: Props) {
 		fetch(`/api/todos/${todo.id}/export.md?turns=${turns}`)
 			.then(r => r.ok ? r.text() : Promise.reject(new Error(`HTTP ${r.status}`)))
 			.then(text => { if (!cancelled) setMarkdown(text) })
-			.catch(e => { if (!cancelled) message.error(`加载失败：${e.message}`) })
+			.catch(e => { if (!cancelled) message.error(t('transcript:export.loadFailed', { msg: e.message })) })
 			.finally(() => { if (!cancelled) setLoading(false) })
 		return () => { cancelled = true }
 	}, [open, todo, turns])
@@ -37,7 +39,7 @@ export default function ExportDialog({ todo, open, onClose }: Props) {
 			await navigator.clipboard.writeText(text)
 			message.success(hint)
 		} catch (e: any) {
-			message.error(`复制失败：${e?.message || '未授权访问剪贴板'}`)
+			message.error(t('transcript:export.copyFailed', { msg: e?.message || t('transcript:export.noClipboard') }))
 		}
 	}
 
@@ -58,22 +60,22 @@ export default function ExportDialog({ todo, open, onClose }: Props) {
 		<Modal
 			open={open}
 			onCancel={onClose}
-			title={todo ? `导出：${todo.title}` : '导出'}
+			title={todo ? t('transcript:export.titleWith', { title: todo.title }) : t('transcript:export.title')}
 			width={760}
 			footer={null}
 			destroyOnClose
 		>
 			<Space direction="vertical" style={{ width: '100%' }} size="middle">
 				<div>
-					<Typography.Text type="secondary">会话内容</Typography.Text>
+					<Typography.Text type="secondary">{t('transcript:export.sessionContent')}</Typography.Text>
 					<div style={{ marginTop: 6 }}>
 						<Segmented
 							value={turns}
 							onChange={(v) => setTurns(v as TurnsMode)}
 							options={[
-								{ label: '节选（折叠）', value: 'summary' },
-								{ label: '完整对话', value: 'full' },
-								{ label: '仅元信息', value: 'none' },
+								{ label: t('transcript:export.turnsSummary'), value: 'summary' },
+								{ label: t('transcript:export.turnsFull'), value: 'full' },
+								{ label: t('transcript:export.turnsNone'), value: 'none' },
 							]}
 						/>
 					</div>
@@ -84,29 +86,29 @@ export default function ExportDialog({ todo, open, onClose }: Props) {
 					onChange={(e) => setMarkdown(e.target.value)}
 					autoSize={{ minRows: 12, maxRows: 24 }}
 					style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 12 }}
-					placeholder={loading ? '生成中…' : ''}
+					placeholder={loading ? t('transcript:export.generatingPlaceholder') : ''}
 				/>
 
 				<Space wrap>
 					<Button
 						icon={<CopyOutlined />}
-						onClick={() => copy(markdown, '已复制 Markdown')}
+						onClick={() => copy(markdown, t('transcript:export.copiedMd'))}
 						disabled={loading || !markdown}
-					>复制 Markdown</Button>
+					>{t('transcript:export.copyMd')}</Button>
 					<Button
 						icon={<DownloadOutlined />}
 						onClick={download}
 						disabled={loading || !markdown}
-					>下载 .md</Button>
+					>{t('transcript:export.downloadMd')}</Button>
 					<Button
 						icon={<ShareAltOutlined />}
-						onClick={() => copy(LARK_PROMPT_PREFIX + markdown, '已复制推送提示，粘贴到 Claude 对话即可推到飞书')}
+						onClick={() => copy(larkPromptPrefix + markdown, t('transcript:export.copiedLarkHint'))}
 						disabled={loading || !markdown}
 						type="primary"
-					>推送到飞书（复制提示）</Button>
+					>{t('transcript:export.pushToLark')}</Button>
 				</Space>
 				<Typography.Text type="secondary" style={{ fontSize: 12 }}>
-					飞书推送：点「推送到飞书」会把 Markdown + 提示语复制到剪贴板，粘贴到 Claude Code 对话里，Claude 会调用 lark-doc skill 创建飞书文档。
+					{t('transcript:export.larkFooter')}
 				</Typography.Text>
 			</Space>
 		</Modal>

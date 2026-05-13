@@ -1,7 +1,9 @@
 export type BrowserNotificationPermission = NotificationPermission | 'unsupported'
 
-export const TURN_DONE_TEXT = 'AI 回复完成，请验收'
-export const TURN_DONE_NOTIFICATION_BUTTON_LABEL = '通知'
+/** i18n key for the "AI reply done, please review" text. */
+export const TURN_DONE_TEXT_KEY = 'session:turnDone.text' as const
+/** i18n key for the "Notify" button label. */
+export const TURN_DONE_NOTIFICATION_BUTTON_LABEL_KEY = 'session:turnDone.buttonLabel' as const
 export const TURN_DONE_NOTIFICATION_BUTTON_STYLE = {
   height: 20,
   minWidth: 34,

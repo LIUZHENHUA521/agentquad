@@ -1,10 +1,16 @@
+import i18n from './i18n'
 import type { Todo, PromptTemplate } from './api'
 
-const QUADRANT_LABEL: Record<number, string> = {
-  1: '重要且紧急',
-  2: '重要不紧急',
-  3: '紧急不重要',
-  4: '不重要不紧急',
+const QUADRANT_KEYS = {
+  1: 'todo:quadrant.q1',
+  2: 'todo:quadrant.q2',
+  3: 'todo:quadrant.q3',
+  4: 'todo:quadrant.q4',
+} as const
+
+function quadrantLabel(quadrant: number): string {
+  const key = QUADRANT_KEYS[quadrant as keyof typeof QUADRANT_KEYS]
+  return key ? i18n.t(key) : ''
 }
 
 export function buildVars(todo: Todo): Record<string, string> {
@@ -13,7 +19,9 @@ export function buildVars(todo: Todo): Record<string, string> {
     title: todo.title || '',
     description: todo.description || '',
     workDir: todo.workDir || '',
-    quadrant: todo.quadrant ? `Q${todo.quadrant}（${QUADRANT_LABEL[todo.quadrant] || ''}）` : '',
+    quadrant: todo.quadrant
+      ? i18n.t('todo:quadrantWithCode', { code: todo.quadrant, label: quadrantLabel(todo.quadrant) })
+      : '',
     dueDate,
   }
 }

@@ -2,7 +2,7 @@ import { Tooltip } from 'antd'
 import { useTranslation } from 'react-i18next'
 import type { SessionMeta } from '../../store/aiSessionStore'
 import type { AiStatus } from '../../api'
-import { deriveAiState, AI_STATE_PILL_LABEL } from '../../design/aiPresentationState'
+import { deriveAiState, AI_STATE_PILL_LABEL_KEY } from '../../design/aiPresentationState'
 import { useUnreadStore, isSessionUnread } from '../../store/unreadStore'
 
 interface Props {
@@ -27,7 +27,7 @@ export function FocusSubbar({ session, fallbackStatus, onClose }: Props) {
   const markSeen = useUnreadStore((s) => s.markSeen)
   const unread = isSessionUnread(session?.lastTurnDoneAt, lastSeen)
   const state = deriveAiState(session?.effectiveStatus ?? session?.status ?? fallbackStatus, unread, session?.awaitingReply ?? false)
-  const statusLabel = AI_STATE_PILL_LABEL[state]
+  const statusLabel = t(AI_STATE_PILL_LABEL_KEY[state])
 
   const quadColor =
     quadrant >= 1 && quadrant <= 4 ? `var(--q${quadrant})` : 'var(--text-tertiary)'

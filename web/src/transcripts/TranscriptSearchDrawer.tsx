@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { Drawer, Input, Select, Button, Tag, Space, Modal, Empty, Spin, Typography, Tooltip } from 'antd'
+import { useTranslation } from 'react-i18next'
 import { useAppMessages } from '../design/useAppMessages'
 import { ReloadOutlined, LinkOutlined, DisconnectOutlined, SearchOutlined, CopyOutlined } from '@ant-design/icons'
 import {
@@ -60,6 +61,7 @@ function roleStyle(role: string): { color: string; tagColor?: string } {
 }
 
 export default function TranscriptSearchDrawer({ open, onClose, preselectTodoId, initialQuery, initialCwd, onBindingChanged }: Props) {
+  const { t } = useTranslation(['transcript', 'common', 'errors'])
   const { message, modal } = useAppMessages()
   const [q, setQ] = useState('')
   const [tool, setTool] = useState<AiTool | ''>('')
@@ -103,7 +105,7 @@ export default function TranscriptSearchDrawer({ open, onClose, preselectTodoId,
     setScanning(true)
     try {
       const r = await scanTranscripts()
-      message.success(`扫描完成：新增 ${r.newFiles} · 索引 ${r.indexed} · 自动挂回 ${r.autoBound}`)
+      message.success(t('transcript:searchDrawer.scanComplete', { newFiles: r.newFiles, indexed: r.indexed, autoBound: r.autoBound }))
       await refreshStats()
       await doSearch()
     } catch (e) { message.error((e as Error).message) }
@@ -137,16 +139,16 @@ export default function TranscriptSearchDrawer({ open, onClose, preselectTodoId,
     try {
       const r = await bindTranscript(bindTargetFile.id, bindTodoId, force)
       if (r.conflict) {
-        const other = todos.find(t => t.id === r.currentTodoId)
+        const other = todos.find(td => td.id === r.currentTodoId)
         modal.confirm({
-          title: '该会话已挂在另一个 todo',
-          content: `当前挂在《${other?.title || r.currentTodoId}》，是否移动到目标 todo？`,
-          okText: '移动',
+          title: t('transcript:searchDrawer.conflictTitle'),
+          content: t('transcript:searchDrawer.conflictContent', { title: other?.title || r.currentTodoId }),
+          okText: t('transcript:searchDrawer.conflictOk'),
           onOk: async () => submitBind(true),
         })
         return
       }
-      message.success('已绑定')
+      message.success(t('transcript:searchDrawer.bound'))
       setBindTargetFile(null)
       setBindTodoId('')
       await doSearch()
@@ -158,7 +160,7 @@ export default function TranscriptSearchDrawer({ open, onClose, preselectTodoId,
   async function handleUnbind(f: TranscriptFile) {
     try {
       await unbindTranscript(f.id)
-      message.success('已解绑')
+      message.success(t('transcript:searchDrawer.unbound2'))
       await doSearch()
       await refreshStats()
       onBindingChanged?.()
@@ -209,8 +211,8 @@ export default function TranscriptSearchDrawer({ open, onClose, preselectTodoId,
   }
 
   function copyDisabledReason(f: TranscriptFile): string {
-    if (!f.native_id) return '该记录无 native session id'
-    if (!(COPY_SUPPORTED_TOOLS as string[]).includes(f.tool)) return '暂不支持该工具'
+    if (!f.native_id) return t('transcript:searchDrawer.noNativeId')
+    if (!(COPY_SUPPORTED_TOOLS as string[]).includes(f.tool)) return t('transcript:searchDrawer.unsupportedTool')
     return ''
   }
 
@@ -222,58 +224,58 @@ export default function TranscriptSearchDrawer({ open, onClose, preselectTodoId,
         cwd: f.cwd,
       })
       await navigator.clipboard.writeText(command)
-      const display = command.length > 80 ? command.slice(0, 80) + '…' : command
-      message.success(`已复制：${display}`)
+      const display = command.length > 80 ? command.slice(0, 80) + '...' : command
+      message.success(t('transcript:searchDrawer.copiedCommand', { display }))
       if (warnings.includes('cwd_missing')) {
-        message.warning('未识别 cwd，请先 cd 到原工作目录')
+        message.warning(t('transcript:searchDrawer.cwdMissing'))
       }
     } catch (e) {
-      message.error('复制失败，请手动复制')
+      message.error(t('transcript:searchDrawer.copyFailed'))
     }
   }
 
-  const todoOptions = useMemo(() => todos.map(t => ({ label: t.title, value: t.id })), [todos])
+  const todoOptions = useMemo(() => todos.map(td => ({ label: td.title, value: td.id })), [todos])
 
   return (
     <>
       <Drawer
         open={open}
         onClose={onClose}
-        title={<span><SearchOutlined /> 历史会话找回</span>}
+        title={<span><SearchOutlined /> {t('transcript:searchDrawer.title')}</span>}
         placement="right"
         width={640}
         destroyOnClose={false}
       >
         <Space direction="vertical" size={12} style={{ width: '100%' }}>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-            <Tag color={unboundCount > 0 ? 'warning' : 'default'}>未挂回 {unboundCount}</Tag>
-            <Button size="small" icon={<ReloadOutlined spin={scanning} />} onClick={doScan} loading={scanning}>重新扫描</Button>
+            <Tag color={unboundCount > 0 ? 'warning' : 'default'}>{t('transcript:searchDrawer.unboundCount', { count: unboundCount })}</Tag>
+            <Button size="small" icon={<ReloadOutlined spin={scanning} />} onClick={doScan} loading={scanning}>{t('transcript:searchDrawer.rescan')}</Button>
             <div style={{ flex: 1 }} />
-            <Typography.Text type="secondary" style={{ fontSize: 12 }}>命中 {total}</Typography.Text>
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>{t('transcript:searchDrawer.hitCount', { count: total })}</Typography.Text>
           </div>
 
           <Input.Search
-            placeholder="关键词搜索（全文）"
+            placeholder={t('transcript:searchDrawer.searchPlaceholder')}
             value={q}
             onChange={(e) => setQ(e.target.value)}
             allowClear
           />
           <Space wrap>
             <Select
-              size="small" style={{ width: 120 }} value={tool} allowClear placeholder="工具"
+              size="small" style={{ width: 120 }} value={tool} allowClear placeholder={t('transcript:searchDrawer.toolPlaceholder')}
               onChange={(v) => setTool(v || '')}
               options={[{ value: 'claude', label: 'Claude' }, { value: 'codex', label: 'Codex' }, { value: 'cursor', label: 'Cursor' }]}
             />
-            <Input size="small" style={{ width: 240 }} placeholder="cwd 精确匹配" value={cwd} onChange={(e) => setCwd(e.target.value)} allowClear />
-            <Button size="small" type={unboundOnly ? 'primary' : 'default'} onClick={() => setUnboundOnly(v => !v)}>仅未挂回</Button>
+            <Input size="small" style={{ width: 240 }} placeholder={t('transcript:searchDrawer.cwdPlaceholder')} value={cwd} onChange={(e) => setCwd(e.target.value)} allowClear />
+            <Button size="small" type={unboundOnly ? 'primary' : 'default'} onClick={() => setUnboundOnly(v => !v)}>{t('transcript:searchDrawer.unboundOnly')}</Button>
           </Space>
 
           <Spin spinning={loading}>
-            {items.length === 0 ? <Empty description="无结果" /> : (
+            {items.length === 0 ? <Empty description={t('transcript:searchDrawer.empty')} /> : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {items.map(f => {
-                  const boundTodo = f.bound_todo_id ? todos.find(t => t.id === f.bound_todo_id) : null
-                  const boundTodoTitle = boundTodo ? `已挂到《${boundTodo.title}》` : ''
+                  const boundTodo = f.bound_todo_id ? todos.find(td => td.id === f.bound_todo_id) : null
+                  const boundTodoTitle = boundTodo ? t('transcript:searchDrawer.boundTo', { title: boundTodo.title }) : ''
                   return (
                     <div key={f.id} style={{ border: '1px solid var(--border-subtle)', borderRadius: 6, padding: 10, minWidth: 0 }}>
                       <div style={resultHeaderStyle}>
@@ -285,17 +287,17 @@ export default function TranscriptSearchDrawer({ open, onClose, preselectTodoId,
                             </Tooltip>
                           </span>
                         ) : (
-                          <Tag color="warning">未挂回</Tag>
+                          <Tag color="warning">{t('transcript:searchDrawer.unbound')}</Tag>
                         )}
                         <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                          {formatTs(f.started_at)} · {f.turn_count} 轮
+                          {formatTs(f.started_at)} · {t('transcript:searchDrawer.turnCount', { turns: f.turn_count })}
                         </Typography.Text>
                       </div>
                       <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 4, wordBreak: 'break-all' }}>
                         cwd: {f.cwd || '-'}
                       </div>
                       <div style={{ marginTop: 6, fontSize: 13, color: 'var(--text-primary)' }}>
-                        {f.first_user_prompt ? (f.first_user_prompt.length > 140 ? f.first_user_prompt.slice(0, 140) + '…' : f.first_user_prompt) : <i>(无首条用户消息)</i>}
+                        {f.first_user_prompt ? (f.first_user_prompt.length > 140 ? f.first_user_prompt.slice(0, 140) + '...' : f.first_user_prompt) : <i>{t('transcript:searchDrawer.noFirstPrompt')}</i>}
                       </div>
                       {f.snippet && (
                         <div
@@ -304,12 +306,12 @@ export default function TranscriptSearchDrawer({ open, onClose, preselectTodoId,
                         />
                       )}
                       <Space size={4} style={{ marginTop: 8 }}>
-                        <Button size="small" onClick={() => handlePreview(f)}>预览</Button>
+                        <Button size="small" onClick={() => handlePreview(f)}>{t('transcript:searchDrawer.preview')}</Button>
                         <Button size="small" type="primary" icon={<LinkOutlined />} onClick={() => { setBindTargetFile(f); setBindTodoId(preselectTodoId || '') }}>
-                          {boundTodo ? '改挂…' : '绑定到 todo…'}
+                          {boundTodo ? t('transcript:searchDrawer.rebind') : t('transcript:searchDrawer.bindToTodo')}
                         </Button>
                         {boundTodo && (
-                          <Button size="small" danger icon={<DisconnectOutlined />} onClick={() => handleUnbind(f)}>解绑</Button>
+                          <Button size="small" danger icon={<DisconnectOutlined />} onClick={() => handleUnbind(f)}>{t('transcript:searchDrawer.unbind')}</Button>
                         )}
                         <Tooltip title={canCopyResume(f) ? undefined : copyDisabledReason(f)}>
                           <Button
@@ -318,7 +320,7 @@ export default function TranscriptSearchDrawer({ open, onClose, preselectTodoId,
                             disabled={!canCopyResume(f)}
                             onClick={() => handleCopyResume(f)}
                           >
-                            复制恢复命令
+                            {t('transcript:searchDrawer.copyResume')}
                           </Button>
                         </Tooltip>
                       </Space>
@@ -333,7 +335,7 @@ export default function TranscriptSearchDrawer({ open, onClose, preselectTodoId,
 
       <Modal
         open={!!bindTargetFile}
-        title="绑定到 todo"
+        title={t('transcript:searchDrawer.bindModalTitle')}
         onCancel={() => { setBindTargetFile(null); setBindTodoId('') }}
         onOk={() => submitBind(false)}
         okButtonProps={{ disabled: !bindTodoId }}
@@ -341,7 +343,7 @@ export default function TranscriptSearchDrawer({ open, onClose, preselectTodoId,
         <Select
           showSearch
           style={{ width: '100%' }}
-          placeholder="选择 todo"
+          placeholder={t('transcript:searchDrawer.pickTodoPlaceholder')}
           value={bindTodoId || undefined}
           onChange={setBindTodoId}
           filterOption={(input, option) => String(option?.label || '').toLowerCase().includes(input.toLowerCase())}
@@ -353,10 +355,10 @@ export default function TranscriptSearchDrawer({ open, onClose, preselectTodoId,
         open={!!previewFile}
         title={
           <Space size={8}>
-            <span>Transcript 预览</span>
+            <span>{t('transcript:searchDrawer.previewTitle')}</span>
             {previewTotal > 0 && (
               <Typography.Text type="secondary" style={{ fontSize: 12, fontWeight: 'normal' }}>
-                已加载 {previewTurns.length} / 共 {previewTotal} 轮
+                {t('transcript:searchDrawer.loadedTurns', { loaded: previewTurns.length, total: previewTotal })}
               </Typography.Text>
             )}
           </Space>
@@ -373,20 +375,20 @@ export default function TranscriptSearchDrawer({ open, onClose, preselectTodoId,
         <Spin spinning={previewLoading}>
           <div style={{ maxHeight: 480, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
             {!previewLoading && previewTurns.length === 0 ? (
-              <Empty description="该会话暂无可展示内容" />
+              <Empty description={t('transcript:searchDrawer.previewEmpty')} />
             ) : (
               <>
-                {previewTurns.map((t, i) => {
+                {previewTurns.map((turn, i) => {
                   const expanded = expandedTurns.has(i)
-                  const overflowed = t.content.length > TURN_COLLAPSE_CHARS
-                  const display = !expanded && overflowed ? t.content.slice(0, TURN_COLLAPSE_CHARS) : t.content
-                  const { color: borderColor, tagColor } = roleStyle(t.role)
+                  const overflowed = turn.content.length > TURN_COLLAPSE_CHARS
+                  const display = !expanded && overflowed ? turn.content.slice(0, TURN_COLLAPSE_CHARS) : turn.content
+                  const { color: borderColor, tagColor } = roleStyle(turn.role)
                   return (
                     <div key={i} style={{ borderLeft: `3px solid ${borderColor}`, padding: '4px 8px' }}>
-                      <Tag color={tagColor}>{t.role}</Tag>
+                      <Tag color={tagColor}>{turn.role}</Tag>
                       <pre style={{ whiteSpace: 'pre-wrap', margin: '4px 0 0', fontSize: 12 }}>
                         {display}
-                        {!expanded && overflowed && '…'}
+                        {!expanded && overflowed && '...'}
                       </pre>
                       {overflowed && (
                         <Button
@@ -395,7 +397,7 @@ export default function TranscriptSearchDrawer({ open, onClose, preselectTodoId,
                           style={{ padding: 0, marginTop: 2, fontSize: 12 }}
                           onClick={() => toggleTurnExpand(i)}
                         >
-                          {expanded ? '收起' : `展开（${t.content.length - TURN_COLLAPSE_CHARS} 字隐藏）`}
+                          {expanded ? t('transcript:searchDrawer.collapse') : t('transcript:searchDrawer.expandHidden', { count: turn.content.length - TURN_COLLAPSE_CHARS })}
                         </Button>
                       )}
                     </div>
@@ -404,7 +406,7 @@ export default function TranscriptSearchDrawer({ open, onClose, preselectTodoId,
                 {previewTotal > previewTurns.length && (
                   <div style={{ textAlign: 'center', padding: 8 }}>
                     <Button size="small" loading={previewLoadingMore} onClick={loadMorePreview}>
-                      加载更多 {Math.min(PREVIEW_PAGE_SIZE, previewTotal - previewTurns.length)} 条
+                      {t('transcript:searchDrawer.loadMore', { count: Math.min(PREVIEW_PAGE_SIZE, previewTotal - previewTurns.length) })}
                     </Button>
                   </div>
                 )}

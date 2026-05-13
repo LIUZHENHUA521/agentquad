@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react'
 import { Form, type FormInstance } from 'antd'
+import { useTranslation } from 'react-i18next'
 import {
   getRecurringRule,
   updateRecurringRule,
@@ -24,6 +25,7 @@ import {
  * behaviour where the inline handler returned silently for them).
  */
 export function useRecurringRule() {
+  const { t } = useTranslation(['todo', 'errors'])
   const [detailRule, setDetailRule] = useState<RecurringRule | null>(null)
   const [ruleModalOpen, setRuleModalOpen] = useState(false)
   const [ruleEditing, setRuleEditing] = useState<RecurringRule | null>(null)
@@ -40,16 +42,25 @@ export function useRecurringRule() {
   }, [])
 
   const describeRule = useCallback((r: RecurringRule) => {
-    if (r.frequency === 'daily') return '每天重复'
+    if (r.frequency === 'daily') return t('todo:recurring.daily')
+    const joiner = t('todo:recurring.joiner')
     if (r.frequency === 'weekly') {
-      const names = ['日', '一', '二', '三', '四', '五', '六']
-      return '每周 ' + (r.weekdays || []).map(w => names[w]).join('、')
+      const names = [
+        t('todo:recurring.weekdayShort.sun'),
+        t('todo:recurring.weekdayShort.mon'),
+        t('todo:recurring.weekdayShort.tue'),
+        t('todo:recurring.weekdayShort.wed'),
+        t('todo:recurring.weekdayShort.thu'),
+        t('todo:recurring.weekdayShort.fri'),
+        t('todo:recurring.weekdayShort.sat'),
+      ]
+      return t('todo:recurring.weeklyPrefix') + (r.weekdays || []).map(w => names[w]).join(joiner)
     }
     if (r.frequency === 'monthly') {
-      return '每月 ' + (r.monthDays || []).join('、') + ' 号'
+      return t('todo:recurring.monthlyPrefix') + (r.monthDays || []).join(joiner) + t('todo:recurring.monthlySuffix')
     }
-    return '重复'
-  }, [])
+    return t('todo:recurring.generic')
+  }, [t])
 
   const openRuleEdit = useCallback((rule: RecurringRule) => {
     setRuleEditing(rule)
@@ -90,10 +101,10 @@ export function useRecurringRule() {
     }
     const frequency = values.frequency as RecurringFrequency
     if (frequency === 'weekly' && !(values.weekdays || []).length) {
-      return { status: 'invalid', reason: '请至少选择一个星期几' }
+      return { status: 'invalid', reason: t('errors:needWeekday') }
     }
     if (frequency === 'monthly' && !(values.monthDays || []).length) {
-      return { status: 'invalid', reason: '请至少选择一个月内日期' }
+      return { status: 'invalid', reason: t('errors:needMonthDay') }
     }
     const next = await updateRecurringRule(ruleEditing.id, {
       title: values.title,
@@ -106,7 +117,7 @@ export function useRecurringRule() {
     setRuleEditing(null)
     setDetailRule(prev => prev && prev.id === next.id ? next : prev)
     return { status: 'ok' }
-  }, [ruleEditing, ruleForm])
+  }, [ruleEditing, ruleForm, t])
 
   const stopRule = useCallback(async (ruleId: string) => {
     await deactivateRecurringRule(ruleId)
