@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Segmented, DatePicker, Empty, Spin, Tag } from 'antd'
 import dayjs, { Dayjs } from 'dayjs'
 import { getDoneReport, DoneReport, Todo, Quadrant } from '../../api'
-import '../../ReportDrawer.css'
+import './ReportPanel.css'
 
 type RangeKey = 'today' | 'yesterday' | 'thisWeek' | 'lastWeek' | 'custom'
 
