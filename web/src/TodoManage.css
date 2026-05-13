@@ -749,58 +749,6 @@ body {
   overflow: auto;
 }
 
-/* === AttentionRail === */
-.attention-rail {
-  flex: 0 0 48px;
-  border-right: 1px solid var(--border-default);
-  background: var(--surface-2);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 8px 0;
-  gap: 6px;
-  overflow-y: auto;
-  height: 100vh;
-  box-sizing: border-box;
-}
-.attention-rail--empty {
-  flex: 0 0 8px;
-  background: transparent;
-  border-right: 1px solid var(--border-default);
-  height: 100vh;
-  padding: 0;
-}
-.attention-rail__items {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  align-items: center;
-  width: 100%;
-}
-.attention-rail__item,
-.attention-rail__more {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  border: 1px solid var(--ai-pending-confirm);
-  background: color-mix(in srgb, var(--ai-pending-confirm) 12%, var(--surface-1));
-  color: var(--ai-pending-confirm);
-  font-weight: 600;
-  font-size: 13px;
-  cursor: pointer;
-  padding: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-.attention-rail__item:hover,
-.attention-rail__more:hover { background: color-mix(in srgb, var(--ai-pending-confirm) 22%, var(--surface-1)); }
-/* kind-specific tints */
-.attention-rail__item.kind-interaction { border-color: var(--ai-error); background: color-mix(in srgb, var(--ai-error) 12%, var(--surface-1)); color: var(--ai-error); }
-.attention-rail__item.kind-unread { border-color: var(--ai-error); background: color-mix(in srgb, var(--ai-error) 12%, var(--surface-1)); color: var(--ai-error); }
-.attention-rail__item.kind-awaiting_reply { border-color: var(--ai-pending-confirm); background: color-mix(in srgb, var(--ai-pending-confirm) 12%, var(--surface-1)); color: var(--ai-pending-confirm); }
-.attention-rail__item.kind-review { border-color: var(--accent-electric); background: var(--accent-electric-soft); color: var(--accent-electric); }
-
 /* ─── Todo detail drawer ─────────────────────────────────────── */
 .todo-detail-drawer .ant-drawer-extra .ant-btn { font-size: 12px; }
 
@@ -963,8 +911,6 @@ button.todo-detail-chip:hover { background: var(--surface-2); }
   font-size: 13px;
   color: var(--text-primary);
 }
-.attention-rail__more { font-size: 11px; }
-
 /* M2 T9: flash highlight when CommandPalette jumps to a todo */
 .todo-card-flash {
   animation: todo-card-flash 1.2s ease-out;
