@@ -329,14 +329,7 @@ export async function doctorReport({ rootDir = DEFAULT_ROOT_DIR } = {}) {
   return { ok: checks.every(c => c.ok), checks }
 }
 
-// ─── commander ───
-
-const program = new Command()
-program
-  .name('agentquad')
-  .description('Local four-quadrant todo CLI with embedded Claude Code / Codex terminal')
-  .version(loadPkgVersion())
-
+// runStart：start 子命令的核心实现，导出给默认 action / 首跑向导复用
 export async function runStart(cmdOpts = {}) {
   const rootDir = DEFAULT_ROOT_DIR
   const cfg = loadConfig({ rootDir })
@@ -474,6 +467,14 @@ export async function runStart(cmdOpts = {}) {
   process.on('SIGINT', () => shutdown('SIGINT'))
   process.on('SIGTERM', () => shutdown('SIGTERM'))
 }
+
+// ─── commander ───
+
+const program = new Command()
+program
+  .name('agentquad')
+  .description('Local four-quadrant todo CLI with embedded Claude Code / Codex terminal')
+  .version(loadPkgVersion())
 
 program.command('start')
   .option('-p, --port <port>', 'override port', (v) => Number(v))
