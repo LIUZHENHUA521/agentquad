@@ -150,6 +150,8 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
   const [autoMode, setAutoMode] = useState<string | null>(() => {
     try { return localStorage.getItem('quadtodo.autoMode') || null } catch { return null }
   })
+  const [switchingMode, setSwitchingMode] = useState(false)
+  const prevAutoModeRef = useRef<string | null>(autoMode)
   const [followTail, setFollowTail] = useState<boolean>(() => {
     try { return localStorage.getItem('quadtodo.followTail') !== '0' } catch { return true }
   })
@@ -717,14 +719,30 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
               case 'auto_mode':
                 setAutoMode(msg.autoMode || null)
                 break
+              case 'auto_mode_switching':
+                if (msg.target) setAutoMode(msg.target)
+                setSwitchingMode(true)
+                break
               case 'session_restarted':
                 if (typeof msg.newSessionId === 'string' && msg.newSessionId) {
                   message.info(msg.message || '已切换到恢复后的全托管会话')
+                  stopReconnectRef.current = true  // 旧 WS 关闭后不再自动重连
+                  setSwitchingMode(false)
                   onSessionSwitchRef.current?.(msg.newSessionId)
                 }
                 break
               case 'auto_mode_notice':
-                if (msg.message) message.warning(msg.message)
+                if (msg.reason === 'restart_failed') {
+                  setSwitchingMode(false)
+                  setAutoMode(prevAutoModeRef.current)
+                  try {
+                    if (prevAutoModeRef.current) localStorage.setItem('quadtodo.autoMode', prevAutoModeRef.current)
+                    else localStorage.removeItem('quadtodo.autoMode')
+                  } catch { /* ignore */ }
+                  if (msg.message) message.error(msg.message)
+                } else if (msg.message) {
+                  message.warning(msg.message)
+                }
                 break
               case 'turn_done': {
                 showTurnDoneReminder()
@@ -1072,6 +1090,7 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
   }, [tryAutoRecover])
 
   const handleSetAutoMode = useCallback((mode: string | null) => {
+    prevAutoModeRef.current = autoMode
     setAutoMode(mode)
     try {
       if (mode) localStorage.setItem('quadtodo.autoMode', mode)
@@ -1081,7 +1100,7 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: 'set_auto_mode', autoMode: mode }))
     }
-  }, [])
+  }, [autoMode])
 
   const toggleFullscreen = useCallback(() => {
     setFullscreen(prev => !prev)
