@@ -67,6 +67,13 @@ export function createTodosRouter({ db, logDir, getPricing, getTools, getLiveSes
         return
       }
       const patch = req.body || {}
+      if (patch.stageTag !== undefined) {
+        const ALLOWED_STAGE_TAGS = ['dev', 'review', 'test', 'release', 'blocked']
+        if (patch.stageTag !== null && !ALLOWED_STAGE_TAGS.includes(patch.stageTag)) {
+          res.status(400).json({ ok: false, error: 'invalid_stage_tag' })
+          return
+        }
+      }
       if (patch.parentId !== undefined) {
         if (existing.parentId && patch.parentId !== existing.parentId) {
           res.status(400).json({ ok: false, error: 'reparent_not_allowed' })
