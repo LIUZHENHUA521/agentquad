@@ -17,6 +17,7 @@ import {
 import { useIsMobile } from './hooks/useIsMobile'
 import { useComments } from './hooks/useComments'
 import { useRecurringRule } from './hooks/useRecurringRule'
+import { useWorkDirPicker } from './hooks/useWorkDirPicker'
 import {
   DndContext, closestCenter, PointerSensor, TouchSensor,
   useSensor, useSensors, DragOverlay, DragStartEvent,
@@ -26,7 +27,7 @@ import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-ki
 import dayjs from 'dayjs'
 import {
   listTodos, createTodo, updateTodo, deleteTodo,
-  startAiExec, getWorkDirOptions, pickDirectory, deleteTodoAiSession,
+  startAiExec, deleteTodoAiSession,
   openTraeCN, openTerminal, openNativeAiResume, updateSessionLabel,
   listLiveSessions,
   listTemplates, PromptTemplate,
@@ -297,10 +298,18 @@ export default function TodoManage() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [viewMode] = useState<'list' | 'priority'>('list')
   const setLiveSessions = useAiSessionStore(s => s.setSessions)
-  const [workDirOptions, setWorkDirOptions] = useState<{ label: string; value: string }[]>([])
-  const [workDirRoot, setWorkDirRoot] = useState<string>('')
-  const [workDirLoading, setWorkDirLoading] = useState(false)
-  const [pickingWorkDir, setPickingWorkDir] = useState(false)
+  // WorkDir picker subsystem (extracted to dedicated hook in M4 cleanup).
+  // Note: depends on `form` + `drawerOpen`, both declared earlier in this component.
+  const onWorkDirLoadError = useCallback((e: unknown) => {
+    message.error((e as any)?.message || '读取目录失败')
+  }, [message])
+  const {
+    workDirOptions,
+    workDirRoot,
+    workDirLoading,
+    pickingWorkDir,
+    pickWorkDir,
+  } = useWorkDirPicker(form, drawerOpen, { onLoadError: onWorkDirLoadError })
 
   const [highlightTodoId, setHighlightTodoId] = useState<string | null>(null)
   const [pendingJumpTodoId, setPendingJumpTodoId] = useState<string | null>(null)
@@ -581,38 +590,13 @@ export default function TodoManage() {
     setDrawerOpen(true)
   }
 
-  const fetchWorkDirOptions = useCallback(async () => {
-    setWorkDirLoading(true)
+  const handlePickWorkDir = useCallback(async () => {
     try {
-      const result = await getWorkDirOptions()
-      setWorkDirRoot(result.root)
-      setWorkDirOptions(result.options)
-    } catch (e: any) {
-      message.error(e?.message || '读取目录失败')
-    } finally {
-      setWorkDirLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    if (drawerOpen) fetchWorkDirOptions()
-  }, [drawerOpen, fetchWorkDirOptions])
-
-  const handlePickWorkDir = async () => {
-    try {
-      setPickingWorkDir(true)
-      const result = await pickDirectory({
-        defaultPath: form.getFieldValue('workDir') || workDirRoot,
-        prompt: '选择待办工作目录',
-      })
-      if (result.cancelled || !result.path) return
-      form.setFieldValue('workDir', result.path)
+      await pickWorkDir()
     } catch (e: any) {
       message.error(e?.message || '选择目录失败')
-    } finally {
-      setPickingWorkDir(false)
     }
-  }
+  }, [pickWorkDir, message])
 
   const handleSave = async () => {
     try {
