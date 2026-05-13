@@ -3,7 +3,7 @@
  */
 
 import React, { useEffect, useMemo, useRef, useCallback, useState } from 'react'
-import { Button, Tooltip, Tag, Dropdown, Modal, ColorPicker, Input, Divider } from 'antd'
+import { Button, Tooltip, Tag, Dropdown, Modal, ColorPicker, Input, Divider, Spin } from 'antd'
 import { useAppMessages } from './design/useAppMessages'
 import { FullscreenOutlined, FullscreenExitOutlined, StopOutlined, DownOutlined, VerticalAlignBottomOutlined, LockOutlined, UnlockOutlined, BgColorsOutlined, DeleteOutlined, UpOutlined, LeftOutlined, RightOutlined, DragOutlined } from '@ant-design/icons'
 import { Terminal } from '@xterm/xterm'
@@ -1306,12 +1306,28 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
               onClick: ({ key }) => handleSetAutoMode(key === 'default' ? null : key),
             }}
             trigger={['click']}
+            disabled={switchingMode}
           >
             <Tag
               color={autoMode === 'bypass' ? 'orange' : autoMode === 'acceptEdits' ? 'blue' : 'default'}
-              style={{ fontSize: 10, lineHeight: '16px', margin: 0, cursor: 'pointer', userSelect: 'none' }}
+              style={{
+                fontSize: 10, lineHeight: '16px', margin: 0,
+                cursor: switchingMode ? 'wait' : 'pointer',
+                userSelect: 'none',
+                opacity: switchingMode ? 0.6 : 1,
+              }}
             >
-              {autoMode === 'bypass' ? '全托管' : autoMode === 'acceptEdits' ? '半托管' : '手动'} <DownOutlined style={{ fontSize: 7 }} />
+              {switchingMode ? (
+                <>
+                  <Spin size="small" style={{ marginRight: 4 }} />
+                  切换中…
+                </>
+              ) : (
+                <>
+                  {autoMode === 'bypass' ? '全托管' : autoMode === 'acceptEdits' ? '半托管' : '手动'}
+                  {' '}<DownOutlined style={{ fontSize: 7 }} />
+                </>
+              )}
             </Tag>
           </Dropdown>
         )}
@@ -1526,6 +1542,9 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
           height: (fullscreen || fillHeight) ? undefined : height,
           width: '100%',
           position: 'relative',
+          pointerEvents: switchingMode ? 'none' : undefined,
+          opacity: switchingMode ? 0.6 : 1,
+          transition: 'opacity 0.2s',
           overflow: 'hidden',
           userSelect: 'text',
           cursor: 'text',
