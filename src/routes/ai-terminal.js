@@ -246,6 +246,20 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
     markSessionAwaitingReply(sessionId, true)
   })
 
+  // claude jsonl tail watcher（pty.js 内部 2s 轮询）：
+  //   - turn-started：末行是 user/tool_result → Claude 在跑 → awaitingReply=false
+  //   - turn-done   ：末行 assistant.stop_reason==='end_turn' → 真完成 → awaitingReply=true
+  // 与 stop hook 并存，谁先到谁先生效。markSessionAwaitingReply 幂等。
+  pty.on('claude-turn-started', ({ sessionId }) => {
+    if (!sessions.has(sessionId)) return
+    markSessionAwaitingReply(sessionId, false)
+  })
+  pty.on('claude-turn-done', ({ sessionId }) => {
+    if (!sessions.has(sessionId)) return
+    notifyTurnDone(sessionId, { event: 'stop', status: 'idle' })
+    markSessionAwaitingReply(sessionId, true)
+  })
+
   pty.on('done', ({ sessionId, exitCode, fullLog, nativeId, stopped }) => {
     const session = sessions.get(sessionId)
     if (!session) return

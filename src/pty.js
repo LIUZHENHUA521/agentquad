@@ -659,6 +659,81 @@ export class PtyManager extends EventEmitter {
       this.emit('output', { sessionId, data })
     })
 
+    // claude 专属：监听 ~/.claude/projects/<encoded>/<uuid>.jsonl 末行类型，
+    // 作为 awaitingReply 的"真相源"兜底 stop hook：
+    //   - 末行 type=='user' 且非 tool_result    → 真用户输入 → claude-turn-started
+    //   - 末行 type=='assistant' 且 stop_reason=='end_turn' → 真轮次完成 → claude-turn-done
+    //   - 中间态（tool_use / tool_result）跳过，等下一拍
+    // 解决两个 bug：
+    //   1) 第一轮 prompt 是后端 proc.write 直写，绕过 awaitingReply 复位路径，
+    //      stop hook fire 完后 awaitingReply=true 就再也回不到 false → 假 idle
+    //   2) stop hook 偶发不 fire 时，没有任何信号让前端从 running 切到 idle
+    // 与 stop hook 并存，markSessionAwaitingReply 自身幂等。
+    if (tool === 'claude') {
+      session.claudeLastJsonlMtimeMs = 0
+      session.claudeJsonlPath = null
+      session.claudeLastEmittedKind = null
+      session.claudeWatchTimer = setInterval(() => {
+        try {
+          const nativeId = session.nativeId
+          if (!nativeId) return
+          if (!session.claudeJsonlPath) {
+            const located = this.claudeSessionLocator(nativeId)
+            if (!located?.filePath) return
+            session.claudeJsonlPath = located.filePath
+          }
+          const jsonlPath = session.claudeJsonlPath
+          if (!existsSync(jsonlPath)) return
+          const st = statSync(jsonlPath)
+          if (st.mtimeMs <= session.claudeLastJsonlMtimeMs) return
+          const content = readFileSync(jsonlPath, 'utf8')
+          // 反向扫，跳过 system / attachment / last-prompt 等元数据行，
+          // 找最近一条 type ∈ {user, assistant} 的有效行。
+          const lines = content.split('\n')
+          let kind = null  // 'turn-started' | 'turn-done' | null
+          for (let i = lines.length - 1; i >= 0; i--) {
+            const line = lines[i].trim()
+            if (!line || !line.startsWith('{')) continue
+            let obj
+            try { obj = JSON.parse(line) } catch { continue }
+            const t = obj.type
+            if (t !== 'user' && t !== 'assistant') continue
+            const content = obj.message?.content
+            const blocks = Array.isArray(content) ? content : []
+            if (t === 'user') {
+              // 不区分 tool_result vs 真用户输入：两者都意味着 "Claude 正在/即将处理"
+              // → awaitingReply=false。tool_result 是 Claude 自家 tool_use → tool_result 闭环，
+              // 看到 tool_result 说明上一拍的 assistant 还会继续追加内容，没结束。
+              void blocks
+              kind = 'turn-started'
+            } else {
+              // assistant：仅 stop_reason==='end_turn' 才算真完成；tool_use / max_tokens / null 都是中间态
+              const sr = obj.message?.stop_reason
+              if (sr === 'end_turn') kind = 'turn-done'
+              else continue  // 中间 assistant，继续往前找上一条 user
+            }
+            break
+          }
+          if (!kind) {
+            session.claudeLastJsonlMtimeMs = st.mtimeMs
+            return
+          }
+          if (kind === session.claudeLastEmittedKind) {
+            session.claudeLastJsonlMtimeMs = st.mtimeMs
+            return
+          }
+          session.claudeLastJsonlMtimeMs = st.mtimeMs
+          session.claudeLastEmittedKind = kind
+          if (kind === 'turn-started') {
+            this.emit('claude-turn-started', { sessionId, nativeId })
+          } else {
+            this.emit('claude-turn-done', { sessionId, nativeId })
+          }
+        } catch { /* ignore — watcher 不能影响 PTY 主链路 */ }
+      }, 2000)
+      session.claudeWatchTimer.unref?.()
+    }
+
     // cursor 专属：监听 chatId 的 jsonl，末行 role===assistant 且 mtime 推进
     // → 一轮回复结束。这里走轮询而不是依赖 cursor 自家 stop hook，是因为
     // 实测 cursor 的 stop hook 偶发不 fire（同一 cursor 安装，部分 session 完全
@@ -708,6 +783,7 @@ export class PtyManager extends EventEmitter {
       if (session.detectTimer) clearInterval(session.detectTimer)
       if (session.promptTimer) clearTimeout(session.promptTimer)
       if (session.cursorWatchTimer) { clearInterval(session.cursorWatchTimer); session.cursorWatchTimer = null }
+      if (session.claudeWatchTimer) { clearInterval(session.claudeWatchTimer); session.claudeWatchTimer = null }
       if (session.fsWatcher) { try { session.fsWatcher.close() } catch { /* ignore */ } session.fsWatcher = null }
       if (session.detector) { try { session.detector.stop?.() } catch { /* ignore */ } session.detector = null }
       if (session.eventEmitter) {

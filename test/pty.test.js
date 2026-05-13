@@ -1,6 +1,8 @@
 import { describe, it, expect, vi } from 'vitest'
 import { EventEmitter } from 'node:events'
-import { delimiter } from 'node:path'
+import { delimiter, join } from 'node:path'
+import { mkdtempSync, writeFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { PtyManager } from '../src/pty.js'
 
 function makeFakePty() {
@@ -622,4 +624,157 @@ describe('PtyManager', () => {
       expect(pm.getNativeId('does-not-exist')).toBe(null)
     })
   })
+
+  // ─── claude jsonl tail watcher（治本 awaitingReply 假 idle）───
+  //
+  // 治本的写入侧契约：watcher 每 2s 读 jsonl 末尾，按下面规则 emit：
+  //   - 末行 type=='user'                                  → claude-turn-started
+  //   - 末行 type=='assistant', stop_reason==='end_turn'  → claude-turn-done
+  //   - 末行 type=='assistant', stop_reason==='tool_use' → 不 emit（中间态，等下一拍）
+  //   - 末行是 system / attachment / 其他元数据         → 反向跳过，找最近一条 user/assistant
+  //
+  // 测试通过写入真实 tmp 文件 + 推进 fake timers 来驱动 setInterval(2000)。
+  describe('claude jsonl tail watcher', () => {
+    function setupClaudeWatcher(jsonl) {
+      vi.useFakeTimers()
+      const dir = mkdtempSync(join(tmpdir(), 'pty-claude-watch-'))
+      const filePath = join(dir, 'session.jsonl')
+      writeFileSync(filePath, jsonl)
+      const factory = makeFakePty()
+      const claudeSessionLocator = vi.fn(() => ({ filePath, cwd: '/tmp' }))
+      const pm = new PtyManager({ tools: tools(), ptyFactory: factory, claudeSessionLocator })
+      const events = { started: [], done: [] }
+      pm.on('claude-turn-started', (ev) => events.started.push(ev))
+      pm.on('claude-turn-done', (ev) => events.done.push(ev))
+      pm.start({
+        sessionId: 's1',
+        tool: 'claude',
+        prompt: null,
+        cwd: '/tmp',
+        resumeNativeId: 'abcdef12-3456-7890-abcd-ef1234567890',
+      })
+      return {
+        pm, factory, events, filePath, dir,
+        rewrite(content) { writeFileSync(filePath, content) },
+        tick() { vi.advanceTimersByTime(2100) },
+        cleanup() {
+          vi.useRealTimers()
+          try { rmSync(dir, { recursive: true, force: true }) } catch { /* ignore */ }
+        },
+      }
+    }
+
+    it('emits claude-turn-started when last line is type==user', () => {
+      const t = setupClaudeWatcher(JSON.stringify({ type: 'user', message: { role: 'user', content: 'hi' } }) + '\n')
+      try {
+        t.tick()
+        expect(t.events.started).toEqual([
+          { sessionId: 's1', nativeId: 'abcdef12-3456-7890-abcd-ef1234567890' },
+        ])
+        expect(t.events.done).toEqual([])
+      } finally { t.cleanup() }
+    })
+
+    it('emits claude-turn-done when last line is assistant.stop_reason==end_turn', () => {
+      const t = setupClaudeWatcher(
+        JSON.stringify({ type: 'user', message: { role: 'user', content: 'hi' } }) + '\n' +
+        JSON.stringify({ type: 'assistant', message: { role: 'assistant', stop_reason: 'end_turn', content: [{ type: 'text', text: 'ok' }] } }) + '\n',
+      )
+      try {
+        t.tick()
+        expect(t.events.done).toEqual([
+          { sessionId: 's1', nativeId: 'abcdef12-3456-7890-abcd-ef1234567890' },
+        ])
+      } finally { t.cleanup() }
+    })
+
+    it('does NOT emit turn-done for assistant.stop_reason==tool_use (mid-cycle)', () => {
+      const t = setupClaudeWatcher(
+        JSON.stringify({ type: 'user', message: { role: 'user', content: 'hi' } }) + '\n' +
+        JSON.stringify({ type: 'assistant', message: { role: 'assistant', stop_reason: 'tool_use', content: [{ type: 'tool_use', name: 'Bash' }] } }) + '\n',
+      )
+      try {
+        t.tick()
+        // 中间 assistant 跳过；反向找到的上一条是 user → started
+        expect(t.events.done).toEqual([])
+        expect(t.events.started).toHaveLength(1)
+      } finally { t.cleanup() }
+    })
+
+    it('treats user with tool_result blocks as turn-started (Claude still processing)', () => {
+      const t = setupClaudeWatcher(
+        JSON.stringify({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'x', content: 'ok' }] } }) + '\n',
+      )
+      try {
+        t.tick()
+        expect(t.events.started).toHaveLength(1)
+        expect(t.events.done).toEqual([])
+      } finally { t.cleanup() }
+    })
+
+    it('skips system / attachment / last-prompt meta lines and reads back to last user/assistant', () => {
+      const t = setupClaudeWatcher(
+        JSON.stringify({ type: 'user', message: { role: 'user', content: 'real prompt' } }) + '\n' +
+        JSON.stringify({ type: 'system' }) + '\n' +
+        JSON.stringify({ type: 'attachment' }) + '\n' +
+        JSON.stringify({ type: 'last-prompt' }) + '\n',
+      )
+      try {
+        t.tick()
+        expect(t.events.started).toHaveLength(1)
+        expect(t.events.done).toEqual([])
+      } finally { t.cleanup() }
+    })
+
+    it('does not double-emit when state stays the same across ticks', () => {
+      const t = setupClaudeWatcher(JSON.stringify({ type: 'user', message: { role: 'user', content: 'hi' } }) + '\n')
+      try {
+        t.tick(); t.tick(); t.tick()
+        expect(t.events.started).toHaveLength(1)
+      } finally { t.cleanup() }
+    })
+
+    it('flips back from done → started → done on next user/assistant cycle', () => {
+      const t = setupClaudeWatcher(
+        JSON.stringify({ type: 'user', message: { role: 'user', content: 'q1' } }) + '\n' +
+        JSON.stringify({ type: 'assistant', message: { role: 'assistant', stop_reason: 'end_turn', content: [{ type: 'text', text: 'a1' }] } }) + '\n',
+      )
+      try {
+        t.tick()
+        expect(t.events.done).toHaveLength(1)
+        expect(t.events.started).toHaveLength(0)
+        // user 又发了一条
+        t.rewrite(
+          JSON.stringify({ type: 'user', message: { role: 'user', content: 'q1' } }) + '\n' +
+          JSON.stringify({ type: 'assistant', message: { role: 'assistant', stop_reason: 'end_turn', content: [{ type: 'text', text: 'a1' }] } }) + '\n' +
+          JSON.stringify({ type: 'user', message: { role: 'user', content: 'q2' } }) + '\n',
+        )
+        t.tick()
+        expect(t.events.started).toHaveLength(1)
+        // 第二轮回复完成
+        t.rewrite(
+          JSON.stringify({ type: 'user', message: { role: 'user', content: 'q1' } }) + '\n' +
+          JSON.stringify({ type: 'assistant', message: { role: 'assistant', stop_reason: 'end_turn', content: [{ type: 'text', text: 'a1' }] } }) + '\n' +
+          JSON.stringify({ type: 'user', message: { role: 'user', content: 'q2' } }) + '\n' +
+          JSON.stringify({ type: 'assistant', message: { role: 'assistant', stop_reason: 'end_turn', content: [{ type: 'text', text: 'a2' }] } }) + '\n',
+        )
+        t.tick()
+        expect(t.events.done).toHaveLength(2)
+      } finally { t.cleanup() }
+    })
+
+    it('does not run watcher for non-claude tools', () => {
+      vi.useFakeTimers()
+      const factory = makeFakePty()
+      const pm = new PtyManager({ tools: tools(), ptyFactory: factory })
+      const events = []
+      pm.on('claude-turn-started', (ev) => events.push(ev))
+      pm.on('claude-turn-done', (ev) => events.push(ev))
+      pm.start({ sessionId: 's1', tool: 'codex', prompt: null, cwd: '/tmp' })
+      vi.advanceTimersByTime(10000)
+      expect(events).toEqual([])
+      vi.useRealTimers()
+    })
+  })
+
 })
