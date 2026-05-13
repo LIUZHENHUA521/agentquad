@@ -56,10 +56,15 @@ export function writePidFile(rootDir, { pid, port, host }) {
 export function readPidFile(rootDir) {
   const pf = pidFile(rootDir)
   if (!existsSync(pf)) return null
-  const raw = readFileSync(pf, 'utf8').trim()
+  let raw
+  try {
+    raw = readFileSync(pf, 'utf8').trim()
+  } catch {
+    return null
+  }
   try {
     const obj = JSON.parse(raw)
-    if (obj && typeof obj.pid === 'number') return obj
+    if (obj && typeof obj.pid === 'number' && obj.pid > 0) return obj
   } catch { /* legacy plain-number */ }
   const n = Number(raw)
   if (Number.isFinite(n) && n > 0) return { pid: n }
@@ -504,7 +509,7 @@ program.command('start')
 
 program.command('stop')
   .action(async () => {
-    const pf = pidFile()
+    const pf = pidFile(DEFAULT_ROOT_DIR)
     const info = readPidFile(DEFAULT_ROOT_DIR)
     if (!info) { console.log('AgentQuad is not running (no pid file)'); return }
     const pid = info.pid

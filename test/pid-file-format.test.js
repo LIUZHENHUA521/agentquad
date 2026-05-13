@@ -35,4 +35,14 @@ describe('pid file JSON format', () => {
   it('returns null when pid file missing', () => {
     expect(readPidFile(dir)).toBeNull()
   })
+
+  it('returns null for corrupt content', () => {
+    writeFileSync(join(dir, 'agentquad.pid'), '{not json')
+    expect(readPidFile(dir)).toBeNull()
+  })
+
+  it('rejects JSON with non-positive pid', () => {
+    writeFileSync(join(dir, 'agentquad.pid'), JSON.stringify({ pid: 0, port: 1 }))
+    expect(readPidFile(dir)).toBeNull()
+  })
 })
