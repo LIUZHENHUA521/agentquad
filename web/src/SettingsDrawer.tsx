@@ -1162,12 +1162,15 @@ export default function SettingsDrawer({ open, onClose }: Props) {
       title="AgentQuad 设置"
       open={open}
       onClose={onClose}
-      width={560}
-      extra={
-        <Space>
-          <Button onClick={onClose}>关闭</Button>
-          <Button type="primary" loading={saving} onClick={handleSave}>保存</Button>
-        </Space>
+      width={760}
+      footer={
+        <div className="settings-footer">
+          <Text code className="settings-footer-path">~/.agentquad/config.json</Text>
+          <Space>
+            <Button onClick={onClose}>关闭</Button>
+            <Button type="primary" loading={saving} onClick={handleSave}>保存</Button>
+          </Space>
+        </div>
       }
     >
       {err && <Alert type="error" message={err} style={{ marginBottom: 16 }} />}
@@ -1198,9 +1201,6 @@ export default function SettingsDrawer({ open, onClose }: Props) {
         }}
       />
 
-      <Paragraph type="secondary" style={{ marginTop: 16 }}>
-        配置文件位置：<Text code>~/.agentquad/config.json</Text>
-      </Paragraph>
     </Drawer>
   )
 }
