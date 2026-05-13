@@ -1179,14 +1179,14 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
 
   const handleSaveAsCustomPreset = useCallback(() => {
     const name = saveAsName.trim()
-    if (!name) { message.warning('请输入主题名称'); return }
+    if (!name) { message.warning(t('session:terminal.colorModal.nameRequired')); return }
     if (customPresets[name]) {
       // 简单用原生 confirm 二次确认覆盖；用户偏好此项目的轻量交互
-      if (!window.confirm(`「${name}」已存在，是否覆盖？`)) return
+      if (!window.confirm(t('session:terminal.colorModal.overwriteConfirm', { name }))) return
     }
     saveCustomPreset(name, { background: theme.background, foreground: theme.foreground })
     setSaveAsName('')
-    message.success(`已保存自定义主题「${name}」`)
+    message.success(t('session:terminal.colorModal.savedOk', { name }))
   }, [saveAsName, customPresets, saveCustomPreset, theme])
 
   return (
@@ -1236,14 +1236,14 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
           {todoId.slice(0, 40)}
         </span>
         {sessionStatus === 'ai_done' && (
-          <Tag color="warning" style={{ fontSize: 10, lineHeight: '16px', margin: 0 }}>请验收</Tag>
+          <Tag color="warning" style={{ fontSize: 10, lineHeight: '16px', margin: 0 }}>{t('session:terminal.toolbar.pendingAccept')}</Tag>
         )}
         {turnDoneNotice && sessionStatus !== 'ai_done' && (
-          <Tag color="success" style={{ fontSize: 10, lineHeight: '16px', margin: 0 }}>回复完成</Tag>
+          <Tag color="success" style={{ fontSize: 10, lineHeight: '16px', margin: 0 }}>{t('session:terminal.toolbar.turnDone')}</Tag>
         )}
         {sessionExpired && (
           <Tag color="error" style={{ fontSize: 10, lineHeight: '16px', margin: 0 }}>
-            会话已过期
+            {t('session:terminal.toolbar.sessionExpired')}
           </Tag>
         )}
         {sessionExpired && resumeTargetRef.current?.nativeSessionId && (
@@ -1252,7 +1252,7 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
             onClick={handleManualRecover}
             style={{ height: 22, paddingInline: 8 }}
           >
-            恢复会话
+            {t('session:terminal.toolbar.recoverSession')}
           </Button>
         )}
         {sessionExpired && (
@@ -1261,16 +1261,16 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
             onClick={onClose}
             style={{ height: 22, paddingInline: 8 }}
           >
-            关闭
+            {t('session:terminal.toolbar.close')}
           </Button>
         )}
         {isActive && !sessionExpired && (
           <Dropdown
             menu={{
               items: [
-                { key: 'default', label: '默认（需确认）' },
-                { key: 'acceptEdits', label: '半托管（编辑自动通过）' },
-                { key: 'bypass', label: '完全托管（全自动）' },
+                { key: 'default', label: t('session:terminal.toolbar.autoMode.default') },
+                { key: 'acceptEdits', label: t('session:terminal.toolbar.autoMode.acceptEdits') },
+                { key: 'bypass', label: t('session:terminal.toolbar.autoMode.bypass') },
               ],
               selectedKeys: [autoMode || 'default'],
               onClick: ({ key }) => handleSetAutoMode(key === 'default' ? null : key),
@@ -1290,11 +1290,15 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
               {switchingMode ? (
                 <>
                   <Spin size="small" style={{ marginRight: 4 }} />
-                  切换中…
+                  {t('session:terminal.toolbar.switching')}
                 </>
               ) : (
                 <>
-                  {autoMode === 'bypass' ? '全托管' : autoMode === 'acceptEdits' ? '半托管' : '手动'}
+                  {autoMode === 'bypass'
+                    ? t('session:terminal.toolbar.autoMode.tagBypass')
+                    : autoMode === 'acceptEdits'
+                      ? t('session:terminal.toolbar.autoMode.tagAcceptEdits')
+                      : t('session:terminal.toolbar.autoMode.tagDefault')}
                   {' '}<DownOutlined style={{ fontSize: 7 }} />
                 </>
               )}
@@ -1319,22 +1323,22 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
               })),
               ...(Object.keys(customPresets).length > 0 ? [
                 { type: 'divider' as const },
-                ...Object.entries(customPresets).map(([name, t]) => ({
+                ...Object.entries(customPresets).map(([name, themeColors]) => ({
                   key: `custom:${name}`,
                   label: (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%' }}>
                       <span style={{
                         display: 'inline-block', width: 14, height: 14, borderRadius: 3,
                         border: '1px solid rgba(128,128,128,0.3)',
-                        background: `linear-gradient(135deg, ${t.background} 50%, ${t.foreground} 50%)`,
+                        background: `linear-gradient(135deg, ${themeColors.background} 50%, ${themeColors.foreground} 50%)`,
                       }} />
                       <span style={{ flex: 1 }}>{name}</span>
                       <span
                         role="button"
-                        aria-label="删除"
+                        aria-label={t('session:terminal.toolbar.themeDeleteAria')}
                         onClick={(e) => {
                           e.stopPropagation(); e.preventDefault()
-                          if (window.confirm(`删除自定义主题「${name}」？`)) deleteCustomPreset(name)
+                          if (window.confirm(t('session:terminal.colorModal.deleteConfirm', { name }))) deleteCustomPreset(name)
                         }}
                         style={{ color: 'var(--text-tertiary)', padding: '0 4px', cursor: 'pointer', fontSize: 11 }}
                       >
@@ -1345,7 +1349,7 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
                 })),
               ] : []),
               { type: 'divider' as const },
-              { key: '__custom', label: '自定义...' },
+              { key: '__custom', label: t('session:terminal.toolbar.themeCustom') },
             ],
             selectedKeys: [preset],
             onClick: ({ key }) => {
@@ -1368,42 +1372,42 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
         </Dropdown>
         <Modal
           open={customModalOpen}
-          title="自定义终端颜色"
+          title={t('session:terminal.colorModal.title')}
           onCancel={handleCloseCustomModal}
           width={360}
           destroyOnClose
           footer={
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-              <Button onClick={() => resetOverride()}>恢复预设默认</Button>
-              <Button type="primary" onClick={handleCloseCustomModal}>完成</Button>
+              <Button onClick={() => resetOverride()}>{t('session:terminal.colorModal.resetDefault')}</Button>
+              <Button type="primary" onClick={handleCloseCustomModal}>{t('session:terminal.colorModal.done')}</Button>
             </div>
           }
         >
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-            <span>背景色</span>
+            <span>{t('session:terminal.colorModal.background')}</span>
             <ColorPicker
               value={override.background || theme.background}
               onChange={(c) => setOverride({ background: c.toHexString() })}
             />
           </div>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-            <span>文字色</span>
+            <span>{t('session:terminal.colorModal.foreground')}</span>
             <ColorPicker
               value={override.foreground || theme.foreground}
               onChange={(c) => setOverride({ foreground: c.toHexString() })}
             />
           </div>
           <Divider style={{ margin: '12px 0' }} />
-          <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 6 }}>保存当前颜色为一份自定义主题，下次可直接从下拉里选：</div>
+          <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 6 }}>{t('session:terminal.colorModal.saveHint')}</div>
           <div style={{ display: 'flex', gap: 8 }}>
             <Input
-              placeholder="输入主题名称，例如：我的深色"
+              placeholder={t('session:terminal.colorModal.savePlaceholder')}
               value={saveAsName}
               onChange={(e) => setSaveAsName(e.target.value)}
               onPressEnter={handleSaveAsCustomPreset}
               maxLength={32}
             />
-            <Button onClick={handleSaveAsCustomPreset} disabled={!saveAsName.trim()}>另存为</Button>
+            <Button onClick={handleSaveAsCustomPreset} disabled={!saveAsName.trim()}>{t('session:terminal.colorModal.saveAs')}</Button>
           </div>
         </Modal>
       </div>
@@ -1414,10 +1418,10 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
           background: '#fffbe6',
         }}>
           <div style={{ fontWeight: 600, marginBottom: 8 }}>
-            AI 工具 <code>{toolMissing.tool}</code> 未安装
+            {t('session:terminal.toolMissing.title', { tool: toolMissing.tool })}
           </div>
           <div style={{ marginBottom: 10, color: 'var(--text-secondary)', fontSize: 12 }}>
-            在 PATH 中找不到二进制文件 <code>{toolMissing.bin}</code>。在终端运行下面这条命令安装：
+            {t('session:terminal.toolMissing.body', { bin: toolMissing.bin })}
           </div>
           <div style={{
             fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
@@ -1432,19 +1436,19 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
             onClick={() => {
               const fix = toolMissing.fix
               navigator.clipboard?.writeText(fix).then(
-                () => message.success('已复制到剪贴板'),
-                () => message.warning('复制失败，请手动选中命令'),
+                () => message.success(t('session:terminal.toolMissing.copyOk')),
+                () => message.warning(t('session:terminal.toolMissing.copyFail')),
               )
             }}
           >
-            复制命令
+            {t('session:terminal.toolMissing.copyCommand')}
           </Button>
           <Button
             size="small"
             style={{ marginLeft: 8 }}
             onClick={() => setToolMissing(null)}
           >
-            关闭
+            {t('session:terminal.toolMissing.close')}
           </Button>
         </div>
       )}
@@ -1493,17 +1497,17 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
       )}
       {fullscreen && (
         <div style={{ padding: '4px 8px', background: chrome.surface, borderTop: `1px solid ${chrome.border}`, fontSize: 10, color: chrome.mutedText, textAlign: 'center', flexShrink: 0 }}>
-          按 ESC 或点击右上角退出全屏
+          {t('session:terminal.escHint')}
         </div>
       )}
       {/* 方向键浮层：仅移动端显示（CSS 控制），用户可通过工具栏的 DragOutlined 按钮收起 */}
       {!dpadHidden && (
         <div className="ai-term-dpad" aria-hidden="true">
           {[
-            { cls: 'dpad-up', seq: '\x1b[A', label: '上', icon: <UpOutlined /> },
-            { cls: 'dpad-left', seq: '\x1b[D', label: '左', icon: <LeftOutlined /> },
-            { cls: 'dpad-right', seq: '\x1b[C', label: '右', icon: <RightOutlined /> },
-            { cls: 'dpad-down', seq: '\x1b[B', label: '下', icon: <DownOutlined /> },
+            { cls: 'dpad-up', seq: '\x1b[A', label: t('session:terminal.dpad.up'), icon: <UpOutlined /> },
+            { cls: 'dpad-left', seq: '\x1b[D', label: t('session:terminal.dpad.left'), icon: <LeftOutlined /> },
+            { cls: 'dpad-right', seq: '\x1b[C', label: t('session:terminal.dpad.right'), icon: <RightOutlined /> },
+            { cls: 'dpad-down', seq: '\x1b[B', label: t('session:terminal.dpad.down'), icon: <DownOutlined /> },
           ].map(b => (
             <button
               key={b.cls}
