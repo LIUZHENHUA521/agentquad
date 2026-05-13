@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   deriveAiState,
   isClosedAiStatus,
-  AI_STATE_LABEL,
-  AI_STATE_PILL_LABEL,
+  AI_STATE_LABEL_KEY,
+  AI_STATE_PILL_LABEL_KEY,
 } from '../web/src/design/aiPresentationState.ts'
 
 describe('deriveAiState', () => {
@@ -61,16 +61,16 @@ describe('isClosedAiStatus', () => {
   })
 })
 
-describe('AI_STATE_LABEL / AI_STATE_PILL_LABEL', () => {
-  it('inline label has icon prefix', () => {
-    expect(AI_STATE_LABEL.running).toBe('● running')
-    expect(AI_STATE_LABEL.pending).toBe('⚠ 待确认')
-    expect(AI_STATE_LABEL.idle).toBe('○ 空闲')
+describe('AI_STATE_LABEL_KEY / AI_STATE_PILL_LABEL_KEY', () => {
+  it('inline label maps each state to a session namespace i18n key', () => {
+    expect(AI_STATE_LABEL_KEY.running).toBe('session:aiState.label.running')
+    expect(AI_STATE_LABEL_KEY.pending).toBe('session:aiState.label.pending')
+    expect(AI_STATE_LABEL_KEY.idle).toBe('session:aiState.label.idle')
   })
 
-  it('pill label is plain text only', () => {
-    expect(AI_STATE_PILL_LABEL.running).toBe('running')
-    expect(AI_STATE_PILL_LABEL.pending).toBe('待确认')
-    expect(AI_STATE_PILL_LABEL.idle).toBe('idle')
+  it('pill label maps each state to a session namespace i18n key', () => {
+    expect(AI_STATE_PILL_LABEL_KEY.running).toBe('session:aiState.pill.running')
+    expect(AI_STATE_PILL_LABEL_KEY.pending).toBe('session:aiState.pill.pending')
+    expect(AI_STATE_PILL_LABEL_KEY.idle).toBe('session:aiState.pill.idle')
   })
 })

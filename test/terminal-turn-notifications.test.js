@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest'
 import * as turnNotifications from '../web/src/terminalTurnNotifications.ts'
 
 const {
-  TURN_DONE_TEXT,
-  TURN_DONE_NOTIFICATION_BUTTON_LABEL,
+  TURN_DONE_TEXT_KEY,
+  TURN_DONE_NOTIFICATION_BUTTON_LABEL_KEY,
   TURN_DONE_NOTIFICATION_BUTTON_STYLE,
   getBrowserNotificationPermission,
   shouldSendTurnDoneSystemNotification,
@@ -11,12 +11,12 @@ const {
 
 describe('terminal turn notification helpers', () => {
   it('does not expose an xterm output banner for turn completion reminders', () => {
-    expect(TURN_DONE_TEXT).toBe('AI 回复完成，请验收')
+    expect(TURN_DONE_TEXT_KEY).toBe('session:turnDone.text')
     expect(turnNotifications).not.toHaveProperty('TURN_DONE_BANNER')
   })
 
   it('keeps the notification permission affordance compact and readable for the toolbar', () => {
-    expect(TURN_DONE_NOTIFICATION_BUTTON_LABEL).toBe('通知')
+    expect(TURN_DONE_NOTIFICATION_BUTTON_LABEL_KEY).toBe('session:turnDone.buttonLabel')
     expect(TURN_DONE_NOTIFICATION_BUTTON_STYLE).toEqual({
       height: 20,
       minWidth: 34,

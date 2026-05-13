@@ -33,7 +33,7 @@ describe('TranscriptSearchDrawer preview modal empty / error fallback', () => {
   it('shows <Empty/> when preview returns zero turns', () => {
     // 兜底分支：!previewLoading && previewTurns.length === 0 → 渲染 Empty
     expect(source).toMatch(/previewTurns\.length === 0[\s\S]*?<Empty/)
-    expect(source).toContain('该会话暂无可展示内容')
+    expect(source).toContain("transcript:searchDrawer.previewEmpty")
   })
 
   it('closes preview modal when handlePreview throws', () => {
