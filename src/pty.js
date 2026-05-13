@@ -484,6 +484,12 @@ export class PtyManager extends EventEmitter {
       TERM: 'xterm-256color',
       TZ: process.env.TZ || 'America/Los_Angeles',
       FORCE_COLOR: '1',
+      // Force narrow East-Asian-Ambiguous wcwidth so PTY children agree with xterm.js's
+      // Unicode rendering. Set AGENTQUAD_KEEP_CJK_LOCALE=1 to disable this override.
+      ...(process.env.AGENTQUAD_KEEP_CJK_LOCALE === '1' ? {} : {
+        LANG: 'en_US.UTF-8',
+        LC_CTYPE: 'en_US.UTF-8',
+      }),
       ...(extraEnv && typeof extraEnv === 'object' ? extraEnv : {}),
     }
     env.PATH = buildChildPath(toolCfg.bin, env.PATH || '')
@@ -726,6 +732,10 @@ export class PtyManager extends EventEmitter {
           TERM: 'xterm-256color',
           TZ: process.env.TZ || 'America/Los_Angeles',
           FORCE_COLOR: '1',
+          ...(process.env.AGENTQUAD_KEEP_CJK_LOCALE === '1' ? {} : {
+            LANG: 'en_US.UTF-8',
+            LC_CTYPE: 'en_US.UTF-8',
+          }),
         },
       })
     } catch (error) {

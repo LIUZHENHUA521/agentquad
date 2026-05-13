@@ -242,6 +242,7 @@ agentquad/
 - **`claude` 找不到**：`agentquad config set tools.claude.bin /full/path/to/claude`
 - **`node-pty` 安装报错**：通常是 node-gyp 找不到 C++ 工具链。macOS 装 Xcode Command Line Tools (`xcode-select --install`)
 - **终端显示 `session_not_found`**：会话已超时（30 分钟已结束的会话会被清理），重新点"启动 AI 终端"
+- **Live 终端排版乱（横线 / 中文混排 / 状态栏对不齐）**：默认情况下，AgentQuad 给 PTY 子进程注入 `LANG=LC_CTYPE=en_US.UTF-8`，让 wcwidth 与 xterm.js (Unicode 11) 对齐。如果某些 TUI 你必须保留 CJK locale，设环境变量 `AGENTQUAD_KEEP_CJK_LOCALE=1` 重启 agentquad 即可还原原行为。
 
 
 

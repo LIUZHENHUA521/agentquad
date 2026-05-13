@@ -9,6 +9,7 @@ import { FullscreenOutlined, FullscreenExitOutlined, StopOutlined, DownOutlined,
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { CanvasAddon } from '@xterm/addon-canvas'
+import { Unicode11Addon } from '@xterm/addon-unicode11'
 import '@xterm/xterm/css/xterm.css'
 import { getTerminalWsUrl, startAiExec, stopAiExec, openTraeCN, TodoStatus, ResumeSessionInput, EditorKind, ApiError } from './api'
 import { useTerminalTheme } from './hooks/useTerminalTheme'
@@ -468,6 +469,13 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
       const fit = new FitAddon()
       term.loadAddon(fit)
       term.open(container)
+      // Upgrade xterm width tables to Unicode 11 so East-Asian-Ambiguous chars
+      // (em-dash, ellipsis, box-drawing) align with the PTY's wcwidth (paired with
+      // src/pty.js LANG=en_US.UTF-8 injection — both must be set for layout to match).
+      try {
+        term.loadAddon(new Unicode11Addon())
+        term.unicode.activeVersion = '11'
+      } catch { /* old browsers can fall back to default */ }
       // Canvas 渲染器：移动端长 scrollback 滚动比默认 DOM 渲染器流畅得多。
       // 装载失败也不影响核心功能，DOM 渲染会自动兜底。
       try { term.loadAddon(new CanvasAddon()) } catch { /* 老浏览器回退 DOM */ }
