@@ -302,6 +302,77 @@ describe('buildUnreadSessionItems', () => {
     expect(items).toHaveLength(1)
     expect(items[0]).toMatchObject({ sessionId: 's-orphan', todoId: 'todo-x', todoTitle: 'Orphan', quadrant: 2 })
   })
+
+  it('includes live pending_confirm sessions even when lastTurnDoneAt is not newer than lastSeen', () => {
+    const items = buildUnreadSessionItems({
+      todos: [todo({ id: 'todo-1', title: 'Needs confirm' })],
+      liveSessions: [live({
+        sessionId: 's-pc',
+        todoId: 'todo-1',
+        todoTitle: 'Needs confirm',
+        status: 'pending_confirm',
+        lastOutputAt: 3000,
+        lastTurnDoneAt: null,
+      })],
+      lastSeenMap: new Map(),
+    })
+
+    expect(items).toHaveLength(1)
+    expect(items[0]).toMatchObject({
+      id: 'unread:s-pc',
+      sessionId: 's-pc',
+      todoId: 'todo-1',
+      reason: 'pending_confirm',
+      timestamp: 3000,
+    })
+  })
+
+  it('tags purely unread reply items with reason="unread"', () => {
+    const items = buildUnreadSessionItems({
+      todos: [todo({ id: 'todo-1', title: 'Has unread', aiSessions: [session({ sessionId: 's-u', lastTurnDoneAt: 7000 })] })],
+      liveSessions: [],
+      lastSeenMap: new Map([['s-u', 1000]]),
+    })
+
+    expect(items).toHaveLength(1)
+    expect(items[0].reason).toBe('unread')
+  })
+
+  it('dedupes when a session is both pending_confirm and unread, preferring reason=pending_confirm', () => {
+    const items = buildUnreadSessionItems({
+      todos: [todo({ id: 'todo-1', title: 'Both', aiSessions: [session({ sessionId: 's-both', lastTurnDoneAt: 5000 })] })],
+      liveSessions: [live({
+        sessionId: 's-both',
+        todoId: 'todo-1',
+        status: 'pending_confirm',
+        lastTurnDoneAt: 5000,
+        lastOutputAt: 6000,
+      })],
+      lastSeenMap: new Map([['s-both', 1000]]),
+    })
+
+    expect(items).toHaveLength(1)
+    expect(items[0].reason).toBe('pending_confirm')
+    expect(items[0].timestamp).toBe(6000)
+  })
+
+  it('sorts mixed reasons by timestamp desc', () => {
+    const items = buildUnreadSessionItems({
+      todos: [
+        todo({ id: 'todo-a', title: 'A', aiSessions: [session({ sessionId: 's-unread-old', lastTurnDoneAt: 2000 })] }),
+        todo({ id: 'todo-b', title: 'B' }),
+      ],
+      liveSessions: [live({
+        sessionId: 's-pc-new',
+        todoId: 'todo-b',
+        status: 'pending_confirm',
+        lastOutputAt: 9000,
+      })],
+      lastSeenMap: new Map(),
+    })
+
+    expect(items.map(i => i.sessionId)).toEqual(['s-pc-new', 's-unread-old'])
+  })
 })
 
 describe('seen reply storage helpers', () => {
