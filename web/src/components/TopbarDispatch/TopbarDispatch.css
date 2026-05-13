@@ -121,3 +121,42 @@
   color: var(--text-tertiary);
   font-size: var(--text-xs);
 }
+
+/* Pending Pill — click-to-jump Popover */
+.topbar-pending-popover .ant-popover-inner {
+  background: var(--surface-1);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+  min-width: 280px;
+  max-width: 360px;
+}
+.topbar-pending-popover .ant-popover-arrow {
+  display: none;
+}
+.topbar-pending-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+.topbar-pending-row {
+  /* button reset */
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  text-align: left;
+  width: 100%;
+  cursor: pointer;
+  padding: 6px 8px;
+  margin: 0;
+  transition: background var(--motion-fast) var(--ease-standard);
+}
+.topbar-pending-row:hover {
+  background: var(--surface-2);
+}
+.topbar-pending-row:focus-visible {
+  outline: none;
+  border-color: var(--accent-electric);
+}
