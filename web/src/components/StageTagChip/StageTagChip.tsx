@@ -24,22 +24,21 @@ export function StageTagChip({ value, onChange, disabled }: StageTagChipProps) {
     else onChange(key as StageTag)
   }
 
-  const trigger = value == null
+  const meta = value != null ? STAGE_TAG_META[value] : null
+
+  const trigger = meta == null
     ? (
       <button type="button" className="stage-tag-chip stage-tag-chip--empty" disabled={disabled}>
         <PlusOutlined />
         <span>加阶段</span>
       </button>
     )
-    : (() => {
-      const meta = STAGE_TAG_META[value]
-      return (
-        <button type="button" className={`stage-tag-chip ${meta.className}`} disabled={disabled}>
-          <span>{meta.emoji}</span>
-          <span>{meta.label}</span>
-        </button>
-      )
-    })()
+    : (
+      <button type="button" className={`stage-tag-chip ${meta.className}`} disabled={disabled}>
+        <span>{meta.emoji}</span>
+        <span>{meta.label}</span>
+      </button>
+    )
 
   return (
     <Dropdown
