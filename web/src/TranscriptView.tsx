@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Input, Button, Spin, Tag, Empty, Tooltip, Mentions, Popconfirm } from 'antd'
+import { useTranslation } from 'react-i18next'
 import { useAppMessages } from './design/useAppMessages'
 import {
   ReloadOutlined, BranchesOutlined, SearchOutlined,
@@ -38,13 +39,13 @@ interface SlashCommand {
   source: 'user' | 'project' | string  // string = `plugin:xxx`
 }
 
-const ROLE_META: Record<string, { label: string; cls: string }> = {
-  user: { label: '我', cls: 'tv-role-user' },
-  assistant: { label: 'AI', cls: 'tv-role-assistant' },
-  thinking: { label: '思考', cls: 'tv-role-thinking' },
-  tool_use: { label: '工具调用', cls: 'tv-role-tool-use' },
-  tool_result: { label: '工具输出', cls: 'tv-role-tool-result' },
-  raw: { label: '日志', cls: 'tv-role-raw' },
+const ROLE_CLS: Record<string, string> = {
+  user: 'tv-role-user',
+  assistant: 'tv-role-assistant',
+  thinking: 'tv-role-thinking',
+  tool_use: 'tv-role-tool-use',
+  tool_result: 'tv-role-tool-result',
+  raw: 'tv-role-raw',
 }
 
 // 把 tool_use.content（多半是个 JSON 字符串）解析出便于渲染的结构。
@@ -137,11 +138,6 @@ function toolResultSummary(raw: string): { ok: boolean; text: string; lineCount:
   return { ok, text, lineCount }
 }
 
-function sessionStatusMeta(state: AiPresentationState) {
-  if (state === 'running') return { color: 'processing', text: 'running' }
-  if (state === 'pending') return { color: 'error', text: '待确认' }
-  return { color: 'default', text: '空闲' }
-}
 
 function highlightKeyword(text: string, keyword: string): React.ReactNode {
   if (!keyword) return text
@@ -199,6 +195,7 @@ function tryParseTodoWriteInput(raw: string): TodoItem[] | null {
  * 避免长文件展示成一屏几百行无意义 context。
  */
 function DiffView({ before, after, language }: { before: string; after: string; language?: string }) {
+  const { t } = useTranslation(['transcript'])
   const parts = useMemo(() => {
     try {
       return diffLines(before || '', after || '', { newlineIsToken: false })
@@ -239,7 +236,7 @@ function DiffView({ before, after, language }: { before: string; after: string; 
           return (
             <div key={i} className="tv-diff-line tv-diff-gap">
               <span className="tv-diff-marker"> </span>
-              <span className="tv-diff-text">… {r.gapCount} unchanged lines …</span>
+              <span className="tv-diff-text">{t('transcript:tool.diffGap', { count: r.gapCount })}</span>
             </div>
           )
         }
@@ -294,7 +291,18 @@ function TodoWriteList({ todos, keyword }: { todos: TodoItem[]; keyword: string 
 }
 
 const TurnItem = React.memo(function TurnItem({ turn, index, keyword, canFork, collapsed, onFork, onToggleCollapse }: TurnItemProps) {
-  const meta = ROLE_META[turn.role] || { label: turn.role, cls: '' }
+  const { t } = useTranslation(['transcript', 'common', 'errors'])
+  const roleLabelKey =
+    turn.role === 'user' ? 'transcript:role.user' :
+    turn.role === 'assistant' ? 'transcript:role.assistant' :
+    turn.role === 'thinking' ? 'transcript:role.thinking' :
+    turn.role === 'tool_use' ? 'transcript:role.toolUse' :
+    turn.role === 'tool_result' ? 'transcript:role.toolResult' :
+    turn.role === 'raw' ? 'transcript:role.raw' : null
+  const meta = {
+    label: roleLabelKey ? t(roleLabelKey) : turn.role,
+    cls: ROLE_CLS[turn.role] || '',
+  }
   const isToolUse = turn.role === 'tool_use'
   const isToolResult = turn.role === 'tool_result'
   const isThinking = turn.role === 'thinking'
@@ -328,7 +336,7 @@ const TurnItem = React.memo(function TurnItem({ turn, index, keyword, canFork, c
         <div className={`tv-row tv-row-tool ${meta.cls}`} data-turn-index={index}>
           <span className="tv-dot tv-dot-tool" aria-hidden />
           <div className="tv-row-content">
-            <button className="tv-tool-sig tv-tool-sig-button tv-edit-head" onClick={handleToggle} title={collapsed ? '展开 diff' : '收起 diff'}>
+            <button className="tv-tool-sig tv-tool-sig-button tv-edit-head" onClick={handleToggle} title={collapsed ? t('transcript:tool.expandDiff') : t('transcript:tool.collapseDiff')}>
               <span className="tv-tool-name">{turn.toolName}</span>
               <span className="tv-tool-args">({shortPath(path)})</span>
               {editInput.replace_all && <span className="tv-edit-flag">replace_all</span>}
@@ -355,7 +363,7 @@ const TurnItem = React.memo(function TurnItem({ turn, index, keyword, canFork, c
             </>
           ) : (
             <>
-              <button className="tv-tool-sig tv-tool-sig-button" onClick={handleToggle} title={collapsed ? '展开详情' : '收起详情'}>
+              <button className="tv-tool-sig tv-tool-sig-button" onClick={handleToggle} title={collapsed ? t('transcript:tool.expandDetail') : t('transcript:tool.collapseDetail')}>
                 <span className="tv-tool-name">{turn.toolName || 'Tool'}</span>
                 <span className="tv-tool-args">{highlightKeyword(sig.replace(/^[^(]*/, ''), keyword)}</span>
                 <span className="tv-tool-caret">{collapsed ? '›' : '⌄'}</span>
@@ -377,10 +385,10 @@ const TurnItem = React.memo(function TurnItem({ turn, index, keyword, canFork, c
       <div className={`tv-row tv-row-toolresult ${meta.cls}`} data-turn-index={index}>
         <span className="tv-dot tv-dot-result" aria-hidden />
         <div className="tv-row-content">
-          <button className="tv-result-summary tv-tool-sig-button" onClick={handleToggle} title={collapsed ? '展开输出' : '收起输出'}>
+          <button className="tv-result-summary tv-tool-sig-button" onClick={handleToggle} title={collapsed ? t('transcript:tool.expandOutput') : t('transcript:tool.collapseOutput')}>
             <span className={ok ? 'tv-result-ok' : 'tv-result-err'}>{ok ? '✓' : '✗'}</span>
             <span className="tv-result-text">{highlightKeyword(text, keyword)}</span>
-            {lineCount > 1 && <span className="tv-result-meta">· {lineCount} lines</span>}
+            {lineCount > 1 && <span className="tv-result-meta">{t('transcript:tool.lineCount', { count: lineCount })}</span>}
             <span className="tv-tool-caret">{collapsed ? '›' : '⌄'}</span>
           </button>
           {!collapsed && (
@@ -443,8 +451,8 @@ const TurnItem = React.memo(function TurnItem({ turn, index, keyword, canFork, c
             <span className="tv-turn-time">{new Date(turn.timestamp).toLocaleTimeString()}</span>
           )}
           {canFork && (isUser || isAssistant) && (
-            <Tooltip title="从这里 Fork 新会话">
-              <button className="tv-row-fork" onClick={handleFork} aria-label="Fork">
+            <Tooltip title={t('transcript:fork.tooltip')}>
+              <button className="tv-row-fork" onClick={handleFork} aria-label={t('transcript:fork.ariaLabel')}>
                 <BranchesOutlined />
               </button>
             </Tooltip>
@@ -461,6 +469,7 @@ const MIN_HEIGHT = 240
 const MAX_HEIGHT = 1200
 
 export default function TranscriptView({ todoId, sessionId, onFork, autoRefreshMs = 0, resumeTarget = null, onSessionRecovered, fillHeight, cwd, active = true }: Props) {
+  const { t } = useTranslation(['transcript', 'common', 'errors'])
   const { message } = useAppMessages()
   const [data, setData] = useState<TranscriptResponse | null>(null)
   const [loading, setLoading] = useState(false)
@@ -567,11 +576,11 @@ export default function TranscriptView({ todoId, sessionId, onFork, autoRefreshM
       }
     } catch (e: any) {
       // 静默轮询出错不刷 error，避免闪烁；首屏/手动刷新仍走 error 通道
-      if (mode !== 'poll') setError(e?.message || '加载失败')
+      if (mode !== 'poll') setError(e?.message || t('transcript:error.loadFailed'))
     } finally {
       if (mode === 'reset') setLoading(false)
     }
-  }, [todoId, sessionId])
+  }, [todoId, sessionId, t])
 
   useEffect(() => {
     dataRef.current = null
@@ -851,16 +860,16 @@ export default function TranscriptView({ todoId, sessionId, onFork, autoRefreshM
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', maxWidth: 520 }}>
           <span style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', color: 'var(--accent-electric)', flexShrink: 0 }}>/{c.name}</span>
           <span style={{ fontSize: 11, color: 'var(--text-tertiary)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {c.description || '—'}
+            {c.description || t('transcript:slashTag.empty')}
           </span>
-          {c.source === 'project' && <Tag color="orange" style={{ fontSize: 10, margin: 0, lineHeight: '16px', height: 16, padding: '0 4px' }}>项目</Tag>}
+          {c.source === 'project' && <Tag color="orange" style={{ fontSize: 10, margin: 0, lineHeight: '16px', height: 16, padding: '0 4px' }}>{t('transcript:slashTag.project')}</Tag>}
           {typeof c.source === 'string' && c.source.startsWith('plugin:') && (
-            <Tag color="purple" style={{ fontSize: 10, margin: 0, lineHeight: '16px', height: 16, padding: '0 4px' }}>插件</Tag>
+            <Tag color="purple" style={{ fontSize: 10, margin: 0, lineHeight: '16px', height: 16, padding: '0 4px' }}>{t('transcript:slashTag.plugin')}</Tag>
           )}
         </div>
       ),
     }))
-  ), [slashCommands])
+  ), [slashCommands, t])
 
   // 稳定回调传给 memo 化的 TurnItem：不让 turn 列表每次父级重渲时都 re-render
   const displayedTurnsRef = useRef<LocalTurn[]>([])
@@ -885,7 +894,7 @@ export default function TranscriptView({ todoId, sessionId, onFork, autoRefreshM
 
   const resumeSession = useCallback(async () => {
     if (!resumeTarget?.nativeSessionId) {
-      throw new Error('当前会话没有可恢复的原生会话 ID')
+      throw new Error(t('transcript:error.noResumeId'))
     }
     const { sessionId: nextSessionId } = await startAiExec({
       todoId: resumeTarget.todoId,
@@ -896,7 +905,7 @@ export default function TranscriptView({ todoId, sessionId, onFork, autoRefreshM
     })
     onSessionRecovered?.(nextSessionId)
     return nextSessionId
-  }, [onSessionRecovered, resumeTarget])
+  }, [onSessionRecovered, resumeTarget, t])
 
   const sendSessionInput = useCallback(async (payload: string, optimisticText?: string) => {
     const optimisticId = optimisticText
@@ -930,7 +939,7 @@ export default function TranscriptView({ todoId, sessionId, onFork, autoRefreshM
       }
 
       if (!resumeTarget?.nativeSessionId) {
-        throw new Error('当前会话已结束，且没有可恢复的原生会话 ID')
+        throw new Error(t('transcript:error.sessionEndedNoResume'))
       }
       const nextSessionId = await resumeSession()
       await doSend(nextSessionId)
@@ -940,7 +949,7 @@ export default function TranscriptView({ todoId, sessionId, onFork, autoRefreshM
       }
       throw e
     }
-  }, [fetchData, resumeSession, resumeTarget, sessionId])
+  }, [fetchData, resumeSession, resumeTarget, sessionId, t])
 
   const handleSendMessage = useCallback(async () => {
     const text = composer.trim()
@@ -957,11 +966,11 @@ export default function TranscriptView({ todoId, sessionId, onFork, autoRefreshM
       usedPlaceholders.forEach((placeholder) => composerImagesRef.current.delete(placeholder))
     } catch (e: any) {
       setComposer(text)
-      message.error(e?.message || '发送失败')
+      message.error(e?.message || t('transcript:error.sendFailed'))
     } finally {
       setSending(false)
     }
-  }, [composer, message, sendSessionInput])
+  }, [composer, message, sendSessionInput, t])
 
   /**
    * 粘贴图片：上传成本地文件，发送时把 [Image #N] 占位符替换成 Claude/Codex
@@ -995,7 +1004,7 @@ export default function TranscriptView({ todoId, sessionId, onFork, autoRefreshM
         return placeholder
       }))
     } catch (err: any) {
-      message.error(err?.message || '图片上传失败')
+      message.error(err?.message || t('transcript:error.uploadImageFailed'))
       return
     }
 
@@ -1019,34 +1028,34 @@ export default function TranscriptView({ todoId, sessionId, onFork, autoRefreshM
         ta.focus()
       } catch { /* ignore */ }
     })
-  }, [composer, message])
+  }, [composer, message, t])
 
   // Ctrl+C：发 \x03 信号让 Claude 打断当前生成（停止 tool / 文本输出），
   // 会话保持存活，用户可以继续追问。对应终端里手动敲 Ctrl+C 的语义。
   const handleInterrupt = useCallback(async () => {
     try {
       await sendAiInput(sessionId, '\x03')
-      message.success('已发送中断（Ctrl+C）', 1)
+      message.success(t('transcript:message.interrupted'), 1)
     } catch (e: any) {
       const msg = e?.message === 'session_not_found'
-        ? '会话已结束，无法中断'
-        : (e?.message || '中断失败')
+        ? t('transcript:error.interruptSessionEnded')
+        : (e?.message || t('transcript:error.interruptFailed'))
       message.error(msg)
     }
-  }, [sessionId])
+  }, [sessionId, message, t])
 
   // 结束会话：kill 掉 PTY 进程。和中断不同，结束后需要 resume 才能再聊。
   const handleEndSession = useCallback(async () => {
     try {
       await stopAiExec(sessionId)
-      message.success('会话已结束', 1.5)
+      message.success(t('transcript:message.sessionEnded'), 1.5)
     } catch (e: any) {
       const msg = e?.message === 'session_not_found'
-        ? '会话已经结束了'
-        : (e?.message || '结束会话失败')
+        ? t('transcript:error.endAlreadyEnded')
+        : (e?.message || t('transcript:error.endFailed'))
       message.error(msg)
     }
-  }, [sessionId])
+  }, [sessionId, message, t])
 
   const toggleAllTools = () => {
     const next = !allToolsCollapsed
@@ -1079,7 +1088,6 @@ export default function TranscriptView({ todoId, sessionId, onFork, autoRefreshM
     transcriptUnread,
     transcriptLiveSession?.awaitingReply ?? false,
   )
-  const statusMeta = sessionStatusMeta(transcriptState)
 
   const wrapperClassName = [
     'tv-wrapper',
@@ -1103,7 +1111,7 @@ export default function TranscriptView({ todoId, sessionId, onFork, autoRefreshM
           allowClear
           variant="borderless"
           prefix={<SearchOutlined style={{ color: 'var(--text-tertiary)' }} />}
-          placeholder="搜索对话..."
+          placeholder={t('transcript:toolbar.searchPlaceholder')}
           value={keyword}
           onChange={(e) => { setKeyword(e.target.value); setSearchIdx(0) }}
           style={{ flex: 1, minWidth: 120 }}
@@ -1116,10 +1124,10 @@ export default function TranscriptView({ todoId, sessionId, onFork, autoRefreshM
           </>
         )}
         <Button size="small" type="text" onClick={toggleAllTools}>
-          {allToolsCollapsed ? '展开工具' : '折叠工具'}
+          {allToolsCollapsed ? t('transcript:toolbar.expandAll') : t('transcript:toolbar.collapseAll')}
         </Button>
         <Button size="small" type="text" icon={<ReloadOutlined />} onClick={() => { void fetchData('reset') }} loading={loading} />
-        <Tooltip title={fullscreen ? '退出全屏 (Esc)' : '全屏'}>
+        <Tooltip title={fullscreen ? t('transcript:toolbar.exitFullscreen') : t('transcript:toolbar.fullscreen')}>
           <Button
             size="small"
             type="text"
@@ -1132,7 +1140,7 @@ export default function TranscriptView({ todoId, sessionId, onFork, autoRefreshM
         {loading && !data && <div style={{ textAlign: 'center', padding: 24 }}><Spin /></div>}
         {error && <div className="tv-error">{error}</div>}
         {!loading && !error && data && data.turns.length === 0 && (
-          <Empty description="没有找到会话记录（JSONL 文件和 PTY 日志都不存在）" />
+          <Empty description={t('transcript:empty')} />
         )}
         {displayedTurns.map((t, i) => {
           // Edit/StrReplace/Write 默认展开（用户最常想直接看 diff），其他工具默认折叠
@@ -1157,7 +1165,7 @@ export default function TranscriptView({ todoId, sessionId, onFork, autoRefreshM
           if (status === 'pending_confirm' && transcriptState === 'pending') {
             return (
               <div className="tv-thinking" aria-live="polite">
-                <span className="tv-thinking-label">等待确认</span>
+                <span className="tv-thinking-label">{t('transcript:thinking.waitingConfirm')}</span>
                 <span className="tv-thinking-dots" aria-hidden="true">
                   <i /><i /><i />
                 </span>
@@ -1176,7 +1184,7 @@ export default function TranscriptView({ todoId, sessionId, onFork, autoRefreshM
           if (!waiting) return null
           return (
             <div className="tv-thinking" aria-live="polite">
-              <span className="tv-thinking-label">AI 思考中</span>
+              <span className="tv-thinking-label">{t('transcript:thinking.aiThinking')}</span>
               <span className="tv-thinking-dots" aria-hidden="true">
                 <i /><i /><i />
               </span>
@@ -1186,7 +1194,7 @@ export default function TranscriptView({ todoId, sessionId, onFork, autoRefreshM
       </div>
       {unreadCount > 0 && (
         <button className="tv-unread-pill" onClick={jumpToLatest}>
-          ↓ {unreadCount} 条新消息
+          {t('transcript:unreadPill', { count: unreadCount })}
         </button>
       )}
       {(() => {
@@ -1198,12 +1206,12 @@ export default function TranscriptView({ todoId, sessionId, onFork, autoRefreshM
           status === 'failed' ? 'tv-statusbar-dot--err' :
           'tv-statusbar-dot--idle'
         const statusText =
-          transcriptState === 'pending' ? '待确认' :
-          transcriptState === 'running' ? (sending ? 'sending…' : 'running') :
-          status === 'failed' ? 'failed' :
-          status === 'stopped' ? 'stopped' :
-          status === 'done' ? 'idle' : 'idle'
-        const sourceText = data?.source === 'jsonl' ? 'jsonl' : data?.source === 'ptylog' ? 'pty-log' : 'no-data'
+          transcriptState === 'pending' ? t('transcript:status.pending') :
+          transcriptState === 'running' ? (sending ? t('transcript:status.sending') : t('transcript:status.running')) :
+          status === 'failed' ? t('transcript:status.failed') :
+          status === 'stopped' ? t('transcript:status.stopped') :
+          status === 'done' ? t('transcript:status.idle') : t('transcript:status.idle')
+        const sourceText = data?.source === 'jsonl' ? t('transcript:source.jsonl') : data?.source === 'ptylog' ? t('transcript:source.ptylog') : t('transcript:source.noData')
         return (
           <div className="tv-statusbar">
             <span className={`tv-statusbar-dot ${statusDotCls}`} />
@@ -1213,31 +1221,31 @@ export default function TranscriptView({ todoId, sessionId, onFork, autoRefreshM
             {sessionCwd && (
               <>
                 <span className="tv-statusbar-sep">·</span>
-                <span className="tv-statusbar-text tv-statusbar-mute" title={sessionCwd}>worktree: {shortPath(sessionCwd)}</span>
+                <span className="tv-statusbar-text tv-statusbar-mute" title={sessionCwd}>{t('transcript:statusbar.worktree', { path: shortPath(sessionCwd) })}</span>
               </>
             )}
             <div style={{ flex: 1 }} />
-            <Tooltip title={canInterrupt ? '发送 Ctrl+C 打断当前生成' : '会话未在运行'}>
+            <Tooltip title={canInterrupt ? t('transcript:statusbar.interruptEnabled') : t('transcript:statusbar.interruptDisabled')}>
               <button
                 className="tv-statusbar-btn"
                 disabled={!canInterrupt}
                 onClick={() => { void handleInterrupt() }}
               >
-                <StopOutlined /> interrupt
+                <StopOutlined /> {t('transcript:statusbar.interrupt')}
               </button>
             </Tooltip>
             <Popconfirm
-              title="结束会话"
-              description="将终止 PTY 进程，之后需要再发消息才会 resume。"
-              okText="结束"
+              title={t('transcript:endConfirm.title')}
+              description={t('transcript:endConfirm.description')}
+              okText={t('transcript:endConfirm.okText')}
               okButtonProps={{ danger: true }}
-              cancelText="取消"
+              cancelText={t('transcript:endConfirm.cancelText')}
               onConfirm={() => { void handleEndSession() }}
               disabled={!canInterrupt}
             >
-              <Tooltip title={canInterrupt ? '终止 PTY 进程' : '会话已不在运行'}>
+              <Tooltip title={canInterrupt ? t('transcript:statusbar.endEnabled') : t('transcript:statusbar.endDisabled')}>
                 <button className="tv-statusbar-btn tv-statusbar-btn--danger" disabled={!canInterrupt}>
-                  <PoweroffOutlined /> end
+                  <PoweroffOutlined /> {t('transcript:statusbar.end')}
                 </button>
               </Tooltip>
             </Popconfirm>
@@ -1260,8 +1268,8 @@ export default function TranscriptView({ todoId, sessionId, onFork, autoRefreshM
           variant="borderless"
           options={slashOptions}
           placeholder={data?.session.status === 'pending_confirm'
-            ? '等待确认，回车确认 / 输入补充说明…'
-            : 'Type your message or paste anything…  ⏎ send · ⇧⏎ newline · / commands · ⌘V image'}
+            ? t('transcript:composer.placeholderPending')
+            : t('transcript:composer.placeholderDefault')}
           autoSize={{ minRows: 1, maxRows: 8 }}
           filterOption={(input, option) => {
             const v = String(option?.value || '').toLowerCase()
@@ -1290,9 +1298,9 @@ export default function TranscriptView({ todoId, sessionId, onFork, autoRefreshM
           className="tv-composer-send"
           disabled={!composer.trim() || sending}
           onClick={() => { void handleSendMessage() }}
-          title="发送 (Enter)"
+          title={t('transcript:composer.sendTooltip')}
         >
-          send
+          {t('transcript:composer.sendLabel')}
         </button>
       </div>
       {!fullscreen && !fillHeight && (
@@ -1300,13 +1308,13 @@ export default function TranscriptView({ todoId, sessionId, onFork, autoRefreshM
           className="tv-resize-handle"
           onMouseDown={onDragStart}
           onTouchStart={onDragStart}
-          title="拖动调整高度"
+          title={t('transcript:resize.tooltip')}
         >
           <div className="tv-resize-grip" />
         </div>
       )}
       {fullscreen && (
-        <div className="tv-fullscreen-hint">按 Esc 或点击右上角退出全屏</div>
+        <div className="tv-fullscreen-hint">{t('transcript:fullscreenHint')}</div>
       )}
     </div>
   )
