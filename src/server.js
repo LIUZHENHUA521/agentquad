@@ -8,6 +8,7 @@ import express from "express";
 import { WebSocketServer } from "ws";
 import {
 	DEFAULT_ROOT_DIR,
+	SUPPORTED_TOOLS,
 	inspectToolsConfig,
 	loadConfig,
 	resolveToolsConfig,
@@ -26,8 +27,6 @@ import { createTemplatesRouter } from "./routes/templates.js";
 import { createRecurringRulesRouter } from "./routes/recurringRules.js";
 import { createStatsRouter } from "./routes/stats.js";
 import { createReportsRouter } from "./routes/reports.js";
-import { createPipelinesRouter } from "./routes/pipelines.js";
-import { createOrchestrator } from "./orchestrator.js";
 import { createWikiRouter } from "./routes/wiki.js";
 import { createWikiService } from "./wiki/index.js";
 import { createSearchRouter } from "./routes/search.js";
@@ -672,11 +671,13 @@ export function createServer(opts = {}) {
 				...bodyWithoutTelegram,
 				telegram: mergedTelegram,
 				lark: mergedLark,
-				tools: {
-					...current.tools,
-					claude: mergeToolConfig(current.tools?.claude, nextToolsPatch.claude),
-					codex: mergeToolConfig(current.tools?.codex, nextToolsPatch.codex),
-				},
+				tools: (() => {
+					const merged = { ...current.tools };
+					for (const name of SUPPORTED_TOOLS) {
+						merged[name] = mergeToolConfig(current.tools?.[name], nextToolsPatch[name]);
+					}
+					return merged;
+				})(),
 				// 深合并 pricing：允许前端只发部分字段（如仅改 cnyRate）而不清空其他。
 				// models 字段整体替换，这样 UI 里删除条目才能落到磁盘。
 				pricing: pricingPatch
@@ -1137,9 +1138,6 @@ export function createServer(opts = {}) {
 		getPricing: () => loadConfig({ rootDir: configRootDir }).pricing,
 	}));
 	app.use("/api/reports", createReportsRouter({ db }));
-	// Multi-agent pipeline orchestrator
-	const orchestrator = createOrchestrator({ db, pty, aiTerminal: ait, logDir });
-	app.use("/api/pipelines", createPipelinesRouter({ db, orchestrator }));
 
 	const wikiConfig = (initialConfig && initialConfig.wiki) || {
 		wikiDir: join(DEFAULT_ROOT_DIR, "wiki"),
