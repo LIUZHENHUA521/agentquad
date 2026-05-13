@@ -13,6 +13,7 @@ import {
   setConfigValue,
   resolveToolsConfig,
 } from './config.js'
+import { shouldRunWizard, runFirstRunWizard } from './first-run-wizard.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -361,6 +362,27 @@ export async function runStart(cmdOpts = {}) {
     ? '0.0.0.0'
     : (cmdOpts.host || cfg.host || '127.0.0.1')
 
+  // 首跑向导（命中条件才进；任何异常都不阻塞后续 start）
+  try {
+    const need = shouldRunWizard({
+      rootDir,
+      isTTY: !!process.stdin.isTTY && !!process.stdout.isTTY,
+      env: process.env,
+      flags: { wizard: cmdOpts.wizard !== false },
+    })
+    if (need) {
+      const r = await runFirstRunWizard()
+      if (r.defaultTool) {
+        setConfigValue('defaultTool', r.defaultTool, { rootDir })
+      }
+    }
+  } catch (e) {
+    console.warn(`⚠ first-run wizard skipped: ${e?.message || e}`)
+  }
+
+  // dry-run 短路（仅用于测试，让默认 action 测试不真起服务）
+  if (process.env.AGENTQUAD_DRY_RUN === '1') return
+
   // ─── stdout/stderr 复制到 ~/.agentquad/logs/agentquad.log ───
   // 保留正常 console 输出 + 同步追加到日志文件，方便诊断
   try {
@@ -505,7 +527,15 @@ program.command('start')
   .option('--cwd <path>', 'default cwd for AI terminal sessions')
   .option('--host <host>', 'bind address (e.g. 0.0.0.0 to allow Tailscale/LAN access)')
   .option('--expose', 'shorthand for --host 0.0.0.0 (bind all interfaces)')
+  .option('--no-wizard', 'skip first-run wizard even if config.json is absent')
   .action(async (cmdOpts) => { await runStart(cmdOpts) })
+
+// 裸跑 `agentquad`（无子命令）→ 复用 start 逻辑，默认开向导
+program
+  .option('--no-wizard', 'skip first-run wizard')
+  .action(async (cmdOpts) => {
+    await runStart({ ...cmdOpts })
+  })
 
 program.command('stop')
   .action(async () => {
