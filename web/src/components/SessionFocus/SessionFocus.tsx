@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { useFocusStore } from '../../store/focusStore'
 import { useAiSessionStore } from '../../store/aiSessionStore'
+import { useUnreadStore } from '../../store/unreadStore'
 import { FocusSubbar } from './FocusSubbar'
 import { FocusTabs } from './FocusTabs'
 import { LogPanel } from './LogPanel'
@@ -15,6 +16,14 @@ export function SessionFocus() {
   const clearFocus = useFocusStore((s) => s.clearFocus)
 
   const sessions = useAiSessionStore((s) => s.sessions)
+
+  // 用户打开 focus mode 即视为"已读" —— 让 TodoCard 的待确认徽章清掉
+  // (条件：sessionId 存在且 user 真在 focus 这个 session)
+  const markSeen = useUnreadStore((s) => s.markSeen)
+  useEffect(() => {
+    if (!focusedSessionId) return
+    markSeen(focusedSessionId)
+  }, [focusedSessionId, markSeen])
 
   // Nudge ResizeObservers (xterm fit, etc.) after the focus mode opens or
   // after a tab switch. Without this, the Live xterm canvas can stay sized

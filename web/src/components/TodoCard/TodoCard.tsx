@@ -165,23 +165,30 @@ export function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo =
             )}
           </div>
 
-          {todo.aiSession && (
-            <div className="todo-ai-status-row" onClick={(e) => e.stopPropagation()}>
-              <span className="todo-ai-tag">{todo.aiSession.tool}</span>
-              <span className={`todo-ai-state todo-ai-state-${liveSessionsMap.get(todo.aiSession.sessionId)?.status ?? 'idle'}`}>
-                {(() => {
-                  const status = liveSessionsMap.get(todo.aiSession.sessionId)?.status
-                  if (status === 'running') return '● running'
-                  if (status === 'pending_confirm') return '⚠ pending confirm'
-                  if (status === 'done') return '✓ done'
-                  if (status === 'failed') return '✕ failed'
-                  if (status === 'stopped') return '○ stopped'
-                  return '○ idle'
-                })()}
-              </span>
-              <ActivitySparkline sessionId={todo.aiSession.sessionId} width={70} height={14} />
-            </div>
-          )}
+          {todo.aiSession && (() => {
+            // 三态简化：running / 待确认 / 空闲。
+            // 待确认 = 真实 pending_confirm（后端要 user 批准）OR
+            //         有未读回复（lastTurnDoneAt > lastSeenAt，但 user 还没打开 focus mode 看过）。
+            // 用户点开 focus mode → SessionFocus mount → markSeen → 这里再渲染时未读已清。
+            const liveSession = liveSessionsMap.get(todo.aiSession.sessionId)
+            const status = liveSession?.status
+            const liveTurnDoneAt = liveSession?.lastTurnDoneAt ?? null
+            const turnDoneAt = liveTurnDoneAt || todo.aiSession.lastTurnDoneAt || null
+            const unread = isSessionUnread(turnDoneAt, lastSeenMap.get(todo.aiSession.sessionId))
+            const isRunning = status === 'running'
+            const isPending = status === 'pending_confirm' || unread
+            const stateClass = isRunning ? 'running' : isPending ? 'pending_confirm' : 'idle'
+            const label = isRunning ? '● running'
+              : isPending ? '⚠ 待确认'
+              : '○ 空闲'
+            return (
+              <div className="todo-ai-status-row" onClick={(e) => e.stopPropagation()}>
+                <span className="todo-ai-tag">{todo.aiSession.tool}</span>
+                <span className={`todo-ai-state todo-ai-state-${stateClass}`}>{label}</span>
+                <ActivitySparkline sessionId={todo.aiSession.sessionId} width={70} height={14} />
+              </div>
+            )
+          })()}
 
           <div className="todo-card-toolbar" onClick={(e) => e.stopPropagation()}>
           <Tooltip title="复制标题和描述">
