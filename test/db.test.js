@@ -543,4 +543,23 @@ describe('transcript_files usage columns', () => {
       expect(() => db.bulkUpdateTodos({ ids: [a.id], patch: {} })).toThrow(/patch_empty/)
     })
   })
+
+  describe('listSubtodosByParent', () => {
+    it('returns children with full Todo shape, ordered by sort_order', () => {
+      const parent = db.createTodo({ title: 'P', quadrant: 1 })
+      const c1 = db.createTodo({ title: 'C1', quadrant: 1, parentId: parent.id, sortOrder: 200 })
+      const c2 = db.createTodo({ title: 'C2', quadrant: 1, parentId: parent.id, sortOrder: 100 })
+      db.createTodo({ title: 'Unrelated', quadrant: 2 })
+      const subs = db.listSubtodosByParent(parent.id)
+      expect(subs).toHaveLength(2)
+      expect(subs[0].id).toBe(c2.id)
+      expect(subs[1].id).toBe(c1.id)
+      expect(subs[0].title).toBe('C2')
+    })
+
+    it('returns empty array for parent without children', () => {
+      const p = db.createTodo({ title: 'Solo', quadrant: 3 })
+      expect(db.listSubtodosByParent(p.id)).toEqual([])
+    })
+  })
 })

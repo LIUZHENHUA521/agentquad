@@ -526,6 +526,14 @@ export function openDb(file = ':memory:') {
     return todos.filter(todo => includeIds.has(todo.id) || (todo.parentId && includeIds.has(todo.parentId)))
   }
 
+  function listSubtodosByParent(parentId) {
+    if (!parentId) return []
+    const rows = db.prepare(
+      `SELECT * FROM todos WHERE parent_id = ? ORDER BY sort_order ASC, created_at ASC`
+    ).all(parentId)
+    return rows.map(rowToTodo)
+  }
+
   function archiveTodo(id) {
     const existing = stmts.getById.get(id)
     if (!existing) throw new Error('todo_not_found')
@@ -1651,6 +1659,7 @@ export function openDb(file = ':memory:') {
     updateTodo,
     deleteTodo,
     listTodos,
+    listSubtodosByParent,
     listCompletedTodos,
     countMissedInRange,
     archiveTodo,
