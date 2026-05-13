@@ -11,3 +11,6 @@ web/tsconfig.tsbuildinfo
 # quadtodo multi-agent worktrees
 .quadtodo-worktrees/
 .worktrees/
+
+# npm pack output
+*.tgz
