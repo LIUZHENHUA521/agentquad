@@ -11,7 +11,7 @@ import {
   PlayCircleOutlined, SettingOutlined, CopyOutlined,
   CodeOutlined, DesktopOutlined, SendOutlined, EditOutlined,
   FileTextOutlined, ExportOutlined,
-  BookOutlined, LineChartOutlined, TrophyOutlined, BranchesOutlined,
+  BookOutlined, LineChartOutlined, TrophyOutlined,
   MenuOutlined, WarningOutlined,
 } from '@ant-design/icons'
 import { useIsMobile } from './hooks/useIsMobile'
@@ -54,8 +54,7 @@ import {
   buildUnreadSessionItems,
   type UnreadSessionItem,
 } from './replyHub'
-import { getTranscriptStats, listPipelineTemplates, listPipelineRunsForTodo, startPipelineRun, PipelineTemplate, PipelineRun } from './api'
-import PipelineRunDrawer from './pipeline/PipelineRunDrawer'
+import { getTranscriptStats } from './api'
 import { useUnreadStore } from './store/unreadStore'
 import { useDrawerStackStore } from './store/drawerStackStore'
 import { useDrawerStack } from './hooks/useDrawerStack'
@@ -219,50 +218,6 @@ export default function TodoManage() {
   const [detailTodo, setDetailTodo] = useState<Todo | null>(null)
   const [detailOpen, setDetailOpen] = useState(false)
   const [memorizing, setMemorizing] = useState(false)
-  // Pipeline state
-  const [pipelineTemplates, setPipelineTemplates] = useState<PipelineTemplate[]>([])
-  const [pipelineDrawerOpen, setPipelineDrawerOpen] = useState(false)
-  const [pipelineActiveRun, setPipelineActiveRun] = useState<PipelineRun | null>(null)
-  const [pipelineActiveTemplate, setPipelineActiveTemplate] = useState<PipelineTemplate | null>(null)
-  const [pipelineActiveTodo, setPipelineActiveTodo] = useState<Todo | null>(null)
-  const [pipelineStarting, setPipelineStarting] = useState(false)
-  useEffect(() => {
-    listPipelineTemplates().then(setPipelineTemplates).catch(() => { /* silent */ })
-  }, [])
-
-  const handleStartPipeline = useCallback(async (todo: Todo) => {
-    if (!pipelineTemplates.length) { message.warning('没有可用的 pipeline 模板'); return }
-    if (!todo.workDir) { message.error('当前任务未配置工作目录（workDir），无法创建 worktree'); return }
-    // If there's an existing running pipeline, reuse it
-    try {
-      const runs = await listPipelineRunsForTodo(todo.id)
-      const running = runs.find(r => r.status === 'running')
-      if (running) {
-        const tpl = pipelineTemplates.find(t => t.id === running.templateId) || pipelineTemplates[0]
-        setPipelineActiveRun(running)
-        setPipelineActiveTemplate(tpl)
-        setPipelineActiveTodo(todo)
-        setPipelineDrawerOpen(true)
-        return
-      }
-    } catch { /* fall through to start new */ }
-
-    // Only 1 built-in template for now — use it directly
-    const tpl = pipelineTemplates[0]
-    setPipelineStarting(true)
-    try {
-      const run = await startPipelineRun(todo.id, tpl.id)
-      setPipelineActiveRun(run)
-      setPipelineActiveTemplate(tpl)
-      setPipelineActiveTodo(todo)
-      setPipelineDrawerOpen(true)
-      message.success(`已启动 pipeline：${tpl.name}`)
-    } catch (e: any) {
-      message.error(e?.message || '启动 pipeline 失败')
-    } finally {
-      setPipelineStarting(false)
-    }
-  }, [pipelineTemplates])
   const [todoCoverage, setTodoCoverage] = useState<Record<string, boolean>>({})  // todoId → already applied
 
   // Recurring-rule subsystem (Modal + detail-drawer rule, extracted M4 cleanup)
@@ -351,8 +306,6 @@ export default function TodoManage() {
   useDrawerStack('wiki', wikiOpen, () => closeDrawer('wiki'))
   useDrawerStack('template', templateDrawerOpen, () => closeDrawer('template'))
   useDrawerStack('transcript', transcriptDrawerOpen, () => setTranscriptDrawerOpen(false))
-  useDrawerStack('pipeline', pipelineDrawerOpen, () => setPipelineDrawerOpen(false))
-
   // M2 T9: react to dispatchStore signals (jump-to-todo + request-new-todo from CommandPalette)
   const jumpToTodoId = useDispatchStore((s) => s.jumpToTodoId)
   const setJumpTo = useDispatchStore((s) => s.setJumpTo)
@@ -1365,16 +1318,6 @@ export default function TodoManage() {
               }}>验收通过</Button>
             )}
             {detailTodo && (
-              <Tooltip title="coder ↔ reviewer 自动循环，每个 agent 独立 worktree">
-                <Button
-                  size="small" type="text"
-                  icon={<BranchesOutlined />}
-                  loading={pipelineStarting}
-                  onClick={() => detailTodo && handleStartPipeline(detailTodo)}
-                >Pipeline</Button>
-              </Tooltip>
-            )}
-            {detailTodo && (
               <Button
                 size="small" type="text"
                 onClick={() => handleMemorize(detailTodo)}
@@ -1681,21 +1624,6 @@ export default function TodoManage() {
         todos={todos}
         onCancel={() => setForkTarget(null)}
         onConfirm={handleForkConfirm}
-      />
-      <PipelineRunDrawer
-        open={pipelineDrawerOpen}
-        runId={pipelineActiveRun?.id ?? null}
-        todoId={pipelineActiveTodo?.id ?? null}
-        template={pipelineActiveTemplate}
-        todoStatus={pipelineActiveTodo?.status ?? 'ai_running'}
-        cwd={pipelineActiveTodo?.workDir ?? null}
-        onClose={() => {
-          setPipelineDrawerOpen(false)
-          setPipelineActiveRun(null)
-          setPipelineActiveTemplate(null)
-          setPipelineActiveTodo(null)
-          fetchTodos()
-        }}
       />
       <Modal
         open={!!toolMissing}
