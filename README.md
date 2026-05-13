@@ -9,11 +9,13 @@ GitHub 仓库：`git@github.com:LIUZHENHUA521/agentquad.git`
 ## 30 秒上手
 
 ```bash
-npm install -g agentquad           # 装 AgentQuad 本体
-agentquad install-tools --all      # 装 claude + codex（AI 终端必需）
-agentquad doctor                   # 自检
-agentquad start                    # 自动打开浏览器 → http://127.0.0.1:5677
+npm install -g agentquad
+agentquad                          # 第一次会引导装 claude / codex 并选默认工具
 ```
+
+> 浏览器自动打开 http://127.0.0.1:5677
+> 跳过首跑向导：`AGENTQUAD_SKIP_WIZARD=1 agentquad` 或 `agentquad --no-wizard`
+> 端口 5677 被占用时会自动尝试 5678。
 
 > **平台**：仅支持 macOS / Linux；Windows 暂不支持，规划中。
 
@@ -122,7 +124,8 @@ agentquad start
 
 | 命令 | 作用 |
 |---|---|
-| `agentquad start [--port 5677] [--host 0.0.0.0] [--expose] [--no-open] [--cwd <path>]` | 启动服务（`--expose` = `--host 0.0.0.0`） |
+| `agentquad`（无参数） | 等价于 `agentquad start`，首次启动会引导装 AI 工具 |
+| `agentquad start [--port 5677] [--host 0.0.0.0] [--expose] [--no-open] [--cwd <path>] [--no-wizard]` | 启动服务（`--expose` = `--host 0.0.0.0`，`--no-wizard` 跳过首跑向导） |
 | `agentquad stop` | 停止服务（SIGTERM 3 秒后 SIGKILL） |
 | `agentquad status` | 查看运行状态 + 活跃会话数 |
 | `agentquad doctor` | 环境自检 |
@@ -244,6 +247,7 @@ agentquad/
 - **终端显示 `session_not_found`**：会话已超时（30 分钟已结束的会话会被清理），重新点"启动 AI 终端"
 - **Live 终端排版乱（横线 / 中文混排 / 状态栏对不齐）**：默认情况下，AgentQuad 给 PTY 子进程注入 `LANG=LC_CTYPE=en_US.UTF-8`，让 wcwidth 与 xterm.js (Unicode 11) 对齐。如果某些 TUI 你必须保留 CJK locale，设环境变量 `AGENTQUAD_KEEP_CJK_LOCALE=1` 重启 agentquad 即可还原原行为。
 - **Multi-agent Pipeline 功能已移除**：之前的 Pipeline（coder ↔ reviewer 循环）特性已下线。升级后下次启动会自动 DROP `pipeline_runs` / `pipeline_templates` 两张表。仓库根目录里如果有遗留的 `.quadtodo-worktrees/` 目录（worktree 临时目录），可手动 `rm -rf .quadtodo-worktrees/` 清理；`.gitignore` 里的 `.quadtodo-worktrees/` 行可保留也可删除（保留无副作用）。
+- **0.3.0 升级提示**：从 0.2.x 升上来后，pid 文件格式从纯数字改为 JSON。旧脚本里如果有 `kill $(cat ~/.agentquad/agentquad.pid)` 会失败 —— 请改用 `agentquad stop`。
 
 
 
