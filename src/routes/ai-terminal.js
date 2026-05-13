@@ -766,6 +766,7 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
       return
     }
 
+    broadcastToSession(session, { type: 'auto_mode_switching', target: 'bypass' })
     const todoSnapshot = db.getTodo(session.todoId)
     session.replacedBySessionId = '__pending__'
     let restarted

@@ -935,6 +935,30 @@ describe('routes/ai-terminal', () => {
     })
   })
 
+  it('set_auto_mode bypass broadcasts auto_mode_switching before session_restarted', async () => {
+    const nativeId = 'abcdef12-3456-7890-abcd-ef1234567890'
+    const todo = ctx.db.createTodo({ title: 'T', quadrant: 1 })
+    const { body } = await request(ctx.app).post('/api/ai-terminal/exec')
+      .send({ todoId: todo.id, prompt: 'hi', tool: 'claude', cwd: '/tmp' })
+    ctx.pty.emit('native-session', { sessionId: body.sessionId, nativeId })
+
+    const sent = []
+    const ws = { readyState: 1, OPEN: 1, send: (d) => sent.push(JSON.parse(d)) }
+    ctx.ait.addBrowser(body.sessionId, ws)
+
+    ctx.ait.handleBrowserMessage(body.sessionId, { type: 'set_auto_mode', autoMode: 'bypass' }, ws)
+
+    const switchingIdx = sent.findIndex(m => m.type === 'auto_mode_switching')
+    const restartedIdx = sent.findIndex(m => m.type === 'session_restarted')
+    expect(switchingIdx).toBeGreaterThanOrEqual(0)
+    expect(restartedIdx).toBeGreaterThanOrEqual(0)
+    expect(switchingIdx).toBeLessThan(restartedIdx)
+    expect(sent[switchingIdx]).toMatchObject({
+      type: 'auto_mode_switching',
+      target: 'bypass',
+    })
+  })
+
   it('old session exit during runtime bypass restart does not overwrite replacement state', async () => {
     const nativeId = 'abcdef12-3456-7890-abcd-ef1234567890'
     const todo = ctx.db.createTodo({ title: 'T', quadrant: 1 })
