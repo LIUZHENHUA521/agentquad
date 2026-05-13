@@ -17,6 +17,7 @@ const zh = {
     idle: '空闲',
     yes: '是',
     no: '否',
+    clear: '清除',
   },
   palette: {
     a11y: {
@@ -59,7 +60,47 @@ const zh = {
     },
     subtaskLabel: '↳ {{parent}} / {{title}}',
   },
-  topbar: {},
+  topbar: {
+    pendingLabel: '待确认',
+    searchHint: '搜索或输入命令',
+    tooltip: {
+      stopSession: '停止该会话的 PTY 终端',
+      newTodo: '新建待办',
+      promptTemplate: 'Prompt 模板',
+      transcriptRescue: '历史会话找回',
+      statsReports: '统计与报告',
+      wiki: '知识库',
+      settings: '设置',
+    },
+    popover: {
+      moreCount: '还有 {{count}} 条',
+      pendingTitle: '待确认（{{count}}）',
+      unreadWithTool: '{{tool}} · 未读',
+      noPending: '暂无待确认',
+      runningSessionsTitle: '运行中的会话（{{count}}）',
+      noRunningSessions: '暂无运行中的会话',
+      idleSessionsTitle: '空闲会话（{{count}}）',
+      noIdleSessions: '暂无空闲会话',
+    },
+    statLabel: {
+      running: '运行中',
+      idle: '空闲',
+    },
+    aria: {
+      stopSession: '停止会话',
+      newTodo: '新建待办',
+      templates: '模板',
+      recoverSession: '找回会话',
+    },
+    stage: {
+      addStage: '加阶段',
+      dev: '待开发',
+      review: '待评审',
+      test: '待测试',
+      release: '待发布',
+      blocked: '阻塞中',
+    },
+  },
   todo: {
     restoredToTodo: '已恢复为待办',
   },
@@ -69,6 +110,7 @@ const zh = {
   settings: {},
   errors: {
     restoreFailed: '恢复失败',
+    stopFailed: '停止失败：{{msg}}',
   },
 } as const
 

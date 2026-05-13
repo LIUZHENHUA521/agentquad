@@ -20,6 +20,7 @@ const en = {
     idle: 'Idle',
     yes: 'Yes',
     no: 'No',
+    clear: 'Clear',
   },
   palette: {
     a11y: {
@@ -62,7 +63,47 @@ const en = {
     },
     subtaskLabel: '↳ {{parent}} / {{title}}',
   },
-  topbar: {},
+  topbar: {
+    pendingLabel: 'Pending',
+    searchHint: 'Search or run a command',
+    tooltip: {
+      stopSession: 'Stop this session\'s PTY terminal',
+      newTodo: 'New todo',
+      promptTemplate: 'Prompt templates',
+      transcriptRescue: 'Recover past sessions',
+      statsReports: 'Stats & Reports',
+      wiki: 'Wiki',
+      settings: 'Settings',
+    },
+    popover: {
+      moreCount: '{{count}} more',
+      pendingTitle: 'Pending ({{count}})',
+      unreadWithTool: '{{tool}} · Unread',
+      noPending: 'No pending',
+      runningSessionsTitle: 'Running sessions ({{count}})',
+      noRunningSessions: 'No running sessions',
+      idleSessionsTitle: 'Idle sessions ({{count}})',
+      noIdleSessions: 'No idle sessions',
+    },
+    statLabel: {
+      running: 'running',
+      idle: 'idle',
+    },
+    aria: {
+      stopSession: 'Stop session',
+      newTodo: 'New todo',
+      templates: 'Templates',
+      recoverSession: 'Recover session',
+    },
+    stage: {
+      addStage: 'Add stage',
+      dev: 'To Dev',
+      review: 'To Review',
+      test: 'To Test',
+      release: 'To Release',
+      blocked: 'Blocked',
+    },
+  },
   todo: {
     restoredToTodo: 'Restored to todo',
   },
@@ -72,6 +113,7 @@ const en = {
   settings: {},
   errors: {
     restoreFailed: 'Restore failed',
+    stopFailed: 'Stop failed: {{msg}}',
   },
 } as const satisfies LocaleShape<Resources>
 

@@ -2,6 +2,7 @@ import type { MouseEvent as ReactMouseEvent, KeyboardEvent as ReactKeyboardEvent
 import { createElement } from 'react'
 import { Dropdown } from 'antd'
 import { Plus } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import type { StageTag } from '../../api'
 import { STAGE_TAGS, STAGE_TAG_META } from '../../stageTags'
 
@@ -12,13 +13,14 @@ export interface StageTagChipProps {
 }
 
 export function StageTagChip({ value, onChange, disabled }: StageTagChipProps) {
+  const { t } = useTranslation(['common', 'topbar'])
   const items = [
     ...STAGE_TAGS.map(tag => {
       const meta = STAGE_TAG_META[tag]
-      return { key: tag, label: createElement('span', { style: { display: 'inline-flex', alignItems: 'center', gap: 6 } }, meta.icon(), meta.label) }
+      return { key: tag, label: createElement('span', { style: { display: 'inline-flex', alignItems: 'center', gap: 6 } }, meta.icon(), t(meta.labelKey)) }
     }),
     { type: 'divider' as const },
-    { key: '__clear__', label: '清除', disabled: value == null },
+    { key: '__clear__', label: t('common:clear'), disabled: value == null },
   ]
 
   const handleClick = ({ key, domEvent }: { key: string; domEvent: ReactMouseEvent | ReactKeyboardEvent }) => {
@@ -33,13 +35,13 @@ export function StageTagChip({ value, onChange, disabled }: StageTagChipProps) {
     ? (
       <button type="button" className="stage-tag-chip stage-tag-chip--empty" disabled={disabled}>
         <Plus size={12} />
-        <span>加阶段</span>
+        <span>{t('topbar:stage.addStage')}</span>
       </button>
     )
     : (
       <button type="button" className={`stage-tag-chip ${meta.className}`} disabled={disabled}>
         <span style={{ display: 'inline-flex', alignItems: 'center' }}>{meta.icon()}</span>
-        <span>{meta.label}</span>
+        <span>{t(meta.labelKey)}</span>
       </button>
     )
 

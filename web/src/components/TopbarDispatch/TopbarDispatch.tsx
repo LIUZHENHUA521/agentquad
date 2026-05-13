@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react'
 import { Popover, Tooltip, message } from 'antd'
 import { CloseOutlined } from '@ant-design/icons'
 import { Plus, Search, BarChart3, BookOpen, FileText, Settings, Zap, Pause, MessageCircleWarning } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { StatPill } from '../StatPill'
 import { ThemeToggle } from '../ThemeToggle'
 import { useDispatchStore } from '../../store/dispatchStore'
@@ -20,6 +21,19 @@ interface SessionRowEntry {
   todoId: string
   title: string
   tool: string
+  startedAt: number
+}
+
+// 同一个 todoId 可能在 sessions Map 中并存多条 running session（服务端 done 事件丢失、
+// bypass replaceSessionId 中间态、或同 todo 同时跑多工具等）。展示层折叠成一条，保留
+// startedAt 更新的那条，避免顶栏弹层出现完全相同的标题。
+function dedupByTodoId(entries: SessionRowEntry[]): SessionRowEntry[] {
+  const byTodo = new Map<string, SessionRowEntry>()
+  for (const entry of entries) {
+    const prev = byTodo.get(entry.todoId)
+    if (!prev || entry.startedAt > prev.startedAt) byTodo.set(entry.todoId, entry)
+  }
+  return Array.from(byTodo.values())
 }
 
 export interface TopbarDispatchProps {
@@ -30,6 +44,7 @@ export interface TopbarDispatchProps {
 }
 
 export function TopbarDispatch({ unreadItems, onJump, onFocusSession, onStopSession }: TopbarDispatchProps) {
+  const { t } = useTranslation(['topbar', 'errors'])
   const { runningCount, idleCount } = useDispatchStats()
   const openDrawer = useDispatchStore((s) => s.openDrawer)
   const togglePalette = useDispatchStore((s) => s.togglePalette)
@@ -41,8 +56,8 @@ export function TopbarDispatch({ unreadItems, onJump, onFocusSession, onStopSess
   const sessions = useAiSessionStore((s) => s.sessions)
   const lastSeenMap = useUnreadStore((s) => s.lastSeenAt)
   const todos = useTodoSnapshotStore((s) => s.todos)
-  const runningList: SessionRowEntry[] = []
-  const idleList: SessionRowEntry[] = []
+  const runningRaw: SessionRowEntry[] = []
+  const idleRaw: SessionRowEntry[] = []
   sessions.forEach((session) => {
     const unread = isSessionUnread(session.lastTurnDoneAt, lastSeenMap.get(session.sessionId))
     const state = deriveAiState(session.status, unread, session.awaitingReply ?? false)
@@ -51,27 +66,33 @@ export function TopbarDispatch({ unreadItems, onJump, onFocusSession, onStopSess
       todoId: session.todoId,
       title: session.todoTitle,
       tool: session.tool,
+      startedAt: session.startedAt,
     }
-    if (state === 'running') runningList.push(entry)
-    else if (state === 'idle' && !isClosedAiStatus(session.status)) idleList.push(entry)
+    if (state === 'running') runningRaw.push(entry)
+    else if (state === 'idle' && !isClosedAiStatus(session.status)) idleRaw.push(entry)
   })
   // Fallback: 把 todos 里有 active aiSession 但 live store 还没收到的，按 todo.aiSession.status
   // 也归并进来，避免首启 3s 内 running pill 计数为 0、点开 popover 看不到这条新会话。
-  for (const t of todos) {
-    const sid = t.aiSession?.sessionId
+  for (const todo of todos) {
+    const sid = todo.aiSession?.sessionId
     if (!sid || sessions.has(sid)) continue
-    const status = t.aiSession?.status
-    const unread = isSessionUnread(t.aiSession?.lastTurnDoneAt ?? null, lastSeenMap.get(sid))
+    const status = todo.aiSession?.status
+    const unread = isSessionUnread(todo.aiSession?.lastTurnDoneAt ?? null, lastSeenMap.get(sid))
     const state = deriveAiState(status, unread)
     const entry: SessionRowEntry = {
       id: sid,
-      todoId: t.id,
-      title: t.title,
-      tool: t.aiSession?.tool ?? 'ai',
+      todoId: todo.id,
+      title: todo.title,
+      tool: todo.aiSession?.tool ?? 'ai',
+      startedAt: todo.aiSession?.startedAt ?? 0,
     }
-    if (state === 'running') runningList.push(entry)
-    else if (state === 'idle' && !isClosedAiStatus(status)) idleList.push(entry)
+    if (state === 'running') runningRaw.push(entry)
+    else if (state === 'idle' && !isClosedAiStatus(status)) idleRaw.push(entry)
   }
+  const runningList = dedupByTodoId(runningRaw)
+  const runningTodoIds = new Set(runningList.map((entry) => entry.todoId))
+  // 同 todo 已经在 running 列表的，不再出现在 idle 列表（与 useDispatchStats 计数一致）。
+  const idleList = dedupByTodoId(idleRaw).filter((entry) => !runningTodoIds.has(entry.todoId))
 
   const pendingCount = unreadItems.length
 
@@ -96,12 +117,12 @@ export function TopbarDispatch({ unreadItems, onJump, onFocusSession, onStopSess
         await onStopSession(entry.id)
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
-        message.error(`停止失败: ${msg}`)
+        message.error(t('errors:stopFailed', { msg }))
       } finally {
         setStoppingId((cur) => (cur === entry.id ? null : cur))
       }
     },
-    [onStopSession, stoppingId],
+    [onStopSession, stoppingId, t],
   )
 
   const renderSessionList = (
@@ -125,7 +146,7 @@ export function TopbarDispatch({ unreadItems, onJump, onFocusSession, onStopSess
               <span className="topbar-tooltip-name">{entry.title}</span>
               <span className="topbar-tooltip-meta">{entry.tool}</span>
             </button>
-            <Tooltip title="停止该会话的 PTY 终端">
+            <Tooltip title={t('topbar:tooltip.stopSession')}>
               <button
                 type="button"
                 className="topbar-row-close-btn"
@@ -134,7 +155,7 @@ export function TopbarDispatch({ unreadItems, onJump, onFocusSession, onStopSess
                   void handleStopRow(entry)
                 }}
                 disabled={stopping}
-                aria-label="Stop session"
+                aria-label={t('topbar:aria.stopSession')}
                 data-testid="topbar-session-row-close"
               >
                 <CloseOutlined />
@@ -145,7 +166,7 @@ export function TopbarDispatch({ unreadItems, onJump, onFocusSession, onStopSess
       })}
       {options?.remainder && options.remainder > 0 ? (
         <div className="topbar-tooltip-row topbar-session-remainder">
-          <span className="topbar-tooltip-meta">还有 {options.remainder} 条</span>
+          <span className="topbar-tooltip-meta">{t('topbar:popover.moreCount', { count: options.remainder })}</span>
         </div>
       ) : null}
     </div>
@@ -153,10 +174,10 @@ export function TopbarDispatch({ unreadItems, onJump, onFocusSession, onStopSess
 
   const pendingPopoverContent =
     pendingCount === 0 ? (
-      <div className="topbar-tooltip-empty">No pending</div>
+      <div className="topbar-tooltip-empty">{t('topbar:popover.noPending')}</div>
     ) : (
       <>
-        <div className="topbar-tooltip-title">待确认 ({pendingCount})</div>
+        <div className="topbar-tooltip-title">{t('topbar:popover.pendingTitle', { count: pendingCount })}</div>
         <div className="topbar-pending-list">
           {unreadItems.map((item) => (
             <button
@@ -171,7 +192,7 @@ export function TopbarDispatch({ unreadItems, onJump, onFocusSession, onStopSess
                 style={{ background: 'var(--ai-pending-confirm)' }}
               />
               <span className="topbar-tooltip-name">{item.todoTitle}</span>
-              <span className="topbar-tooltip-meta">{item.tool} · 未读</span>
+              <span className="topbar-tooltip-meta">{t('topbar:popover.unreadWithTool', { tool: item.tool })}</span>
             </button>
           ))}
         </div>
@@ -180,10 +201,10 @@ export function TopbarDispatch({ unreadItems, onJump, onFocusSession, onStopSess
 
   const runningPopoverContent =
     runningList.length === 0 ? (
-      <div className="topbar-tooltip-empty">No running sessions</div>
+      <div className="topbar-tooltip-empty">{t('topbar:popover.noRunningSessions')}</div>
     ) : (
       <>
-        <div className="topbar-tooltip-title">Running sessions ({runningList.length})</div>
+        <div className="topbar-tooltip-title">{t('topbar:popover.runningSessionsTitle', { count: runningList.length })}</div>
         {renderSessionList(runningList, 'var(--ai-running)', () => setRunningOpen(false))}
       </>
     )
@@ -192,10 +213,10 @@ export function TopbarDispatch({ unreadItems, onJump, onFocusSession, onStopSess
   const idleRemainder = idleList.length - idleListVisible.length
   const idlePopoverContent =
     idleList.length === 0 ? (
-      <div className="topbar-tooltip-empty">No idle sessions</div>
+      <div className="topbar-tooltip-empty">{t('topbar:popover.noIdleSessions')}</div>
     ) : (
       <>
-        <div className="topbar-tooltip-title">Idle sessions ({idleList.length})</div>
+        <div className="topbar-tooltip-title">{t('topbar:popover.idleSessionsTitle', { count: idleList.length })}</div>
         {renderSessionList(idleListVisible, 'var(--ai-idle)', () => setIdleOpen(false), {
           remainder: idleRemainder,
         })}
@@ -222,7 +243,7 @@ export function TopbarDispatch({ unreadItems, onJump, onFocusSession, onStopSess
             icon={<Zap size={13} />}
             iconColor="var(--ai-running)"
             value={runningCount}
-            label="running"
+            label={t('topbar:statLabel.running')}
             data-testid="stat-running"
             onClick={() => setRunningOpen((v) => !v)}
           />
@@ -242,7 +263,7 @@ export function TopbarDispatch({ unreadItems, onJump, onFocusSession, onStopSess
             icon={<Pause size={13} />}
             iconColor="var(--ai-idle)"
             value={idleCount}
-            label="idle"
+            label={t('topbar:statLabel.idle')}
             data-testid="stat-idle"
             onClick={() => setIdleOpen((v) => !v)}
           />
@@ -263,7 +284,7 @@ export function TopbarDispatch({ unreadItems, onJump, onFocusSession, onStopSess
             icon={<MessageCircleWarning size={13} />}
             iconColor="var(--ai-pending-confirm)"
             value={pendingCount}
-            label="待确认"
+            label={t('topbar:pendingLabel')}
             data-testid="stat-pending"
             onClick={() => setPendingOpen((v) => !v)}
           />
@@ -274,47 +295,47 @@ export function TopbarDispatch({ unreadItems, onJump, onFocusSession, onStopSess
 
       <button className="topbar-cmdk-btn" onClick={togglePalette} data-testid="topbar-cmdk-btn">
         <span className="topbar-cmdk-prefix">⌘</span>
-        <span>Search or run a command</span>
+        <span>{t('topbar:searchHint')}</span>
         <kbd>⌘K</kbd>
       </button>
 
-      <Tooltip title="新建待办">
+      <Tooltip title={t('topbar:tooltip.newTodo')}>
         <button
           className="topbar-icon-btn"
           onClick={() => useDispatchStore.getState().signal('newTodo')}
-          aria-label="New todo"
+          aria-label={t('topbar:aria.newTodo')}
           data-testid="topbar-new-btn"
         >
           <Plus size={16} />
         </button>
       </Tooltip>
-      <Tooltip title="Prompt 模板">
+      <Tooltip title={t('topbar:tooltip.promptTemplate')}>
         <button
           className="topbar-icon-btn"
           onClick={() => openDrawer('template')}
-          aria-label="Templates"
+          aria-label={t('topbar:aria.templates')}
           data-testid="topbar-template-btn"
         >
           <FileText size={16} />
         </button>
       </Tooltip>
-      <Tooltip title="历史会话找回">
+      <Tooltip title={t('topbar:tooltip.transcriptRescue')}>
         <button
           className="topbar-icon-btn"
           onClick={() => useDispatchStore.getState().signal('recover')}
-          aria-label="Recover session"
+          aria-label={t('topbar:aria.recoverSession')}
           data-testid="topbar-recover-btn"
         >
           <Search size={16} />
         </button>
       </Tooltip>
-      <Tooltip title="Stats &amp; Reports">
+      <Tooltip title={t('topbar:tooltip.statsReports')}>
         <button className="topbar-icon-btn" onClick={() => openDrawer('statsReports')} data-testid="topbar-stats-btn"><BarChart3 size={16} /></button>
       </Tooltip>
-      <Tooltip title="Wiki">
+      <Tooltip title={t('topbar:tooltip.wiki')}>
         <button className="topbar-icon-btn" onClick={() => openDrawer('wiki')} data-testid="topbar-wiki-btn"><BookOpen size={16} /></button>
       </Tooltip>
-      <Tooltip title="Settings">
+      <Tooltip title={t('topbar:tooltip.settings')}>
         <button className="topbar-icon-btn" onClick={() => openDrawer('settings')} data-testid="topbar-settings-btn"><Settings size={16} /></button>
       </Tooltip>
       <ThemeToggle />
