@@ -563,3 +563,13 @@ describe('transcript_files usage columns', () => {
     })
   })
 })
+
+describe('pipeline tables removed', () => {
+  it('pipeline_runs and pipeline_templates tables do not exist after openDb', () => {
+    const db = openDb(':memory:')
+    const tableRow = db.raw.prepare(
+      `SELECT name FROM sqlite_master WHERE type='table' AND name IN ('pipeline_runs','pipeline_templates')`
+    ).all()
+    expect(tableRow).toEqual([])
+  })
+})
