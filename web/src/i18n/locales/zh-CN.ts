@@ -18,14 +18,59 @@ const zh = {
     yes: '是',
     no: '否',
   },
-  palette: {},
+  palette: {
+    a11y: {
+      commandPalette: '命令面板',
+    },
+    placeholder: '输入命令或搜索待办…',
+    placeholderAi: '搜索一个待办来启动 AI 会话（{{tool}}）…',
+    empty: {
+      noResults: '无匹配结果。',
+      noTodos: '没有可用的待办 — 请先创建一个。',
+    },
+    groups: {
+      quickActions: '快捷操作',
+      jumpToTodo: '跳转待办',
+      focusSession: '专注会话',
+      drawers: '功能面板',
+      view: '视图',
+      system: '系统',
+      recentTodos: '最近 / 活跃的待办',
+    },
+    actions: {
+      createTodo: '新建待办',
+      startAi: '启动 AI 会话（{{tool}}） →',
+      pickTodoForAi: '启动 AI 会话 — 选择一个待办（{{tool}}）',
+      backToDefault: '返回',
+      focusLabel: '专注：{{title}}',
+      restoreToTodo: '恢复到待办：{{label}}',
+      openStatsReports: '打开统计与报告',
+      openWiki: '打开知识库',
+      openSettings: '打开设置',
+      openStats: '打开统计',
+      insertFromTemplate: '从模板插入…',
+      telegramSync: 'Telegram 同步',
+      showOnlyTodo: '只看待办',
+      showOnlyDone: '只看已完成',
+      showAll: '查看全部待办',
+      toggleTheme: '切换主题（深色 / 浅色）',
+    },
+    meta: {
+      done: '已完成',
+    },
+    subtaskLabel: '↳ {{parent}} / {{title}}',
+  },
   topbar: {},
-  todo: {},
+  todo: {
+    restoredToTodo: '已恢复为待办',
+  },
   session: {},
   transcript: {},
   wiki: {},
   settings: {},
-  errors: {},
+  errors: {
+    restoreFailed: '恢复失败',
+  },
 } as const
 
 export default zh
