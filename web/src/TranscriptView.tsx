@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import { Input, Button, Spin, Tag, Empty, Tooltip, Mentions, Popconfirm } from 'antd'
 import { useAppMessages } from './design/useAppMessages'
 import {
-  ReloadOutlined, BranchesOutlined, DownOutlined, RightOutlined, SearchOutlined, SendOutlined,
+  ReloadOutlined, BranchesOutlined, DownOutlined, RightOutlined, SearchOutlined,
   FullscreenOutlined, FullscreenExitOutlined, StopOutlined, PoweroffOutlined,
 } from '@ant-design/icons'
 import ReactMarkdown from 'react-markdown'
@@ -688,17 +688,6 @@ export default function TranscriptView({ todoId, sessionId, onFork, autoRefreshM
     }
   }, [sessionId])
 
-  const handleSendEnter = useCallback(async () => {
-    setSending(true)
-    try {
-      await sendSessionInput('\r')
-    } catch (e: any) {
-      message.error(e?.message || '发送回车失败')
-    } finally {
-      setSending(false)
-    }
-  }, [sendSessionInput])
-
   // Ctrl+C：发 \x03 信号让 Claude 打断当前生成（停止 tool / 文本输出），
   // 会话保持存活，用户可以继续追问。对应终端里手动敲 Ctrl+C 的语义。
   const handleInterrupt = useCallback(async () => {
@@ -996,12 +985,6 @@ export default function TranscriptView({ todoId, sessionId, onFork, autoRefreshM
                 </>
               )
             })()}
-            <Button onClick={() => { void handleSendEnter() }} loading={sending}>
-              发送回车
-            </Button>
-            <Button type="primary" icon={<SendOutlined />} onClick={() => { void handleSendMessage() }} loading={sending} disabled={!composer.trim()}>
-              继续对话
-            </Button>
           </div>
         </div>
       </div>
