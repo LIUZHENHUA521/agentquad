@@ -16,6 +16,7 @@ import {
 } from '@ant-design/icons'
 import { useIsMobile } from './hooks/useIsMobile'
 import { useComments } from './hooks/useComments'
+import { useRecurringRule } from './hooks/useRecurringRule'
 import {
   DndContext, closestCenter, PointerSensor, TouchSensor,
   useSensor, useSensors, DragOverlay, DragStartEvent,
@@ -29,7 +30,7 @@ import {
   openTraeCN, openTerminal, openNativeAiResume, updateSessionLabel,
   listLiveSessions,
   listTemplates, PromptTemplate,
-  createRecurringRule, getRecurringRule, updateRecurringRule, deactivateRecurringRule,
+  createRecurringRule,
   RecurringFrequency, RecurringRule,
   Todo, Quadrant, AiTool,
   runWiki, getWikiPending,
@@ -211,7 +212,6 @@ export default function TodoManage() {
   // 详情
   const [detailTodo, setDetailTodo] = useState<Todo | null>(null)
   const [detailOpen, setDetailOpen] = useState(false)
-  const [detailRule, setDetailRule] = useState<RecurringRule | null>(null)
   const [memorizing, setMemorizing] = useState(false)
   // Pipeline state
   const [pipelineTemplates, setPipelineTemplates] = useState<PipelineTemplate[]>([])
@@ -259,10 +259,18 @@ export default function TodoManage() {
   }, [pipelineTemplates])
   const [todoCoverage, setTodoCoverage] = useState<Record<string, boolean>>({})  // todoId → already applied
 
-  // 重复规则编辑 Modal
-  const [ruleModalOpen, setRuleModalOpen] = useState(false)
-  const [ruleEditing, setRuleEditing] = useState<RecurringRule | null>(null)
-  const [ruleForm] = Form.useForm()
+  // Recurring-rule subsystem (Modal + detail-drawer rule, extracted M4 cleanup)
+  const {
+    detailRule,
+    loadDetailRule,
+    describeRule,
+    ruleModalOpen,
+    ruleForm,
+    openRuleEdit,
+    closeRuleEdit,
+    saveRule,
+    stopRule,
+  } = useRecurringRule()
 
   // Comments subsystem (extracted to dedicated hook in M4 cleanup)
   const {
@@ -710,81 +718,36 @@ export default function TodoManage() {
   }, [fetchTodos, handleOpenTerminalInDock])
 
   // ─── 重复规则 ───
-
-  const describeRule = useCallback((r: RecurringRule) => {
-    if (r.frequency === 'daily') return '每天重复'
-    if (r.frequency === 'weekly') {
-      const names = ['日', '一', '二', '三', '四', '五', '六']
-      return '每周 ' + (r.weekdays || []).map(w => names[w]).join('、')
-    }
-    if (r.frequency === 'monthly') {
-      return '每月 ' + (r.monthDays || []).join('、') + ' 号'
-    }
-    return '重复'
-  }, [])
-
-  const openRuleEdit = useCallback((rule: RecurringRule) => {
-    setRuleEditing(rule)
-    ruleForm.resetFields()
-    ruleForm.setFieldsValue({
-      title: rule.title,
-      description: rule.description,
-      frequency: rule.frequency,
-      weekdays: rule.weekdays.length ? rule.weekdays : [1, 2, 3, 4, 5],
-      monthDays: rule.monthDays.length ? rule.monthDays : [1],
-    })
-    setRuleModalOpen(true)
-  }, [ruleForm])
+  // Most logic now lives in useRecurringRule(). The wrappers below preserve
+  // the original toast UX (message.success/error) which the hook intentionally
+  // does not own.
 
   const handleRuleSave = useCallback(async () => {
-    if (!ruleEditing) return
     try {
-      const values = await ruleForm.validateFields()
-      const frequency = values.frequency as RecurringFrequency
-      if (frequency === 'weekly' && !(values.weekdays || []).length) {
-        message.error('请至少选择一个星期几')
-        return
-      }
-      if (frequency === 'monthly' && !(values.monthDays || []).length) {
-        message.error('请至少选择一个月内日期')
-        return
-      }
-      const next = await updateRecurringRule(ruleEditing.id, {
-        title: values.title,
-        description: values.description || '',
-        frequency,
-        weekdays: frequency === 'weekly' ? values.weekdays : [],
-        monthDays: frequency === 'monthly' ? values.monthDays : [],
-      })
+      const res = await saveRule()
+      if (res.status === 'invalid') { message.error(res.reason); return }
+      if (res.status === 'noop') return
       message.success('规则已更新（仅影响未来生成的实例）')
-      setRuleModalOpen(false)
-      setRuleEditing(null)
-      if (detailRule && detailRule.id === next.id) setDetailRule(next)
     } catch (e: any) {
-      if (e?.errorFields) return
       message.error(e?.message || '保存失败')
     }
-  }, [ruleEditing, ruleForm, detailRule])
+  }, [saveRule])
 
   const handleStopRule = useCallback(async (ruleId: string) => {
     try {
-      await deactivateRecurringRule(ruleId)
+      await stopRule(ruleId)
       message.success('已停止重复，明天起不再生成')
-      setDetailRule(prev => prev && prev.id === ruleId ? { ...prev, active: false } : prev)
     } catch (e: any) {
       message.error(e?.message || '停止失败')
     }
-  }, [])
+  }, [stopRule])
 
   // ─── 详情 ───
 
   const openDetail = (todo: Todo) => {
     setDetailTodo(todo)
     setDetailOpen(true)
-    setDetailRule(null)
-    if (todo.recurringRuleId) {
-      getRecurringRule(todo.recurringRuleId).then(setDetailRule).catch(() => {})
-    }
+    loadDetailRule(todo.recurringRuleId || null)
     // Comments are loaded by useComments() once detailOpen + detailTodo.id flip.
   }
 
@@ -1064,7 +1027,7 @@ export default function TodoManage() {
   const closeDetail = () => {
     setDetailOpen(false)
     setDetailTodo(null)
-    setDetailRule(null)
+    loadDetailRule(null)
   }
 
   // ─── 渲染 ───
@@ -1584,7 +1547,7 @@ export default function TodoManage() {
       <Modal
         title="编辑重复规则"
         open={ruleModalOpen}
-        onCancel={() => { setRuleModalOpen(false); setRuleEditing(null) }}
+        onCancel={closeRuleEdit}
         onOk={handleRuleSave}
         okText="保存"
         cancelText="取消"
