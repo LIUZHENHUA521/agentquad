@@ -32,6 +32,14 @@ export function useGlobalShortcuts() {
         return
       }
 
+      // N → new todo (only outside inputs, no modifier keys held). Replaces
+      // the "新建" button in the removed desktop toolbar.
+      if (e.key.toLowerCase() === 'n' && !isTypingInForm && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault()
+        useDispatchStore.getState().signal('newTodo')
+        return
+      }
+
       if (e.key === 'Escape' && !isTypingInForm) {
         // Priority: focus → palette → drawerStack handles drawers separately (their own listener)
         const focusOpen = useFocusStore.getState().focusedTodoId !== null

@@ -3,6 +3,10 @@ import { useFocusStore } from './focusStore'
 
 export type DrawerKey = 'settings' | 'stats' | 'wiki' | 'report' | 'statsReports' | 'template'
 
+/** Board status filter — single source of truth for the todo list (lifted from
+ *  TodoManage so the CommandPalette + topbar can drive it without prop chains). */
+export type BoardFilter = 'todo' | 'done' | 'all'
+
 interface DispatchState {
   // Drawer open flags (lifted from TodoManage local state)
   settings: boolean
@@ -16,6 +20,10 @@ interface DispatchState {
 
   // Command palette open state
   palette: boolean
+
+  /** Current board status filter — drives TodoManage's list query. */
+  boardFilter: BoardFilter
+  setBoardFilter: (filter: BoardFilter) => void
 
   // Action: open a drawer by name
   openDrawer: (key: DrawerKey) => void
@@ -56,6 +64,9 @@ export const useDispatchStore = create<DispatchState>((set, get) => ({
   statsReports: false,
   template: false,
   palette: false,
+
+  boardFilter: 'todo' as BoardFilter,
+  setBoardFilter: (filter) => set(() => ({ boardFilter: filter })),
 
   openDrawer: (key) => set((s) => ({ ...s, [key]: true, palette: false })),
   closeDrawer: (key) => set(() => ({ [key]: false } as Partial<DispatchState>)),

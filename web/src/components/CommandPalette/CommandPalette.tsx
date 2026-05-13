@@ -176,6 +176,21 @@ export function CommandPalette() {
                 </Command.Item>
               </Command.Group>
 
+              <Command.Group heading="View">
+                <Command.Item onSelect={() => { useDispatchStore.getState().setBoardFilter('todo'); closePalette() }}>
+                  <span className="cmdk-icon">●</span>
+                  <span>Show only 待办</span>
+                </Command.Item>
+                <Command.Item onSelect={() => { useDispatchStore.getState().setBoardFilter('done'); closePalette() }}>
+                  <span className="cmdk-icon">✓</span>
+                  <span>Show only 已完成</span>
+                </Command.Item>
+                <Command.Item onSelect={() => { useDispatchStore.getState().setBoardFilter('all'); closePalette() }}>
+                  <span className="cmdk-icon">∗</span>
+                  <span>Show 全部 todos</span>
+                </Command.Item>
+              </Command.Group>
+
               <Command.Group heading="System">
                 <Command.Item onSelect={() => { toggleTheme(); closePalette() }}>
                   <span className="cmdk-icon">🌙</span>

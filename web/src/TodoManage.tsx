@@ -160,7 +160,13 @@ export default function TodoManage() {
   useEffect(() => { refreshTemplates() }, [refreshTemplates])
 
   // 视图
-  const [filterStatus, setFilterStatus] = useState<'todo' | 'done' | ''>('todo')
+  // Board filter lives in dispatchStore so the CommandPalette / topbar can
+  // drive it without TodoManage props. Map dispatchStore's 'all' → '' to keep
+  // the existing TodoManage convention used throughout this file.
+  const filterStatusRaw = useDispatchStore((s) => s.boardFilter)
+  const setBoardFilter = useDispatchStore((s) => s.setBoardFilter)
+  const filterStatus: 'todo' | 'done' | '' = filterStatusRaw === 'all' ? '' : filterStatusRaw
+  const setFilterStatus = (next: 'todo' | 'done' | '') => setBoardFilter(next === '' ? 'all' : next)
   const [keyword, setKeyword] = useState('')
 
   // Drawer
@@ -1023,49 +1029,49 @@ export default function TodoManage() {
       />
       <div className="todo-manage__main" style={{ padding: '0 16px 16px' }}>
       {!isMobile && <TopbarDispatch />}
-      <div className="todo-sticky-header">
-      {/* 工具栏 + 筛选（同一行） */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-        <Radio.Group
-          size="small"
-          value={filterStatus}
-          onChange={(e) => setFilterStatus(e.target.value)}
-          options={[
-            { label: '待办', value: 'todo' },
-            { label: '已完成', value: 'done' },
-            { label: '全部', value: '' },
-          ]}
-          optionType="button"
-        />
-        <Input
-          placeholder="搜索标题..."
-          size="small"
-          style={{ width: 200 }}
-          prefix={<SearchOutlined />}
-          value={keyword}
-          onChange={(e) => setKeyword(e.target.value)}
-          onPressEnter={() => fetchTodos()}
-          allowClear
-        />
-        <div style={{ flex: 1 }} />
-        <Button type="primary" icon={<PlusOutlined />} size="small" onClick={handleCreate}>
-          新建
-        </Button>
-        {isMobile ? (
-          <Button
-            icon={<MenuOutlined />}
-            size="small"
-            onClick={() => setMobileMenuOpen(true)}
-            title="更多"
-          >菜单</Button>
-        ) : null}
-        {/* Mounted invisibly so the CommandPalette "Telegram sync" command can trigger
-            its preview/sync flow via dispatchStore.signal('telegramSync') (M4-T4). */}
-        <div style={{ display: 'none' }}>
-          <TelegramSyncButton />
+      {isMobile && (
+        <div className="todo-sticky-header">
+          {/* 工具栏 + 筛选（同一行） — mobile only. Desktop relies on
+              TopbarDispatch + ⌘K palette + N shortcut for these actions. */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+            <Radio.Group
+              size="small"
+              value={filterStatus}
+              onChange={(e) => setFilterStatus(e.target.value)}
+              options={[
+                { label: '待办', value: 'todo' },
+                { label: '已完成', value: 'done' },
+                { label: '全部', value: '' },
+              ]}
+              optionType="button"
+            />
+            <Input
+              placeholder="搜索标题..."
+              size="small"
+              style={{ width: 200 }}
+              prefix={<SearchOutlined />}
+              value={keyword}
+              onChange={(e) => setKeyword(e.target.value)}
+              onPressEnter={() => fetchTodos()}
+              allowClear
+            />
+            <div style={{ flex: 1 }} />
+            <Button type="primary" icon={<PlusOutlined />} size="small" onClick={handleCreate}>
+              新建
+            </Button>
+            <Button
+              icon={<MenuOutlined />}
+              size="small"
+              onClick={() => setMobileMenuOpen(true)}
+              title="更多"
+            >菜单</Button>
+          </div>
         </div>
-      </div>
-
+      )}
+      {/* Mounted invisibly so the CommandPalette "Telegram sync" command can trigger
+          its preview/sync flow via dispatchStore.signal('telegramSync') (M4-T4). */}
+      <div style={{ display: 'none' }}>
+        <TelegramSyncButton />
       </div>
 
       {viewMode === 'priority' ? (
