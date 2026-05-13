@@ -11,6 +11,9 @@ import hljs from 'highlight.js'
 import './design/highlight.css'
 import { getTranscript, ResumeSessionInput, sendAiInput, startAiExec, stopAiExec, TranscriptResponse, TranscriptTurn } from './api'
 import './TranscriptView.css'
+import { deriveAiState, type AiPresentationState } from './design/aiPresentationState'
+import { useUnreadStore, isSessionUnread } from './store/unreadStore'
+import { useAiSessionStore } from './store/aiSessionStore'
 
 interface Props {
   todoId: string
@@ -43,13 +46,10 @@ const ROLE_META: Record<string, { label: string; cls: string }> = {
   raw: { label: '日志', cls: 'tv-role-raw' },
 }
 
-function sessionStatusMeta(status?: string) {
-  if (status === 'running') return { color: 'processing', text: '运行中' }
-  if (status === 'pending_confirm') return { color: 'error', text: '待交互' }
-  if (status === 'done') return { color: 'success', text: '已完成' }
-  if (status === 'failed') return { color: 'error', text: '失败' }
-  if (status === 'stopped') return { color: 'warning', text: '已停止' }
-  return { color: 'default', text: status || '未知' }
+function sessionStatusMeta(state: AiPresentationState) {
+  if (state === 'running') return { color: 'processing', text: 'running' }
+  if (state === 'pending') return { color: 'error', text: '待确认' }
+  return { color: 'default', text: '空闲' }
 }
 
 function highlightKeyword(text: string, keyword: string): React.ReactNode {
@@ -751,7 +751,19 @@ export default function TranscriptView({ todoId, sessionId, onFork, autoRefreshM
     setCollapsedTools(map)
   }
 
-  const statusMeta = sessionStatusMeta(data?.session.status)
+  const transcriptSessionId = data?.session?.sessionId ?? null
+  const transcriptLiveSession = useAiSessionStore((s) =>
+    transcriptSessionId ? s.sessions.get(transcriptSessionId) : undefined,
+  )
+  const transcriptLastSeen = useUnreadStore((s) =>
+    transcriptSessionId ? s.lastSeenAt.get(transcriptSessionId) : undefined,
+  )
+  const transcriptUnread = isSessionUnread(
+    transcriptLiveSession?.lastTurnDoneAt,
+    transcriptLastSeen,
+  )
+  const transcriptState = deriveAiState(data?.session?.status, transcriptUnread)
+  const statusMeta = sessionStatusMeta(transcriptState)
 
   const wrapperClassName = [
     'tv-wrapper',
