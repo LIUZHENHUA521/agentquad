@@ -1,8 +1,5 @@
 import type { Resources } from './zh-CN'
-
-type DeepStringShape<T> = {
-  [K in keyof T]: T[K] extends string ? string : DeepStringShape<T[K]>
-}
+import type { LocaleShape } from '../resources'
 
 const en = {
   common: {
@@ -47,7 +44,6 @@ const en = {
       createTodo: 'Create new todo',
       startAi: 'Start AI session ({{tool}}) →',
       pickTodoForAi: 'Start AI session — pick a todo ({{tool}})',
-      backToDefault: 'Back',
       focusLabel: 'Focus: {{title}}',
       restoreToTodo: 'Restore to todo: {{label}}',
       openStatsReports: 'Open Stats & Reports',
@@ -77,6 +73,6 @@ const en = {
   errors: {
     restoreFailed: 'Restore failed',
   },
-} as const satisfies DeepStringShape<Resources>
+} as const satisfies LocaleShape<Resources>
 
 export default en

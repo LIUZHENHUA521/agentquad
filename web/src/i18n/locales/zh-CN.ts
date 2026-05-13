@@ -41,7 +41,6 @@ const zh = {
       createTodo: '新建待办',
       startAi: '启动 AI 会话（{{tool}}） →',
       pickTodoForAi: '启动 AI 会话 — 选择一个待办（{{tool}}）',
-      backToDefault: '返回',
       focusLabel: '专注：{{title}}',
       restoreToTodo: '恢复到待办：{{label}}',
       openStatsReports: '打开统计与报告',
