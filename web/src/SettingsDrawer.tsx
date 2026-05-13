@@ -73,7 +73,9 @@ function isMaskedToken(value: unknown): boolean {
   return typeof value === 'string' && value.startsWith('tg_***')
 }
 
-function telegramSourceLabel(source: 'agentquad' | 'missing' | 'input', t: (k: string) => string): string {
+type TFn = (key: any, opts?: any) => string
+
+function telegramSourceLabel(source: 'agentquad' | 'missing' | 'input', t: TFn): string {
   if (source === 'input') return t('settings:telegram.sourceInput')
   if (source === 'agentquad') return t('settings:telegram.sourceAgentquadShort')
   return 'missing'
@@ -83,7 +85,7 @@ function isMaskedLarkSecret(value: unknown): boolean {
   return typeof value === 'string' && value.startsWith('lark_***')
 }
 
-function larkSourceLabel(source: 'agentquad' | 'missing' | 'input', t: (k: string) => string): string {
+function larkSourceLabel(source: 'agentquad' | 'missing' | 'input', t: TFn): string {
   if (source === 'input') return t('settings:telegram.sourceInput')
   if (source === 'agentquad') return t('settings:telegram.sourceAgentquadShort')
   return 'missing'
@@ -762,17 +764,17 @@ export default function SettingsDrawer({ open, onClose }: Props) {
       items={[
         {
           key: 'basic',
-          label: '基础',
+          label: t('settings:telegram.collapse.basic'),
           children: (
             <>
-              <Form.Item name="telegramEnabled" label="启用 Telegram" valuePropName="checked">
+              <Form.Item name="telegramEnabled" label={t('settings:telegram.enableLabel')} valuePropName="checked">
                 <Switch />
               </Form.Item>
 
-              <Form.Item label="Bot Token" required>
+              <Form.Item label={t('settings:telegram.tokenLabel')} required>
                 <Space.Compact style={{ width: '100%' }}>
                   <Form.Item name="telegramBotToken" noStyle>
-                    <Input.Password placeholder="paste token here，留空 = 不启用 Telegram" autoComplete="new-password" />
+                    <Input.Password placeholder={t('settings:telegram.tokenPlaceholder')} autoComplete="new-password" />
                   </Form.Item>
                   <Button
                     loading={testing}
@@ -783,12 +785,12 @@ export default function SettingsDrawer({ open, onClose }: Props) {
                         const input = rawToken && !isMaskedToken(rawToken) ? { botToken: rawToken } : {}
                         const r = await testTelegram(input)
                         if (r.ok) {
-                          const sourceLabel = telegramSourceLabel(r.source)
-                          setTestResult(`✓ ${r.botUsername ? '@' + r.botUsername : `id=${r.botId}`}（来源：${sourceLabel}）`)
-                          message.success(r.source === 'input' ? 'Telegram 连通，保存后生效' : 'Telegram 连通')
+                          const sourceLabel = telegramSourceLabel(r.source, t)
+                          setTestResult(`✓ ${r.botUsername ? '@' + r.botUsername : `id=${r.botId}`}（${sourceLabel}）`)
+                          message.success(r.source === 'input' ? t('settings:telegram.testSuccessSaveFirst') : t('settings:telegram.testSuccess'))
                         } else {
                           setTestResult(`✗ ${r.errorReason || 'unknown'}`)
-                          message.error(r.errorReason || '测试失败')
+                          message.error(r.errorReason || t('settings:telegram.testFailed'))
                         }
                       } catch (e: any) {
                         setTestResult(`✗ ${e.message}`)
@@ -796,57 +798,57 @@ export default function SettingsDrawer({ open, onClose }: Props) {
                         setTesting(false)
                       }
                     }}
-                  >测试</Button>
+                  >{t('settings:telegram.test')}</Button>
                 </Space.Compact>
                 <div style={{ marginTop: 4, fontSize: 12 }}>
                   <Tag color={tokenSource === 'agentquad' ? 'default' : 'error'}>
-                    {tokenSource === 'agentquad' && '来自 AgentQuad 配置'}
-                    {tokenSource === 'missing' && '未配置'}
+                    {tokenSource === 'agentquad' && t('settings:telegram.sourceAgentquad')}
+                    {tokenSource === 'missing' && t('settings:telegram.sourceMissing')}
                   </Tag>
                   {testResult && <span style={{ marginLeft: 8 }}>{testResult}</span>}
                 </div>
               </Form.Item>
 
-              <Form.Item label="Supergroup ID">
+              <Form.Item label={t('settings:telegram.supergroupIdLabel')}>
                 <Space.Compact style={{ width: '100%' }}>
                   <Form.Item name="telegramSupergroupId" noStyle>
-                    <Input placeholder="-1001234567890" />
+                    <Input placeholder={t('settings:telegram.supergroupIdPlaceholder')} />
                   </Form.Item>
-                  <Button onClick={() => setProbeOpen(true)}>抓 ID</Button>
+                  <Button onClick={() => setProbeOpen(true)}>{t('settings:telegram.grabId')}</Button>
                 </Space.Compact>
               </Form.Item>
 
               <Form.Item
                 name="telegramAllowedChatIds"
-                label="白名单 chatIds"
-                extra="一行一个 chat_id；空 = 拒绝所有（强制白名单）"
+                label={t('settings:telegram.allowedChatsLabel')}
+                extra={t('settings:telegram.allowedChatsExtra')}
               >
-                <Input.TextArea rows={3} placeholder="-1001234567890" />
+                <Input.TextArea rows={3} placeholder={t('settings:telegram.allowedChatsPlaceholder')} />
               </Form.Item>
             </>
           ),
         },
         {
           key: 'topic',
-          label: 'Topic 行为',
+          label: t('settings:telegram.collapse.topic'),
           children: (
             <>
-              <Form.Item name="telegramUseTopics" label="启用 Topics" valuePropName="checked">
+              <Form.Item name="telegramUseTopics" label={t('settings:telegram.useTopicsLabel')} valuePropName="checked">
                 <Switch />
               </Form.Item>
-              <Form.Item name="telegramCreateTopicOnTaskStart" label="任务启动时建 Topic" valuePropName="checked">
+              <Form.Item name="telegramCreateTopicOnTaskStart" label={t('settings:telegram.createOnStartLabel')} valuePropName="checked">
                 <Switch />
               </Form.Item>
-              <Form.Item name="telegramCloseTopicOnSessionEnd" label="Session 结束关 Topic" valuePropName="checked">
+              <Form.Item name="telegramCloseTopicOnSessionEnd" label={t('settings:telegram.closeOnEndLabel')} valuePropName="checked">
                 <Switch />
               </Form.Item>
-              <Form.Item name="telegramAutoCreateTopic" label="非 wizard 起的 PTY 自动镜像" valuePropName="checked">
+              <Form.Item name="telegramAutoCreateTopic" label={t('settings:telegram.autoCreateLabel')} valuePropName="checked">
                 <Switch />
               </Form.Item>
-              <Form.Item name="telegramTopicNameTemplate" label="Topic 名模板" extra="占位符：{shortCode} {title}">
+              <Form.Item name="telegramTopicNameTemplate" label={t('settings:telegram.topicNameTemplateLabel')} extra={t('settings:telegram.topicNameTemplateExtra')}>
                 <Input />
               </Form.Item>
-              <Form.Item name="telegramTopicNameDoneTemplate" label="完成模板" extra="占位符：{originalName}">
+              <Form.Item name="telegramTopicNameDoneTemplate" label={t('settings:telegram.topicNameDoneTemplateLabel')} extra={t('settings:telegram.topicNameDoneTemplateExtra')}>
                 <Input />
               </Form.Item>
             </>
@@ -854,28 +856,28 @@ export default function SettingsDrawer({ open, onClose }: Props) {
         },
         {
           key: 'notify',
-          label: '通知行为',
+          label: t('settings:telegram.collapse.notify'),
           children: (
             <>
               <Form.Item
                 name="telegramNotificationCooldownMs"
-                label="同 session idle 提醒最小间隔 (ms)"
-                extra="0 = 关闭去重，每次都推。默认 600000（10 分钟）。"
+                label={t('settings:telegram.cooldownLabel')}
+                extra={t('settings:telegram.cooldownExtra')}
               >
                 <InputNumber min={0} step={60_000} style={{ width: '100%' }} />
               </Form.Item>
-              <Form.Item name="telegramSuppressNotificationEvents" label="丢弃 idle Notification 事件" valuePropName="checked">
+              <Form.Item name="telegramSuppressNotificationEvents" label={t('settings:telegram.suppressIdleLabel')} valuePropName="checked">
                 <Switch />
               </Form.Item>
               <Form.Item
                 name="telegramDefaultPermissionMode"
-                label="Telegram 默认权限模式"
-                extra="新建/恢复 Telegram 任务时使用。非 bypass 模式下，等待授权时会发 Telegram 按钮提醒。"
+                label={t('settings:telegram.permissionModeLabel')}
+                extra={t('settings:telegram.permissionModeExtra')}
               >
                 <Radio.Group>
-                  <Radio.Button value="default">默认（需确认）</Radio.Button>
-                  <Radio.Button value="acceptEdits">半托管</Radio.Button>
-                  <Radio.Button value="bypass">完全托管</Radio.Button>
+                  <Radio.Button value="default">{t('settings:telegram.permission.default')}</Radio.Button>
+                  <Radio.Button value="acceptEdits">{t('settings:telegram.permission.acceptEdits')}</Radio.Button>
+                  <Radio.Button value="bypass">{t('settings:telegram.permission.bypass')}</Radio.Button>
                 </Radio.Group>
               </Form.Item>
             </>
@@ -883,12 +885,12 @@ export default function SettingsDrawer({ open, onClose }: Props) {
         },
         {
           key: 'security',
-          label: '安全',
+          label: t('settings:telegram.collapse.security'),
           children: (
             <Form.Item
               name="telegramAllowedFromUserIds"
-              label="白名单 fromUserIds"
-              extra="一行一个 user_id；空 = 不限"
+              label={t('settings:telegram.allowedFromUsersLabel')}
+              extra={t('settings:telegram.allowedFromUsersExtra')}
             >
               <Input.TextArea rows={3} />
             </Form.Item>
@@ -896,16 +898,16 @@ export default function SettingsDrawer({ open, onClose }: Props) {
         },
         {
           key: 'advanced',
-          label: '高级（不动也行）',
+          label: t('settings:telegram.collapse.advanced'),
           children: (
             <>
-              <Form.Item name="telegramLongPollTimeoutSec" label="长轮询超时 (秒)">
+              <Form.Item name="telegramLongPollTimeoutSec" label={t('settings:telegram.longPollLabel')}>
                 <InputNumber min={5} max={120} style={{ width: '100%' }} />
               </Form.Item>
-              <Form.Item name="telegramPollRetryDelayMs" label="拉取失败退避起点 (ms)">
+              <Form.Item name="telegramPollRetryDelayMs" label={t('settings:telegram.pollRetryLabel')}>
                 <InputNumber min={500} step={500} style={{ width: '100%' }} />
               </Form.Item>
-              <Form.Item name="telegramMinRenameIntervalMs" label="Topic 重命名最小间隔 (ms)">
+              <Form.Item name="telegramMinRenameIntervalMs" label={t('settings:telegram.renameIntervalLabel')}>
                 <InputNumber min={1000} step={1000} style={{ width: '100%' }} />
               </Form.Item>
             </>
@@ -923,22 +925,22 @@ export default function SettingsDrawer({ open, onClose }: Props) {
         type="info"
         showIcon
         style={{ marginBottom: 12 }}
-        message="Lark 话题群适配说明"
-        description="Lark 的话题由话题群中的主消息/thread 承载，不是 Telegram Forum Topic 那种原生 topic 对象。"
+        message={t('settings:lark.adaptInfoTitle')}
+        description={t('settings:lark.adaptInfoDesc')}
       />
 
-      <Form.Item name="larkEnabled" label="启用 Lark / 飞书通知" valuePropName="checked">
+      <Form.Item name="larkEnabled" label={t('settings:lark.enableLabel')} valuePropName="checked">
         <Switch />
       </Form.Item>
 
-      <Form.Item name="larkAppId" label="App ID" extra="飞书/Lark 自建应用的 App ID，例如 cli_xxx。">
-        <Input placeholder="cli_xxx" />
+      <Form.Item name="larkAppId" label={t('settings:lark.appIdLabel')} extra={t('settings:lark.appIdExtra')}>
+        <Input placeholder={t('settings:lark.appIdPlaceholder')} />
       </Form.Item>
 
-      <Form.Item label="App Secret" required>
+      <Form.Item label={t('settings:lark.appSecretLabel')} required>
         <Space.Compact style={{ width: '100%' }}>
           <Form.Item name="larkAppSecret" noStyle>
-            <Input.Password placeholder="paste app secret here，留空/遮罩 = 保留现有值" autoComplete="new-password" />
+            <Input.Password placeholder={t('settings:lark.appSecretPlaceholder')} autoComplete="new-password" />
           </Form.Item>
           <Button
             loading={larkTesting}
@@ -953,11 +955,11 @@ export default function SettingsDrawer({ open, onClose }: Props) {
                 }
                 const r = await testLark(input)
                 if (r.ok) {
-                  setLarkTestResult(`✓ 来源：${larkSourceLabel(r.source)}`)
-                  message.success(r.source === 'input' ? 'Lark 连通，保存后生效' : 'Lark 连通')
+                  setLarkTestResult(t('settings:lark.testSuccessSource', { source: larkSourceLabel(r.source, t) }))
+                  message.success(r.source === 'input' ? t('settings:lark.testSuccessSaveFirst') : t('settings:lark.testSuccess'))
                 } else {
                   setLarkTestResult(`✗ ${r.errorReason || 'unknown'}`)
-                  message.error(r.errorReason || '测试失败')
+                  message.error(r.errorReason || t('settings:telegram.testFailed'))
                 }
               } catch (e: any) {
                 setLarkTestResult(`✗ ${e.message}`)
@@ -965,12 +967,12 @@ export default function SettingsDrawer({ open, onClose }: Props) {
                 setLarkTesting(false)
               }
             }}
-          >测试</Button>
+          >{t('settings:telegram.test')}</Button>
         </Space.Compact>
         <div style={{ marginTop: 4, fontSize: 12 }}>
           <Tag color={larkSecretSource === 'agentquad' ? 'default' : 'error'}>
-            {larkSecretSource === 'agentquad' && '来自 AgentQuad 配置'}
-            {larkSecretSource === 'missing' && '未配置'}
+            {larkSecretSource === 'agentquad' && t('settings:telegram.sourceAgentquad')}
+            {larkSecretSource === 'missing' && t('settings:telegram.sourceMissing')}
           </Tag>
           {larkTestResult && <span style={{ marginLeft: 8 }}>{larkTestResult}</span>}
         </div>
@@ -978,55 +980,55 @@ export default function SettingsDrawer({ open, onClose }: Props) {
 
       <Form.Item
         name="larkChatId"
-        label="话题群 Chat ID"
-        extra="目标群需要是话题群/thread group；机器人需要在群内并具备发消息权限。"
+        label={t('settings:lark.chatIdLabel')}
+        extra={t('settings:lark.chatIdExtra')}
       >
-        <Input placeholder="oc_xxxxxxxxxxxxxxxxx" />
+        <Input placeholder={t('settings:lark.chatIdPlaceholder')} />
       </Form.Item>
 
       <Form.Item
         name="larkRequireThreadGroup"
-        label="要求目标群为话题群 / thread group"
+        label={t('settings:lark.requireThreadLabel')}
         valuePropName="checked"
-        extra="保持开启可避免误把普通群当作话题群使用。"
+        extra={t('settings:lark.requireThreadExtra')}
       >
         <Switch />
       </Form.Item>
 
       <Form.Item
         name="larkEventSubscribeEnabled"
-        label="启用事件订阅，用于双向消息"
+        label={t('settings:lark.eventSubLabel')}
         valuePropName="checked"
-        extra="关闭后只能从 AgentQuad 推送到 Lark，Lark 里的回复不会回到本地会话。"
+        extra={t('settings:lark.eventSubExtra')}
       >
         <Switch />
       </Form.Item>
 
       <Form.Item
         name="larkAutoCreateTopic"
-        label="Web/CLI 起 session 自动镜像到 Lark thread"
+        label={t('settings:lark.autoCreateTopicLabel')}
         valuePropName="checked"
-        extra="开启后：在 Web 起 AI session 时自动在话题群里发一条根消息作为 thread anchor，PTY 输出回复到该 thread。关闭则只能从飞书 @bot 起 session。"
+        extra={t('settings:lark.autoCreateTopicExtra')}
       >
         <Switch />
       </Form.Item>
 
       <Form.Item
         name="larkDefaultPermissionMode"
-        label="Lark 默认权限模式"
-        extra="新建/恢复 Lark 任务时使用。默认 = 每次写操作都要授权；半托管 = 自动批文件编辑；完全托管（bypass）= 全自动跑。Lark 远程驱动时建议 bypass，否则等待授权时只能干等。"
+        label={t('settings:lark.permissionModeLabel')}
+        extra={t('settings:lark.permissionModeExtra')}
       >
         <Radio.Group>
-          <Radio.Button value="default">默认（需确认）</Radio.Button>
-          <Radio.Button value="acceptEdits">半托管</Radio.Button>
-          <Radio.Button value="bypass">完全托管</Radio.Button>
+          <Radio.Button value="default">{t('settings:telegram.permission.default')}</Radio.Button>
+          <Radio.Button value="acceptEdits">{t('settings:telegram.permission.acceptEdits')}</Radio.Button>
+          <Radio.Button value="bypass">{t('settings:telegram.permission.bypass')}</Radio.Button>
         </Radio.Group>
       </Form.Item>
 
       <Form.Item
         name="larkNotificationCooldownMs"
-        label="同 session idle 提醒最小间隔 (ms)"
-        extra="0 = 关闭去重，每次都推。默认 600000（10 分钟）。"
+        label={t('settings:lark.cooldownLabel')}
+        extra={t('settings:lark.cooldownExtra')}
       >
         <InputNumber min={0} step={60_000} style={{ width: '100%' }} />
       </Form.Item>
@@ -1039,22 +1041,21 @@ export default function SettingsDrawer({ open, onClose }: Props) {
         type="info"
         showIcon
         style={{ marginBottom: 12 }}
-        message="估算成本用的单价表，单位 $/1M tokens。保存后下次打开统计面板即生效，无需重启。"
+        message={t('settings:pricing.title')}
         description={
           <>
-            模型匹配使用 glob（<Text code>*</Text> 匹配任意字符），按定义顺序逐条匹配，找不到时落到"默认费率"。
-            官方价目对照：<Text code>https://www.anthropic.com/pricing#api</Text>。
+            {t('settings:pricing.descPart1')}<Text code>*</Text>{t('settings:pricing.descPart2')}<Text code>https://www.anthropic.com/pricing#api</Text>
             <br />
-            注意：删除 Opus / Sonnet / Haiku 等默认模型行后，下次打开此面板会自动恢复（系统始终保证默认项存在）。
+            {t('settings:pricing.descNote')}
           </>
         }
       />
 
       <Form.Item
         name="pricingShowInPush"
-        label="在 Telegram / 飞书推送末尾显示每轮费用"
+        label={t('settings:pricing.showInPushLabel')}
         valuePropName="checked"
-        extra="打开后，每条 Stop / SessionEnd 推送会附 turn token 用量 + USD 估算的 footer。默认关。"
+        extra={t('settings:pricing.showInPushExtra')}
       >
         <Switch />
       </Form.Item>
@@ -1062,9 +1063,9 @@ export default function SettingsDrawer({ open, onClose }: Props) {
         {({ getFieldValue }) => (
           <Form.Item
             name="pricingShowCnyInPush"
-            label="同时显示人民币（¥）"
+            label={t('settings:pricing.showCnyLabel')}
             valuePropName="checked"
-            extra="footer 显示时同时带 ¥ 估算；只有上面开关打开时才有意义。"
+            extra={t('settings:pricing.showCnyExtra')}
           >
             <Switch disabled={!getFieldValue('pricingShowInPush')} />
           </Form.Item>
@@ -1073,15 +1074,15 @@ export default function SettingsDrawer({ open, onClose }: Props) {
 
       <Form.Item
         name="pricingCnyRate"
-        label="CNY 汇率"
-        extra="USD → CNY 换算用；不会自动跟随实时汇率，自行维护。"
-        rules={[{ required: true, message: '请输入 CNY 汇率' }]}
+        label={t('settings:pricing.cnyRateLabel')}
+        extra={t('settings:pricing.cnyRateExtra')}
+        rules={[{ required: true, message: t('settings:pricing.cnyRateRequired') }]}
       >
         <InputNumber min={0} step={0.1} style={{ width: 160 }} />
       </Form.Item>
 
       <Paragraph style={{ marginTop: 8, marginBottom: 8 }}>
-        <Text>默认费率（fallback）</Text>
+        <Text>{t('settings:pricing.defaultRateTitle')}</Text>
       </Paragraph>
       <Space wrap size={[12, 8]} style={{ marginBottom: 12 }}>
         <Form.Item name={['pricingDefault', 'input']} label="input" style={{ marginBottom: 0 }}>
@@ -1099,7 +1100,7 @@ export default function SettingsDrawer({ open, onClose }: Props) {
       </Space>
 
       <Paragraph style={{ marginTop: 8, marginBottom: 8 }}>
-        <Text>按模型匹配</Text>
+        <Text>{t('settings:pricing.byModelTitle')}</Text>
       </Paragraph>
       <Form.List name="pricingModels">
         {(fields, { add, remove }) => (
@@ -1119,10 +1120,10 @@ export default function SettingsDrawer({ open, onClose }: Props) {
                   <Form.Item
                     {...rest}
                     name={[name, 'pattern']}
-                    label="模型匹配"
+                    label={t('settings:pricing.patternLabel')}
                     style={{ marginBottom: 0 }}
                   >
-                    <Input placeholder="claude-opus-4-*" style={{ width: 200 }} />
+                    <Input placeholder={t('settings:pricing.patternPlaceholder')} style={{ width: 200 }} />
                   </Form.Item>
                   <Form.Item {...rest} name={[name, 'input']} label="input" style={{ marginBottom: 0 }}>
                     <InputNumber min={0} step={0.01} style={{ width: 100 }} />
@@ -1142,7 +1143,7 @@ export default function SettingsDrawer({ open, onClose }: Props) {
                     icon={<MinusCircleOutlined />}
                     onClick={() => remove(name)}
                   >
-                    删除
+                    {t('settings:pricing.delete')}
                   </Button>
                 </Space>
               </div>
@@ -1155,7 +1156,7 @@ export default function SettingsDrawer({ open, onClose }: Props) {
               icon={<PlusOutlined />}
               block
             >
-              添加模型
+              {t('settings:pricing.addModel')}
             </Button>
           </>
         )}
@@ -1165,7 +1166,7 @@ export default function SettingsDrawer({ open, onClose }: Props) {
 
   return (
     <Drawer
-      title="AgentQuad 设置"
+      title={t('settings:drawerTitle')}
       open={open}
       onClose={onClose}
       width={760}
@@ -1173,8 +1174,8 @@ export default function SettingsDrawer({ open, onClose }: Props) {
         <div className="settings-footer">
           <Text code className="settings-footer-path">~/.agentquad/config.json</Text>
           <Space>
-            <Button onClick={onClose}>关闭</Button>
-            <Button type="primary" loading={saving} onClick={handleSave}>保存</Button>
+            <Button onClick={onClose}>{t('settings:close')}</Button>
+            <Button type="primary" loading={saving} onClick={handleSave}>{t('settings:save')}</Button>
           </Space>
         </div>
       }
@@ -1188,11 +1189,11 @@ export default function SettingsDrawer({ open, onClose }: Props) {
           activeKey={activeTab}
           onChange={(k) => setActiveTab(k as typeof activeTab)}
           items={[
-            { key: 'run', label: '通用', children: runTab },
-            { key: 'tools', label: 'AI 工具', children: toolsTab },
-            { key: 'telegram', label: 'Telegram', children: telegramTab },
-            { key: 'lark', label: '飞书', children: larkTab },
-            { key: 'pricing', label: '价目表', children: pricingTab },
+            { key: 'run', label: t('settings:tab.general'), children: runTab },
+            { key: 'tools', label: t('settings:tab.tools'), children: toolsTab },
+            { key: 'telegram', label: t('settings:tab.telegram'), children: telegramTab },
+            { key: 'lark', label: t('settings:tab.lark'), children: larkTab },
+            { key: 'pricing', label: t('settings:tab.pricing'), children: pricingTab },
           ]}
         />
       </Form>
