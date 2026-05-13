@@ -662,12 +662,28 @@ export default function TodoManage() {
 
   const handleToggleDone = async (todo: Todo) => {
     const newStatus = todo.status === 'done' ? 'todo' : 'done'
-    try {
-      await updateTodo(todo.id, { status: newStatus })
-      fetchTodos()
-    } catch (e: any) {
-      message.error(e?.message || '操作失败')
+    const liveCount = newStatus === 'done'
+      ? (todo.aiSessions || []).filter((s) => s.status === 'running' || s.status === 'pending_confirm').length
+      : 0
+    const doUpdate = async () => {
+      try {
+        await updateTodo(todo.id, { status: newStatus })
+        fetchTodos()
+      } catch (e: any) {
+        message.error(e?.message || '操作失败')
+      }
     }
+    if (liveCount > 0) {
+      Modal.confirm({
+        title: '该任务还有 AI 会话在运行',
+        content: `共有 ${liveCount} 个 Claude/Codex 终端正在运行。标记完成会同时关闭它们。确定继续？`,
+        okText: '确定，完成并关闭',
+        cancelText: '取消',
+        onOk: doUpdate,
+      })
+      return
+    }
+    await doUpdate()
   }
 
   const handleDelete = async (todo: Todo) => {
