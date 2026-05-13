@@ -659,6 +659,39 @@ export class PtyManager extends EventEmitter {
       this.emit('output', { sessionId, data })
     })
 
+    // cursor 专属：监听 chatId 的 jsonl，末行 role===assistant 且 mtime 推进
+    // → 一轮回复结束。这里走轮询而不是依赖 cursor 自家 stop hook，是因为
+    // 实测 cursor 的 stop hook 偶发不 fire（同一 cursor 安装，部分 session 完全
+    // 收不到 stop 事件），靠 jsonl 才能做到稳定 100%。
+    if (tool === 'cursor') {
+      session.cursorLastAssistantMtimeMs = 0
+      session.cursorWatchTimer = setInterval(() => {
+        try {
+          const nativeId = session.nativeId
+          if (!nativeId) return
+          const jsonlPath = cursorTranscriptPath(session.cwd, nativeId)
+          if (!jsonlPath || !existsSync(jsonlPath)) return
+          const st = statSync(jsonlPath)
+          if (st.mtimeMs <= session.cursorLastAssistantMtimeMs) return
+          // 读整个 jsonl（cursor 单 chat 通常 < 几 MB），找最后一行非空
+          const content = readFileSync(jsonlPath, 'utf8')
+          const idx = content.lastIndexOf('\n', content.length - 2)
+          const lastLine = (idx >= 0 ? content.slice(idx + 1) : content).trim()
+          if (!lastLine) return
+          let role = null
+          try { role = JSON.parse(lastLine)?.role || null } catch { return }
+          if (role === 'assistant') {
+            session.cursorLastAssistantMtimeMs = st.mtimeMs
+            this.emit('cursor-turn-done', { sessionId, nativeId })
+          } else {
+            // 末行是 user → 进入新一轮，记录 mtime 推进但不 emit
+            session.cursorLastAssistantMtimeMs = st.mtimeMs
+          }
+        } catch { /* ignore — watcher 不能影响 PTY 主链路 */ }
+      }, 2000)
+      session.cursorWatchTimer.unref?.()
+    }
+
     // size-first 路径：spawn 时已经是真实尺寸，prompt 不再依赖 resize 触发，
     // 直接按 promptDelayMs（构造器默认 2000ms，可被测试 / 调用方覆盖）发送即可。
     if (session.pendingPrompt) {
@@ -674,6 +707,7 @@ export class PtyManager extends EventEmitter {
     proc.onExit(({ exitCode }) => {
       if (session.detectTimer) clearInterval(session.detectTimer)
       if (session.promptTimer) clearTimeout(session.promptTimer)
+      if (session.cursorWatchTimer) { clearInterval(session.cursorWatchTimer); session.cursorWatchTimer = null }
       if (session.fsWatcher) { try { session.fsWatcher.close() } catch { /* ignore */ } session.fsWatcher = null }
       if (session.detector) { try { session.detector.stop?.() } catch { /* ignore */ } session.detector = null }
       if (session.eventEmitter) {
@@ -825,6 +859,7 @@ export class PtyManager extends EventEmitter {
       // a spawned-then-killed session would produce).
       if (s.promptTimer) { try { clearTimeout(s.promptTimer) } catch { /* ignore */ } s.promptTimer = null }
       if (s.detectTimer) { try { clearInterval(s.detectTimer) } catch { /* ignore */ } s.detectTimer = null }
+      if (s.cursorWatchTimer) { try { clearInterval(s.cursorWatchTimer) } catch { /* ignore */ } s.cursorWatchTimer = null }
       if (s.fsWatcher) { try { s.fsWatcher.close() } catch { /* ignore */ } s.fsWatcher = null }
       this.sessions.delete(sessionId)
       this.emit('done', {

@@ -22,7 +22,7 @@ import { useAiSessionStore } from '../../store/aiSessionStore'
 import { useUnreadStore, isSessionUnread } from '../../store/unreadStore'
 import { useDispatchStore } from '../../store/dispatchStore'
 import { ActivitySparkline } from '../ActivitySparkline'
-import { currentStatusLabel, todoDndId } from '../../TodoManage'
+import { todoDndId } from '../../TodoManage'
 
 function formatDate(ts: number | null) {
   if (!ts) return ''
@@ -88,7 +88,6 @@ export function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo =
   const sessionId = todo.aiSession?.sessionId
   const historySessions = todo.aiSessions || []
   const hasHistory = historySessions.length > 0
-  const statusChip = currentStatusLabel(todo.status)
 
   const lastSeenMap = useUnreadStore(s => s.lastSeenAt)
   const liveSessionsMap = useAiSessionStore(s => s.sessions)
@@ -117,9 +116,6 @@ export function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo =
       id={`todo-card-${todo.id}`}
       data-todo-id={todo.id}
     >
-      {todo.aiSession && (
-        <span className="todo-card-focus-hint">⌘ to focus</span>
-      )}
       <div className="todo-card-shell">
         <div
           {...listeners}
@@ -140,7 +136,6 @@ export function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo =
           <div className="todo-card-main">
             <div className="todo-card-title-row">
               <div className="todo-card-title">{todo.title}</div>
-              <span className={`todo-status-chip ${statusChip.className}`}>{statusChip.text}</span>
               <StageTagChip value={todo.stageTag} onChange={handleStageTagChange} />
             </div>
           </div>

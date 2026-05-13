@@ -1,7 +1,10 @@
 import { create } from 'zustand'
 import { useFocusStore } from './focusStore'
+import type { AiTool } from '../api'
 
 export type DrawerKey = 'settings' | 'stats' | 'wiki' | 'report' | 'statsReports' | 'template'
+
+type StartAiSessionImpl = (todoId: string, tool: AiTool) => void
 
 /** Board status filter — single source of truth for the todo list (lifted from
  *  TodoManage so the CommandPalette + topbar can drive it without prop chains). */
@@ -54,6 +57,13 @@ interface DispatchState {
   hasSignal: (key: string) => boolean
 
   setJumpTo: (id: string | null) => void
+
+  /** AI session start hook (set by TodoManage; used by CommandPalette). */
+  startAiSessionImpl: StartAiSessionImpl | null
+  registerStartAiSession: (fn: StartAiSessionImpl) => void
+  unregisterStartAiSession: () => void
+  /** Invoke the registered AI session start impl. No-op (with warn) when nothing registered. */
+  startAiSession: (todoId: string, tool: AiTool) => void
 }
 
 export const useDispatchStore = create<DispatchState>((set, get) => ({
@@ -98,4 +108,17 @@ export const useDispatchStore = create<DispatchState>((set, get) => ({
   hasSignal: (key) => get().signals[key] === true,
 
   setJumpTo: (id) => set(() => ({ jumpToTodoId: id })),
+
+  startAiSessionImpl: null,
+  registerStartAiSession: (fn) => set(() => ({ startAiSessionImpl: fn })),
+  unregisterStartAiSession: () => set(() => ({ startAiSessionImpl: null })),
+  startAiSession: (todoId, tool) => {
+    const impl = get().startAiSessionImpl
+    if (!impl) {
+      // eslint-disable-next-line no-console
+      console.warn('[dispatchStore] startAiSession called before TodoManage mounted', { todoId, tool })
+      return
+    }
+    impl(todoId, tool)
+  },
 }))

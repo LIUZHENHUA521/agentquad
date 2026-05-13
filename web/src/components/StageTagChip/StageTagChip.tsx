@@ -1,3 +1,4 @@
+import type { MouseEvent as ReactMouseEvent, KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { Dropdown } from 'antd'
 import { PlusOutlined } from '@ant-design/icons'
 import type { StageTag } from '../../api'
@@ -19,7 +20,8 @@ export function StageTagChip({ value, onChange, disabled }: StageTagChipProps) {
     { key: '__clear__', label: '清除', disabled: value == null },
   ]
 
-  const handleClick = ({ key }: { key: string }) => {
+  const handleClick = ({ key, domEvent }: { key: string; domEvent: ReactMouseEvent | ReactKeyboardEvent }) => {
+    domEvent.stopPropagation()
     if (key === '__clear__') onChange(null)
     else onChange(key as StageTag)
   }

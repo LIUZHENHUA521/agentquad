@@ -236,6 +236,16 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
     }
   })
 
+  // cursor 专属：jsonl tail watcher 检测到末行 role===assistant → 一轮已完成。
+  // cursor 自家 stop hook 偶发不 fire（log 实测），所以走 jsonl 兜底。
+  // 走的字段跟 Claude Stop hook 一样：notifyTurnDone 设 lastTurnDoneAt，
+  // markSessionAwaitingReply(true) 让前端 deriveAiState 知道"PTY 活着但本轮已结束"。
+  pty.on('cursor-turn-done', ({ sessionId }) => {
+    if (!sessions.has(sessionId)) return
+    notifyTurnDone(sessionId, { event: 'stop', status: 'idle' })
+    markSessionAwaitingReply(sessionId, true)
+  })
+
   pty.on('done', ({ sessionId, exitCode, fullLog, nativeId, stopped }) => {
     const session = sessions.get(sessionId)
     if (!session) return

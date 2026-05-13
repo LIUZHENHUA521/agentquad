@@ -819,6 +819,26 @@ export default function TodoManage() {
     }
   }, [fetchTodos, templates, handleOpenTerminalInDock])
 
+  // Expose handleAiExec to CommandPalette via dispatchStore. Register once on
+  // mount; use refs so palette clicks always pick up the latest closure +
+  // todos without re-registering on every render.
+  const handleAiExecRef = useRef(handleAiExec)
+  const todosForAiRef = useRef(todos)
+  useEffect(() => { handleAiExecRef.current = handleAiExec }, [handleAiExec])
+  useEffect(() => { todosForAiRef.current = todos }, [todos])
+  useEffect(() => {
+    const fn = (todoId: string, tool: AiTool) => {
+      const todo = todosForAiRef.current.find(t => t.id === todoId)
+      if (!todo) {
+        message.error('未找到该 todo')
+        return
+      }
+      void handleAiExecRef.current(todo, tool)
+    }
+    useDispatchStore.getState().registerStartAiSession(fn)
+    return () => { useDispatchStore.getState().unregisterStartAiSession() }
+  }, [message])
+
   const handleRequestFork = useCallback((todo: Todo, sessionId: string) => {
     setForkTarget({ todo, sessionId })
   }, [])

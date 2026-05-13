@@ -1031,17 +1031,3 @@ button.todo-detail-chip:hover { background: var(--surface-2); }
   50% { opacity: 1; text-shadow: 0 0 8px currentColor; }
 }
 
-.todo-card-focus-hint {
-  position: absolute;
-  top: 8px;
-  right: 12px;
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  color: var(--text-tertiary);
-  opacity: 0;
-  transition: opacity var(--motion-fast) var(--ease-standard);
-  pointer-events: none;
-}
-.todo-card:hover .todo-card-focus-hint {
-  opacity: 1;
-}

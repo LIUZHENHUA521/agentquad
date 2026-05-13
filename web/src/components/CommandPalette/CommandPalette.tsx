@@ -284,40 +284,43 @@ export function CommandPalette() {
             </>
           )}
 
-          {page === 'aiPicker' && (
-            <>
-              <div className="cmdk-back-row" onClick={() => setPage('default')}>
-                <span style={{ color: 'var(--accent-electric)' }}>←</span>
-                <span>Start AI session — pick a todo ({aiTool})</span>
-              </div>
-              {todos.length === 0 && (
-                <div className="cmdk-empty">No todos available — create one first.</div>
-              )}
-              {todos.length > 0 && (
-                <Command.Group heading="Recent / Active todos">
-                  {todos.map((t) => (
-                    <Command.Item
-                      key={t.id}
-                      value={`picktodo-${t.id}-${t.title}`}
-                      onSelect={() => {
-                        // For now, jumping to the todo + setting an intent flag is enough.
-                        // M3 will hook the real session start.
-                        useDispatchStore.getState().setJumpTo(t.id)
-                        closePalette()
-                        // Surface intent for debugging / future wiring.
-                        // eslint-disable-next-line no-console
-                        console.info('[cmdk] start AI session intent:', { tool: aiTool, todoId: t.id })
-                      }}
-                    >
-                      <span className="cmdk-icon" style={{ color: 'var(--accent-electric)' }}>›</span>
-                      <span>{t.title}</span>
-                      {t.status && <span className="cmdk-meta">{t.status}</span>}
-                    </Command.Item>
-                  ))}
-                </Command.Group>
-              )}
-            </>
-          )}
+          {page === 'aiPicker' && (() => {
+            const pickable = jumpListTodos.filter((t) => t.status !== 'done')
+            return (
+              <>
+                <div className="cmdk-back-row" onClick={() => setPage('default')}>
+                  <span style={{ color: 'var(--accent-electric)' }}>←</span>
+                  <span>Start AI session — pick a todo ({aiTool})</span>
+                </div>
+                {pickable.length === 0 && (
+                  <div className="cmdk-empty">No todos available — create one first.</div>
+                )}
+                {pickable.length > 0 && (
+                  <Command.Group heading="Recent / Active todos">
+                    {pickable.map((t) => {
+                      const parentTitle = t.parentId ? parentTitleById.get(t.parentId) : null
+                      const label = parentTitle ? `↳ ${parentTitle} / ${t.title}` : t.title
+                      const liveStatus = todos.find((x) => x.id === t.id)?.status
+                      return (
+                        <Command.Item
+                          key={t.id}
+                          value={`picktodo-${t.id}-${label}`}
+                          onSelect={() => {
+                            useDispatchStore.getState().startAiSession(t.id, aiTool)
+                            closePalette()
+                          }}
+                        >
+                          <span className="cmdk-icon" style={{ color: 'var(--accent-electric)' }}>›</span>
+                          <span>{label}</span>
+                          {liveStatus && <span className="cmdk-meta">{liveStatus}</span>}
+                        </Command.Item>
+                      )
+                    })}
+                  </Command.Group>
+                )}
+              </>
+            )
+          })()}
         </Command.List>
       </Command>
     </div>
