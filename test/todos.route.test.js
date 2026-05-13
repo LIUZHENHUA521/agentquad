@@ -290,6 +290,7 @@ describe('routes/todos', () => {
     await request(app).put(`/api/todos/${c.todo.id}`).send({ stageTag: 'test' })
     const res = await request(app).get('/api/todos')
     expect(res.status).toBe(200)
-    expect(res.body.list[0].stageTag).toBe('test')
+    const tagged = res.body.list.find(t => t.id === c.todo.id)
+    expect(tagged.stageTag).toBe('test')
   })
 })
