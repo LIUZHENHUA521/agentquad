@@ -56,7 +56,6 @@ import {
 } from './replyHub'
 import { getTranscriptStats, listPipelineTemplates, listPipelineRunsForTodo, startPipelineRun, PipelineTemplate, PipelineRun } from './api'
 import PipelineRunDrawer from './pipeline/PipelineRunDrawer'
-import AttentionRail from './dock/AttentionRail'
 import { useUnreadStore } from './store/unreadStore'
 import { useDrawerStackStore } from './store/drawerStackStore'
 import { useDrawerStack } from './hooks/useDrawerStack'
@@ -1023,12 +1022,13 @@ export default function TodoManage() {
 
   return (
     <div className="todo-manage-shell">
-      <AttentionRail
-        items={unreadItems}
-        onActivate={handleOpenAttentionItem}
-      />
       <div className="todo-manage__main" style={{ padding: '0 16px 16px' }}>
-      {!isMobile && <TopbarDispatch />}
+      {!isMobile && (
+        <TopbarDispatch
+          unreadItems={unreadItems}
+          onJump={handleOpenAttentionItem}
+        />
+      )}
       {isMobile && (
         <div className="todo-sticky-header">
           {/* 工具栏 + 筛选（同一行） — mobile only. Desktop relies on
