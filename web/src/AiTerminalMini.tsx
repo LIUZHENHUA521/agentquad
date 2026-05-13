@@ -156,6 +156,7 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
     try { return localStorage.getItem('quadtodo.followTail') !== '0' } catch { return true }
   })
   const followTailRef = useRef<boolean>(followTail)
+  useEffect(() => { prevAutoModeRef.current = autoMode }, [autoMode])
   useEffect(() => { sessionStatusRef.current = sessionStatus }, [sessionStatus])
   useEffect(() => {
     onStatusChange?.(sessionStatus)
@@ -1090,7 +1091,6 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
   }, [tryAutoRecover])
 
   const handleSetAutoMode = useCallback((mode: string | null) => {
-    prevAutoModeRef.current = autoMode
     setAutoMode(mode)
     try {
       if (mode) localStorage.setItem('quadtodo.autoMode', mode)
@@ -1100,7 +1100,7 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: 'set_auto_mode', autoMode: mode }))
     }
-  }, [autoMode])
+  }, [])
 
   const toggleFullscreen = useCallback(() => {
     setFullscreen(prev => !prev)
