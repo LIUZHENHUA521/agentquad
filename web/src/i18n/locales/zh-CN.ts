@@ -167,7 +167,6 @@ const zh = {
       brainstorm: '脑爆',
       workDirLabel: '目录 · {{name}}',
       sessionCount: '会话 {{count}}',
-      copyTooltip: '复制标题和描述',
       openEditorTooltip: '选择编辑器打开',
       aiTerminal: 'AI 终端',
       startClaude: '▶ 启动 Claude',

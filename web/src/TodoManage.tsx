@@ -1037,14 +1037,6 @@ export default function TodoManage() {
     }
   }, [fetchTodos, t])
 
-  const handleCopyPrompt = useCallback((todo: Todo) => {
-    const text = buildTodoPrompt(todo, templates, t)
-    navigator.clipboard.writeText(text).then(
-      () => message.success(t('todo:message.copied')),
-      () => message.error(t('errors:copyFailed')),
-    )
-  }, [templates, t])
-
   const [exportTarget, setExportTarget] = useState<Todo | null>(null)
   const handleExport = useCallback((todo: Todo) => {
     setExportTarget(todo)
@@ -1147,7 +1139,6 @@ export default function TodoManage() {
                       onOpenTrae={handleOpenTrae}
                       onOpenTerminal={handleOpenTerminal}
                       onOpenNativeResume={handleOpenNativeResume}
-                      onCopyPrompt={handleCopyPrompt}
                       onExport={handleExport}
                       isNarrow={isNarrow}
                       onRefresh={fetchTodos}
@@ -1193,7 +1184,6 @@ export default function TodoManage() {
               onOpenTrae: handleOpenTrae,
               onOpenTerminal: handleOpenTerminal,
               onOpenNativeResume: handleOpenNativeResume,
-              onCopyPrompt: handleCopyPrompt,
               onExport: handleExport,
               isNarrow,
               onRefresh: fetchTodos,

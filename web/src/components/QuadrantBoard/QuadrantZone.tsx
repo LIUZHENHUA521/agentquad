@@ -22,7 +22,6 @@ export interface QuadrantZoneProps {
   onOpenTrae: (todo: Todo, editor?: 'trae-cn' | 'trae' | 'cursor') => void
   onOpenTerminal: (todo: Todo) => void
   onOpenNativeResume: (todo: Todo, session: Todo['aiSessions'][number]) => void
-  onCopyPrompt: (todo: Todo) => void
   onExport: (todo: Todo) => void
   style?: React.CSSProperties
   isNarrow: boolean
@@ -31,7 +30,7 @@ export interface QuadrantZoneProps {
   highlightTodoId?: string | null
 }
 
-export function QuadrantZone({ config, todos, childrenByParentId, childHitIdsByParentId, onCreateSubtodo, onCardClick, onToggleDone, onAiExec, onDeleteAiSession, onUpdateSessionLabel, onDelete, onOpenTrae, onOpenTerminal, onOpenNativeResume, onCopyPrompt, onExport, style, isNarrow, onRequestFork, onRefresh, highlightTodoId }: QuadrantZoneProps) {
+export function QuadrantZone({ config, todos, childrenByParentId, childHitIdsByParentId, onCreateSubtodo, onCardClick, onToggleDone, onAiExec, onDeleteAiSession, onUpdateSessionLabel, onDelete, onOpenTrae, onOpenTerminal, onOpenNativeResume, onExport, style, isNarrow, onRequestFork, onRefresh, highlightTodoId }: QuadrantZoneProps) {
   const { t } = useTranslation(['todo'])
   const { setNodeRef, isOver } = useDroppable({ id: `quadrant-${config.q}` })
 
@@ -63,7 +62,6 @@ export function QuadrantZone({ config, todos, childrenByParentId, childHitIdsByP
             onOpenTrae={onOpenTrae}
             onOpenTerminal={onOpenTerminal}
             onOpenNativeResume={onOpenNativeResume}
-            onCopyPrompt={onCopyPrompt}
             onExport={onExport}
             isNarrow={isNarrow}
             onRefresh={onRefresh}

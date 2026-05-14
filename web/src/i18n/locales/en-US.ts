@@ -170,7 +170,6 @@ const en = {
       brainstorm: 'Brainstorm',
       workDirLabel: 'Dir · {{name}}',
       sessionCount: '{{count}} sessions',
-      copyTooltip: 'Copy title and description',
       openEditorTooltip: 'Open in editor',
       aiTerminal: 'AI Terminal',
       startClaude: '▶ Start Claude',

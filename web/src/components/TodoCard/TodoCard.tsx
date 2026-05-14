@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Button, Tooltip, Dropdown, Popconfirm, Tag, Input } from 'antd'
-import { Plus, Trash2, Clock, Play, Copy, Code, Pencil, ChevronDown, ChevronRight, CornerDownLeft } from 'lucide-react'
+import { Plus, Trash2, Clock, Play, Code, Pencil, ChevronDown, ChevronRight, CornerDownLeft } from 'lucide-react'
 import { useSortable, SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import dayjs from 'dayjs'
@@ -51,7 +51,6 @@ export interface SortableTodoCardProps {
   onOpenTrae: (todo: Todo, editor?: 'trae-cn' | 'trae' | 'cursor') => void
   onOpenTerminal: (todo: Todo) => void
   onOpenNativeResume: (todo: Todo, session: Todo['aiSessions'][number]) => void
-  onCopyPrompt: (todo: Todo) => void
   onExport: (todo: Todo) => void
   isNarrow: boolean
   onRequestFork: (todo: Todo, sessionId: string) => void
@@ -63,7 +62,7 @@ export interface SortableTodoCardProps {
 // 避免 running / pending_confirm 期间因为 nativeId 还没到位而误报。
 const TERMINAL_AI_STATUSES = new Set<string>(['done', 'failed', 'stopped'])
 
-export function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo = false, onCreateSubtodo, onClick, onToggleDone, onAiExec, onDeleteAiSession, onUpdateSessionLabel, onDelete, onOpenTrae, onOpenTerminal, onOpenNativeResume, onCopyPrompt, onExport, isNarrow, onRequestFork, onRefresh, highlightTodoId }: SortableTodoCardProps) {
+export function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo = false, onCreateSubtodo, onClick, onToggleDone, onAiExec, onDeleteAiSession, onUpdateSessionLabel, onDelete, onOpenTrae, onOpenTerminal, onOpenNativeResume, onExport, isNarrow, onRequestFork, onRefresh, highlightTodoId }: SortableTodoCardProps) {
   const { message } = useAppMessages()
   const { t } = useTranslation(['todo', 'errors', 'session'])
   const [editingLabelSessionId, setEditingLabelSessionId] = useState<string | null>(null)
@@ -158,9 +157,6 @@ export function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo =
           </div>
 
           <div className="todo-card-toolbar" onClick={(e) => e.stopPropagation()}>
-          <Tooltip title={t('todo:card.copyTooltip')}>
-            <Button size="small" icon={<Copy size={13} />} onClick={() => onCopyPrompt(todo)} className="todo-primary-action" />
-          </Tooltip>
           <Dropdown
             menu={{
               items: [
@@ -370,7 +366,6 @@ export function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo =
                       onOpenTrae={onOpenTrae}
                       onOpenTerminal={onOpenTerminal}
                       onOpenNativeResume={onOpenNativeResume}
-                      onCopyPrompt={onCopyPrompt}
                       onExport={onExport}
                       isNarrow={isNarrow}
                       onRefresh={onRefresh}
