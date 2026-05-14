@@ -63,20 +63,22 @@ export function BoardFilterPill() {
       overlayClassName="topbar-pending-popover"
       content={content}
     >
-      <div
-        className="stat-pill stat-pill-default stat-pill-clickable topbar-filter-pill"
-        onClick={() => setOpen((v) => !v)}
-        data-testid="topbar-filter-pill"
-      >
-        <span className="stat-pill-custom-icon" style={{ color: 'var(--accent-electric)' }}>
-          <ListFilter size={13} />
-        </span>
-        <span className="stat-pill-value">{count}</span>
-        <span className="stat-pill-label">
-          {labelFor(boardFilter)}
-          <span className="topbar-filter-caret">▾</span>
-        </span>
-      </div>
+      <span data-testid="topbar-filter-trigger">
+        <div
+          className="stat-pill stat-pill-default stat-pill-clickable topbar-filter-pill"
+          onClick={() => setOpen((v) => !v)}
+          data-testid="topbar-filter-pill"
+        >
+          <span className="stat-pill-custom-icon" style={{ color: 'var(--accent-electric)' }}>
+            <ListFilter size={13} />
+          </span>
+          <span className="stat-pill-value">{count}</span>
+          <span className="stat-pill-label">
+            {labelFor(boardFilter)}
+            <span className="topbar-filter-caret">▾</span>
+          </span>
+        </div>
+      </span>
     </Popover>
   )
 }
