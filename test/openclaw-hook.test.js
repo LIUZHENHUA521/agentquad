@@ -518,7 +518,7 @@ describe('openclaw-hook handler', () => {
     expect(r.action).toBe('sent')
   })
 
-  it('Notification: bypass session 不调用 markPendingConfirm，IM 推送也抑制', async () => {
+  it('Notification: bypass session 仍调用 markPendingConfirm，状态机内部决定不翻；IM 推送被抑制', async () => {
     const sessionId = 'ai-bypass-notice'
     bridge = makeFakeBridge({ route: { channel: 'telegram', threadId: 123 } })
     const markPendingConfirm = vi.fn()
@@ -542,10 +542,11 @@ describe('openclaw-hook handler', () => {
       hookPayload: { message: 'anything' },
     })
 
-    // bypass 模式下 Notification 是 idle 心跳，预授权下永远不会有真实工具弹窗 ——
-    // 翻 pending_confirm 之后没有"用户按 y/n"路径回滚状态，会让前端永远卡"待确认"。
-    expect(markPendingConfirm).not.toHaveBeenCalled()
-    // IM 推送依旧被抑制（行为不变）
+    // 守卫已下沉到 markPendingConfirm 内部（看 routes/ai-terminal.js）：hook 这层无条件
+    // 调用，状态机根据 session.status 决定要不要真的翻。bypass session 运行期不会从
+    // running 收到权限 Notification；idle 状态下状态机会拒绝翻转。
+    expect(markPendingConfirm).toHaveBeenCalledWith(sessionId, expect.objectContaining({ source: 'claude-notification' }))
+    // bypass session 的 Notification 是 idle 心跳，不推 IM
     expect(r.action).toBe('skipped')
     expect(r.reason).toBe('notification_suppressed')
   })

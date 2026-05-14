@@ -175,11 +175,19 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
   //
   // 幂等：已经处于 pending_confirm 直接返回 true；非 LIVE_AI_STATUSES（已 done/failed/stopped）
   // 返回 false 不动状态。
+  //
+  // 关键守卫：只接受 status === 'running' 的翻转。Claude Code 的 Notification hook 实际上
+  // 有两类 —— "权限型"在 AI mid-turn (status=running) 时 fire（真正要 y/n），"idle 提醒型"
+  // 在 Stop hook 之后 (status=idle) fire（只是"用户怎么不回复"的催促）。一刀切地把 idle
+  // 也翻 pending_confirm，会让 session 在 AI 完成回话之后无故卡在"待确认"，前端没有任何
+  // 入口能把它清掉（focus 只清 unread；markSessionRunningAfterInput 需要真实输入）。
+  // 所以 idle / 其它非 running 状态下，直接拒绝翻转。
   function markPendingConfirm(sessionId, { source = null } = {}) {
     const session = sessions.get(sessionId)
     if (!session) return false
     if (!LIVE_AI_STATUSES.has(session.status)) return false
     if (session.status === 'pending_confirm') return true
+    if (session.status !== 'running') return false
     session.status = 'pending_confirm'
     const todo = db.getTodo(session.todoId)
     if (todo) {
@@ -1182,17 +1190,20 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
     }
   }
 
-  // 历史回填：hook 守卫加之前，bypass session 的 idle Notification 会把 status 翻成
-  // pending_confirm（见 openclaw-hook.js 的 markPendingConfirm 调用点）。前端没有清这种
-  // 误翻的入口，session 会永远卡在"待确认"。这里启动时一次性把 DB 里 bypass+
-  // pending_confirm 的持久化记录翻回 idle，救掉 server 升级前留下的 stuck session。
-  function sweepStuckBypassPendingConfirm() {
+  // 历史回填：markPendingConfirm 加 "status==='running'" 守卫之前，任何 Notification
+  // 都会把 idle session 翻成 pending_confirm，前端没有入口能清（focus 只清 unread；
+  // markSessionRunningAfterInput 需要真实输入），session 会永远卡在"待确认"。这里启动时
+  // 一次性把 DB 里 pending_confirm 的持久化记录翻回 idle，救掉 server 升级前留下的 stuck
+  // session。新代码下 pending_confirm 只能从 running 翻入，server 重启时正常恢复路径会把
+  // status 强制设回 running（见 recoverPendingTodosOnStartup），sweep 不会误清正在等
+  // 真实权限的会话——那条会话的 PTY 进程已经随 server 死掉，权限请求得 resume 后重发。
+  function sweepStuckPendingConfirm() {
     try {
       for (const todo of db.listTodos()) {
         const aiSessions = todo.aiSessions || []
         let mutated = false
         const next = aiSessions.map((s) => {
-          if (s?.permissionMode === 'bypass' && s.status === 'pending_confirm') {
+          if (s?.status === 'pending_confirm') {
             mutated = true
             return { ...s, status: 'idle' }
           }
@@ -1202,14 +1213,14 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
         const patch = { aiSessions: next }
         if (todo.status === 'ai_pending') patch.status = 'ai_running'
         db.updateTodo(todo.id, patch)
-        console.log(`[ai-terminal] sweep: bypass+pending_confirm → idle on todo ${todo.id}`)
+        console.log(`[ai-terminal] sweep: pending_confirm → idle on todo ${todo.id}`)
       }
     } catch (e) {
-      console.warn('[ai-terminal] sweepStuckBypassPendingConfirm failed:', e.message)
+      console.warn('[ai-terminal] sweepStuckPendingConfirm failed:', e.message)
     }
   }
 
-  sweepStuckBypassPendingConfirm()
+  sweepStuckPendingConfirm()
   recoverPendingTodosOnStartup()
 
   return {

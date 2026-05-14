@@ -383,7 +383,7 @@ describe('routes/ai-terminal', () => {
     db.close()
   })
 
-  it('startup sweep flips bypass+pending_confirm back to idle so stuck cards are released', () => {
+  it('startup sweep flips stuck pending_confirm back to idle regardless of permissionMode', () => {
     const db = openDb(':memory:')
     const bypassTodo = db.createTodo({
       title: 'bypass-stuck',
@@ -400,15 +400,15 @@ describe('routes/ai-terminal', () => {
         prompt: 'old prompt',
       }],
     })
-    const otherTodo = db.createTodo({
-      title: 'non-bypass-real-permission',
+    const defaultTodo = db.createTodo({
+      title: 'default-mode-stuck',
       quadrant: 1,
       status: 'ai_pending',
       aiSessions: [{
-        sessionId: 'real-pending',
+        sessionId: 'old-default-session',
         tool: 'claude',
         nativeSessionId: null,
-        permissionMode: 'default',         // 真实权限请求 — sweep 不应该动
+        permissionMode: 'default',         // 非 bypass 也会被 idle Notification 误翻 — 同样要救
         status: 'pending_confirm',
         startedAt: 1,
         completedAt: null,
@@ -419,14 +419,13 @@ describe('routes/ai-terminal', () => {
     const logDir = mkdtempSync(join(tmpdir(), 'quadtodo-log-'))
     const ait = createAiTerminal({ db, pty, logDir })
 
-    const swept = db.getTodo(bypassTodo.id)
-    expect(swept.aiSession.status).toBe('idle')
-    // bypass session 没法 recover(无 nativeSessionId),todo 退回 'todo' 是 recover 的常规行为;
-    // 重要的是 aiSession.status 已经从 pending_confirm 翻回 idle,前端不再卡"待确认"。
-    expect(swept.status).toBe('todo')
-
-    const untouched = db.getTodo(otherTodo.id)
-    expect(untouched.aiSession.status).toBe('pending_confirm')
+    // 两条都从 pending_confirm 翻回 idle;todo.status 'ai_pending' → 'ai_running'。
+    // 后续 recover 因为没有 nativeSessionId 把 todo 退回 'todo',不影响 sweep 的核心保证:
+    // aiSession.status 不再卡 pending_confirm,前端 deriveAiState 不再渲染"待确认"。
+    for (const todoId of [bypassTodo.id, defaultTodo.id]) {
+      const updated = db.getTodo(todoId)
+      expect(updated.aiSession.status).toBe('idle')
+    }
 
     ait.close()
     rmSync(logDir, { recursive: true, force: true })
@@ -1334,6 +1333,21 @@ describe('routes/ai-terminal', () => {
 
   it('markPendingConfirm 对不存在的 session 返回 false', async () => {
     expect(ctx.ait.markPendingConfirm('not-a-session', { source: 'x' })).toBe(false)
+  })
+
+  it('markPendingConfirm 在 status=idle 下拒绝翻转（idle Notification 视为提醒,非权限）', async () => {
+    const todo = ctx.db.createTodo({ title: 'T', quadrant: 1 })
+    const { body } = await request(ctx.app).post('/api/ai-terminal/exec')
+      .send({ todoId: todo.id, prompt: 'hi', tool: 'claude' })
+    const sess = ctx.ait.sessions.get(body.sessionId)
+    // 模拟 AI 已经回完一轮:Stop hook → idle
+    sess.status = 'idle'
+    sess.awaitingReply = true
+
+    // Claude Code 60s 后 fire 一个 idle 提醒型 Notification,hook 调到 markPendingConfirm。
+    // 状态机必须拒绝翻转,否则前端会卡"待确认"且没有清除入口。
+    expect(ctx.ait.markPendingConfirm(body.sessionId, { source: 'claude-notification' })).toBe(false)
+    expect(ctx.ait.sessions.get(body.sessionId).status).toBe('idle')
   })
 
   it('keyword-like output does not send webhook notifications from legacy config', async () => {
