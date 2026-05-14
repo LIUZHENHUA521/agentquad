@@ -16,6 +16,7 @@ import './TranscriptView.css'
 import { deriveAiState, type AiPresentationState } from './design/aiPresentationState'
 import { useUnreadStore, isSessionUnread } from './store/unreadStore'
 import { useAiSessionStore } from './store/aiSessionStore'
+import { useDispatchStore } from './store/dispatchStore'
 
 interface Props {
   todoId: string
@@ -928,6 +929,9 @@ export default function TranscriptView({ todoId, sessionId, onFork, autoRefreshM
       resumeNativeId: resumeTarget.nativeSessionId,
     })
     onSessionRecovered?.(nextSessionId)
+    // 刷新 todo 列表，新 recover 出来的 session 才会同步进 todo.aiSessions / todo.aiSession，
+    // 否则关掉 focus 再从 todo card 点回来会进到历史会话。
+    useDispatchStore.getState().signal('refreshTodos')
     return nextSessionId
   }, [onSessionRecovered, resumeTarget, t])
 

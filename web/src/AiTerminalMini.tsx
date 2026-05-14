@@ -245,6 +245,11 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
       setSessionExpired(false)
       setToolMissing(null)
       onSessionRecoveredRef.current?.(nextSessionId)
+      // 让 SessionFocus 把 focusedSessionId 切到新 session（与 session_restarted 一样的语义）；
+      // 不切的话，关掉 focus 再从 todo card 点回来会沿用旧 aiSession.sessionId，进的是历史会话。
+      onSessionSwitchRef.current?.(nextSessionId)
+      // 刷新 todo 列表，新 recover 出来的 session 才会出现在 todo.aiSessions / todo.aiSession 中。
+      useDispatchStore.getState().signal('refreshTodos')
       return true
     } catch (error: any) {
       // 后端在 CLI 二进制缺失时回 424 tool_missing → 弹出修复卡片，不再用 ENOENT toast 把人吓跑
