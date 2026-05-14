@@ -86,6 +86,14 @@ const zh = {
       running: '运行中',
       idle: '空闲',
     },
+    filter: {
+      labelTodo: '只看待办',
+      labelDone: '只看已完成',
+      labelAll: '全部',
+      optionTodo: '只看待办',
+      optionDone: '只看已完成',
+      optionAll: '查看全部待办',
+    },
     aria: {
       stopSession: '停止会话',
       newTodo: '新建待办',

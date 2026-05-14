@@ -89,6 +89,14 @@ const en = {
       running: 'running',
       idle: 'idle',
     },
+    filter: {
+      labelTodo: 'Active',
+      labelDone: 'Completed',
+      labelAll: 'All',
+      optionTodo: 'Only active todos',
+      optionDone: 'Only completed',
+      optionAll: 'Show all todos',
+    },
     aria: {
       stopSession: 'Stop session',
       newTodo: 'New todo',

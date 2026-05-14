@@ -199,3 +199,55 @@
 .topbar-session-remainder {
   padding: 4px 8px;
 }
+
+/* Board filter pill — visual reuses .stat-pill, popover reuses .topbar-pending-popover */
+.topbar-filter-pill .stat-pill-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.topbar-filter-caret {
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+  line-height: 1;
+}
+.topbar-filter-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 200px;
+}
+.topbar-filter-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  text-align: left;
+  transition: background var(--motion-fast) var(--ease-standard),
+              color var(--motion-fast) var(--ease-standard);
+  width: 100%;
+  font-family: var(--font-sans);
+}
+.topbar-filter-row:hover {
+  background: var(--surface-2);
+}
+.topbar-filter-row.is-active {
+  background: var(--accent-electric-soft);
+  color: var(--accent-electric);
+}
+.topbar-filter-icon {
+  width: 16px;
+  display: inline-grid;
+  place-items: center;
+  font-family: var(--font-mono);
+  color: var(--text-tertiary);
+}
+.topbar-filter-row.is-active .topbar-filter-icon {
+  color: var(--accent-electric);
+}

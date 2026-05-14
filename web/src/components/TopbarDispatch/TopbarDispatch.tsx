@@ -4,6 +4,7 @@ import { CloseOutlined } from '@ant-design/icons'
 import { Plus, Search, BarChart3, BookOpen, FileText, Settings, Zap, Pause, MessageCircleWarning } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { StatPill } from '../StatPill'
+import { BoardFilterPill } from '../BoardFilterPill'
 import { ThemeToggle } from '../ThemeToggle'
 import { useDispatchStore } from '../../store/dispatchStore'
 import { useDispatchStats } from '../../design/useDispatchStats'
@@ -290,6 +291,8 @@ export function TopbarDispatch({ unreadItems, onJump, onFocusSession, onStopSess
           />
         </span>
       </Popover>
+
+      <BoardFilterPill />
 
       <div className="topbar-spacer" />
 
