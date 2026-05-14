@@ -1,0 +1,257 @@
+<div align="center">
+
+# 🎯 AgentQuad
+
+**四象限待办看板，每条 todo 都能起一个本地 Claude / Codex 会话。**
+
+全本地存储 · 原生支持 MCP · Telegram 远程驱动
+
+[![npm version](https://img.shields.io/npm/v/agentquad.svg?style=flat-square)](https://www.npmjs.com/package/agentquad)
+[![npm downloads](https://img.shields.io/npm/dm/agentquad.svg?style=flat-square)](https://www.npmjs.com/package/agentquad)
+[![license](https://img.shields.io/npm/l/agentquad.svg?style=flat-square)](./LICENSE)
+[![node](https://img.shields.io/node/v/agentquad.svg?style=flat-square)](https://nodejs.org)
+![platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-blue?style=flat-square)
+
+[English](./README.md) · [简体中文](./README.zh-CN.md)
+
+<img src="./assets/screenshots/board.png" alt="AgentQuad 四象限看板" width="900" />
+
+</div>
+
+---
+
+## AgentQuad 是什么？
+
+AgentQuad 是一个**全本地的任务调度器**，按艾森豪威尔矩阵把待办分到四个象限。每张 todo 卡片都能起一个内嵌的 **Claude Code** 或 **Codex** 终端会话，让"做事"和"AI 助手"待在一起，而不是分散在两个工具里。
+
+- ❌ **不是 Linear / Todoist** —— 它们没法在卡片里直接跑 AI 终端
+- ❌ **不是 Cursor / Aider** —— 它们没有任务管理和跨项目调度
+- ❌ **不是原生 Claude Code** —— 没有可视化看板、没有会话历史浏览、没有按任务隔离
+
+---
+
+## 截图
+
+<table>
+  <tr>
+    <td align="center"><img src="./assets/screenshots/board.png" width="400" /><br/><sub>四象限看板</sub></td>
+    <td align="center"><img src="./assets/screenshots/ai-terminal.png" width="400" /><br/><sub>内嵌 AI 会话</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="./assets/screenshots/stats.png" width="400" /><br/><sub>统计与周报</sub></td>
+    <td align="center"><img src="./assets/screenshots/cmdk.png" width="400" /><br/><sub>⌘K 命令面板</sub></td>
+  </tr>
+</table>
+
+---
+
+## 30 秒上手
+
+```bash
+npm install -g agentquad
+agentquad                            # 打开 http://127.0.0.1:5677
+```
+
+首次启动会引导你装 `claude` / `codex`。跳过首跑向导：`agentquad --no-wizard` 或 `AGENTQUAD_SKIP_WIZARD=1`。
+
+**环境要求：** Node 20+，npm 10+，macOS 或 Linux（Windows 计划中）。
+
+如果 `claude` 或 `codex` 没装：
+
+```bash
+agentquad install-tools --all
+# 或手动:
+npm i -g @anthropic-ai/claude-code @openai/codex
+```
+
+随时自检：
+
+```bash
+agentquad doctor
+```
+
+---
+
+## 功能特性
+
+- **艾森豪威尔四象限看板**，支持跨象限拖拽
+- **每条 todo 一个 Claude / Codex 终端**，会话持久化、可恢复
+- **会话日志本地落盘**（JSONL 格式），支持搜索；不上云
+- **周报 / 月报统计**，含 token 成本估算（模型单价可配置）
+- **全本地** —— SQLite + 文件系统，数据从不离开你的电脑
+- **⌘K 命令面板**，快速导航 + 批量操作
+- **跨平台**：macOS 和 Linux
+
+---
+
+## 集成方式
+
+### 🔌 MCP 服务（17 个工具）
+
+AgentQuad 内置一个 MCP Streamable HTTP 服务（`POST /mcp`）。外部 Claude Code 会话挂上之后，可以用自然语言"帮我清理重复 todo"、"最近一周我在忙啥"、"合并这三条关于登录的 todo"。
+
+```bash
+agentquad mcp install     # 写入 ~/.claude/settings.json
+agentquad mcp status      # 健康检查
+```
+
+完整工具清单 + preview/confirm 安全模型 + ⌘K 集成 → **[docs/MCP.md](./docs/MCP.md)**。
+
+### 💬 Telegram supergroup（每任务一个 Topic）⭐
+
+直接跑一个 Telegram bot，每开一个 task 自动建一个 **Forum Topic** —— 对话物理隔离；内容直接从 Claude 的 JSONL 日志读（干净，无 spinner / ANSI 噪声）；任务结束 close topic + 改名 ✅。
+
+→ **[docs/TELEGRAM.md](./docs/TELEGRAM.md)**
+
+### 🐱 OpenClaw（微信桥接）
+
+把 AgentQuad 接到 [OpenClaw](https://openclaw.ai/) 的微信渠道：在微信里说"帮我做：X"就自动建 todo + 启动 Claude Code，AI 卡到决策点又能在微信里推给你选。
+
+→ **[docs/OPENCLAW.md](./docs/OPENCLAW.md)** —— 5 步启用清单。
+
+### 📱 手机访问（Tailscale）
+
+用 Tailscale 私有 mesh VPN 让手机也能用 AgentQuad，不暴露公网，5 分钟搞定。
+
+> ⚠️ **安全提醒：** AgentQuad 内置 shell + AI 终端能力，**绝对不要**直接暴露到公网。Tailscale 是推荐的访问方式。
+
+```bash
+agentquad config set host 0.0.0.0    # Tailscale 需要监听所有网卡
+agentquad start                       # 或：agentquad start --expose
+```
+
+→ **[docs/MOBILE.md](./docs/MOBILE.md)**
+
+---
+
+## 配置
+
+配置文件：`~/.agentquad/config.json`
+
+```json
+{
+  "port": 5677,
+  "host": "127.0.0.1",
+  "defaultTool": "claude",
+  "defaultCwd": "~",
+  "tools": {
+    "claude": { "command": "claude", "bin": "claude", "args": [] },
+    "codex":  { "command": "codex",  "bin": "codex",  "args": [] }
+  }
+}
+```
+
+示例：
+
+```bash
+agentquad config set port 6000
+agentquad config set tools.claude.bin /opt/homebrew/bin/claude
+agentquad config set tools.codex.command codex-w        # 公司内自定义 wrapper
+```
+
+- `tools.<tool>.command` —— 启动命令名（适合 `claude-w` 这种公司内封装）
+- `tools.<tool>.bin` —— 绝对路径覆盖，优先级高于 `command`
+
+---
+
+## 命令
+
+| 命令 | 作用 |
+|---|---|
+| `agentquad`（无参数） | 等价于 `agentquad start`，首次启动会引导装 AI 工具 |
+| `agentquad start [--port 5677] [--host 0.0.0.0] [--expose] [--no-open] [--cwd <path>] [--no-wizard]` | 启动服务 |
+| `agentquad stop` | 停止服务（SIGTERM 3 秒后 SIGKILL） |
+| `agentquad status` | 查看运行状态 + 活跃会话数 |
+| `agentquad doctor` | 环境自检 |
+| `agentquad config get/set/list` | 读/写配置 |
+| `agentquad mcp install/status/uninstall` | 管理 MCP 集成 |
+| `agentquad hook status/install/uninstall/bootstrap` | 管理 Claude Code hook |
+| `agentquad telegram:setup-menu` | 刷新 Telegram bot 命令菜单 |
+| `agentquad openclaw bootstrap` | 重装 OpenClaw 钩子 |
+
+---
+
+## 数据存储
+
+```
+~/.agentquad/
+├── config.json
+├── data.db                  # SQLite — todos / sessions / stats
+├── agentquad.pid            # JSON pid 文件
+└── logs/
+    └── ai-*.log             # AI 会话 JSONL 日志
+```
+
+导出/迁移：整个 `~/.agentquad/` 是普通目录，tar 打包即可。
+
+---
+
+<details>
+<summary><b>架构</b>（点开看目录树）</summary>
+
+```
+agentquad/
+├── package.json      # 后端 deps: express / ws / node-pty / better-sqlite3
+├── src/
+│   ├── cli.js        # commander 入口
+│   ├── config.js     # ~/.agentquad/config.json 读写
+│   ├── db.js         # better-sqlite3 包装
+│   ├── pty.js        # PtyManager（node-pty 会话 Map）
+│   ├── server.js     # Express + ws + 路由组装
+│   └── routes/
+│       ├── todos.js
+│       └── ai-terminal.js
+└── web/
+    ├── package.json  # 前端独立: vite + react + antd + dnd-kit + xterm
+    └── src/
+        ├── main.tsx
+        ├── TodoManage.tsx        # 四象限看板
+        ├── AiTerminalMini.tsx
+        ├── SettingsDrawer.tsx
+        └── api.ts
+```
+
+</details>
+
+---
+
+## 从源码构建
+
+```bash
+git clone git@github.com:LIUZHENHUA521/agentquad.git
+cd agentquad
+npm run build:all       # 一键装齐两层依赖 + 构建前端，产物在 dist-web/
+npm link                # 全局链接 `agentquad` 命令
+```
+
+更细的脚本：
+
+```bash
+npm run setup           # 只装依赖：根目录 + web/
+npm run build           # 只 build 前端（前提是 web/node_modules 已装好）
+npm run clean           # 删除 node_modules / dist-web / web/dist
+```
+
+---
+
+## 故障排除
+
+- **端口占用**：`agentquad config set port <new>`
+- **`claude` 找不到**：`agentquad config set tools.claude.bin /full/path/to/claude`
+- **`node-pty` 安装报错**：通常是 node-gyp 找不到 C++ 工具链。macOS 装 Xcode Command Line Tools：`xcode-select --install`
+- **终端显示 `session_not_found`**：会话已超时（30 分钟空闲会被清理），重新点"启动 AI 终端"
+- **Live 终端排版乱（CJK 宽度、状态栏对不齐）**：AgentQuad 默认给 PTY 子进程注入 `LANG=LC_CTYPE=en_US.UTF-8`，让 wcwidth 跟 xterm.js (Unicode 11) 对齐。要保留 CJK locale，设 `AGENTQUAD_KEEP_CJK_LOCALE=1` 再重启。
+
+---
+
+## 贡献
+
+欢迎提 issue / PR。如果 AgentQuad 帮到了你，麻烦点个 ⭐ —— 真的会激励维护者继续打磨。
+
+---
+
+## License
+
+[MIT](./LICENSE) © LIUZHENHUA521
+
+<sub>项目历史：最早叫 `quadtodo`，v0.3.0 改名为 `agentquad`。`quadtodo` CLI 命令作为别名保留，老脚本不受影响。</sub>
