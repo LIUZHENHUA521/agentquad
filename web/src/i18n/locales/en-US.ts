@@ -339,10 +339,6 @@ const en = {
         idle: 'idle',
       },
     },
-    turnDone: {
-      text: 'AI reply done, please review',
-      buttonLabel: 'Notify',
-    },
     focus: {
       noActiveSession: 'No active session for this todo.',
     },
@@ -353,7 +349,6 @@ const en = {
     terminal: {
       toolbar: {
         pendingAccept: 'Pending accept',
-        turnDone: 'Reply done',
         sessionExpired: 'Session expired',
         recoverSession: 'Recover session',
         close: 'Close',
@@ -399,7 +394,6 @@ const en = {
         left: 'Left',
         right: 'Right',
       },
-      turnDoneClickHint: 'Click to view →',
       writeln: {
         autoRecovering: 'Service restart detected. Recovering session...',
         autoRecoverFailedTool: 'Auto-recovery failed: {{tool}} not installed',
@@ -422,13 +416,6 @@ const en = {
         visibility: 'Tab refocused, connection was lost',
         focus: 'Connection lost on focus',
         probeTimeout: 'Probe timeout, connection may be lost',
-      },
-      notification: {
-        unsupported: 'This browser does not support system notifications',
-        granted: 'Browser notifications enabled',
-        denied: 'Browser notification permission denied. Re-enable in browser settings.',
-        notEnabled: 'Browser notifications not enabled yet',
-        requestFailed: 'Failed to request notification permission',
       },
       message: {
         switchedToManaged: 'Switched to recovered full-managed session',

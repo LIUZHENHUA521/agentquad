@@ -1048,11 +1048,21 @@ export default function TranscriptView({ todoId, sessionId, onFork, autoRefreshM
     })
   }, [composer, message, t])
 
-  // Ctrl+C：发 \x03 信号让 Claude 打断当前生成（停止 tool / 文本输出），
-  // 会话保持存活，用户可以继续追问。对应终端里手动敲 Ctrl+C 的语义。
+  // 中断：先发 \x03 (Ctrl+C) 走原有打断语义（兼容 pending_confirm 状态机翻转 +
+  // scheduleInterruptIdleCheck）。对 Claude / Cursor 再补一发 \x1b (Esc) 兜底清空
+  // TUI 残留输入 buffer——它俩在收到 Ctrl+C 时会把刚刚提交的上一条 prompt 还原到
+  // 输入框（"给你机会改提示再重发"），不清空的话用户下次从 composer 发送 "new\r"
+  // 会被追加到残留 buffer 后面，CLI 真实收到的提示拼成 "上次内容 + 新内容"。
+  // Codex 没有这个行为，不补 Esc 避免误触发其它 UI。
   const handleInterrupt = useCallback(async () => {
     try {
       await sendAiInput(sessionId, '\x03')
+      const tool = data?.session.tool
+      if (tool === 'claude' || tool === 'cursor') {
+        window.setTimeout(() => {
+          sendAiInput(sessionId, '\x1b').catch(() => { /* 清空 buffer 失败不影响主流程 */ })
+        }, 120)
+      }
       // 乐观更新：服务端 scheduleInterruptIdleCheck 有 1.5s+ grace 才会广播 turn_done，
       // 这期间 transcriptState 还是 running → "AI 思考中" 卡住。先在 live store 把
       // awaitingReply 翻 true，让 deriveAiState 立即返回 idle，UI 同步切空闲。
@@ -1064,7 +1074,7 @@ export default function TranscriptView({ todoId, sessionId, onFork, autoRefreshM
         : (e?.message || t('transcript:error.interruptFailed'))
       message.error(msg)
     }
-  }, [sessionId, message, t])
+  }, [sessionId, data, message, t])
 
   // 结束会话：kill 掉 PTY 进程。和中断不同，结束后需要 resume 才能再聊。
   const handleEndSession = useCallback(async () => {

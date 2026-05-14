@@ -336,10 +336,6 @@ const zh = {
         idle: '空闲',
       },
     },
-    turnDone: {
-      text: 'AI 回复完成，请验收',
-      buttonLabel: '通知',
-    },
     focus: {
       noActiveSession: '该待办暂无活跃会话。',
     },
@@ -350,7 +346,6 @@ const zh = {
     terminal: {
       toolbar: {
         pendingAccept: '请验收',
-        turnDone: '回复完成',
         sessionExpired: '会话已过期',
         recoverSession: '恢复会话',
         close: '关闭',
@@ -396,7 +391,6 @@ const zh = {
         left: '左',
         right: '右',
       },
-      turnDoneClickHint: '点击查看 →',
       writeln: {
         autoRecovering: '检测到服务重启，正在自动恢复会话...',
         autoRecoverFailedTool: '自动恢复失败：{{tool}} 未安装',
@@ -419,13 +413,6 @@ const zh = {
         visibility: '标签页切回，连接已断开',
         focus: '聚焦时发现连接断开',
         probeTimeout: '探活超时，连接可能已断开',
-      },
-      notification: {
-        unsupported: '当前浏览器不支持系统通知',
-        granted: '已开启浏览器通知',
-        denied: '浏览器通知权限已被拒绝，可在浏览器设置中重新开启',
-        notEnabled: '浏览器通知暂未开启',
-        requestFailed: '浏览器通知权限请求失败',
       },
       message: {
         switchedToManaged: '已切换到恢复后的全托管会话',

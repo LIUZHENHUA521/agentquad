@@ -19,14 +19,6 @@ import { useTheme } from './design/ThemeProvider'
 import { useAiSessionStore } from './store/aiSessionStore'
 import { useDispatchStore } from './store/dispatchStore'
 import { useAppConfigStore } from './store/appConfigStore'
-import {
-  getBrowserNotificationPermission,
-  shouldSendTurnDoneSystemNotification,
-  TURN_DONE_NOTIFICATION_BUTTON_LABEL_KEY,
-  TURN_DONE_NOTIFICATION_BUTTON_STYLE,
-  TURN_DONE_TEXT_KEY,
-  BrowserNotificationPermission,
-} from './terminalTurnNotifications'
 
 // 匹配 xterm 一行中的文件路径（相对或绝对，可带 :line 或 :line:col）
 // 规避回溯：只匹配不含空格/冒号/斜杠的 path segment + 已知扩展名
@@ -137,8 +129,6 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
   const [sessionStatus, setSessionStatus] = useState<TodoStatus>(status)
   const sessionStatusRef = useRef<TodoStatus>(status)
   const [wsConnected, setWsConnected] = useState(false)
-  const [turnDoneNotice, setTurnDoneNotice] = useState(false)
-  const [notificationPermission, setNotificationPermission] = useState<BrowserNotificationPermission>(() => getBrowserNotificationPermission())
   const [sessionExpired, setSessionExpired] = useState(false)
   const sessionExpiredRef = useRef(false)
   // 后端在 claude/codex 二进制缺失时返回 HTTP 424 + code:'tool_missing'，
@@ -190,8 +180,6 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
   const resumeTargetRef = useRef<ResumeSessionInput | null>(resumeTarget || null)
   const onSessionRecoveredRef = useRef<typeof onSessionRecovered>(onSessionRecovered)
   const onSessionSwitchRef = useRef<typeof onSessionSwitch>(onSessionSwitch)
-  const turnDoneNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const windowFocusedRef = useRef<boolean>(typeof document === 'undefined' ? true : document.hasFocus())
 
   useEffect(() => {
     resumeTargetRef.current = resumeTarget || null
@@ -200,29 +188,7 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
   }, [resumeTarget, onSessionRecovered, onSessionSwitch])
 
   useEffect(() => {
-    const handleFocus = () => { windowFocusedRef.current = true }
-    const handleBlur = () => { windowFocusedRef.current = false }
-    window.addEventListener('focus', handleFocus)
-    window.addEventListener('blur', handleBlur)
-    return () => {
-      window.removeEventListener('focus', handleFocus)
-      window.removeEventListener('blur', handleBlur)
-    }
-  }, [])
-
-  useEffect(() => {
-    return () => {
-      if (turnDoneNoticeTimerRef.current) clearTimeout(turnDoneNoticeTimerRef.current)
-    }
-  }, [])
-
-  useEffect(() => {
-    setTurnDoneNotice(false)
     setToolMissing(null)
-    if (turnDoneNoticeTimerRef.current) {
-      clearTimeout(turnDoneNoticeTimerRef.current)
-      turnDoneNoticeTimerRef.current = null
-    }
   }, [sessionId])
 
   const markSessionTurnDone = useAiSessionStore(s => s.markSessionTurnDone)
@@ -264,83 +230,6 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
       recoveringRef.current = false
     }
   }, [])
-
-  const requestBrowserNotifications = useCallback(async () => {
-    if (typeof window === 'undefined' || typeof window.Notification === 'undefined') {
-      setNotificationPermission('unsupported')
-      message.info(t('session:terminal.notification.unsupported'))
-      return
-    }
-    try {
-      const permission = await window.Notification.requestPermission()
-      setNotificationPermission(permission)
-      if (permission === 'granted') message.success(t('session:terminal.notification.granted'))
-      else if (permission === 'denied') message.warning(t('session:terminal.notification.denied'))
-      else message.info(t('session:terminal.notification.notEnabled'))
-    } catch (error) {
-      console.warn('[AiTerminalMini] request notification permission failed:', error)
-      setNotificationPermission(getBrowserNotificationPermission())
-      message.warning(t('session:terminal.notification.requestFailed'))
-    }
-  }, [])
-
-  const focusOwnDockTab = useCallback(() => {
-    try { window.focus() } catch {}
-    // Bring the SessionFocus overlay back to this session (closes drawers + palette as a side effect).
-    useDispatchStore.getState().openFocus(todoId, sessionId)
-  }, [sessionId, todoId])
-
-  const showTurnDoneReminder = useCallback(() => {
-    setTurnDoneNotice(true)
-    if (turnDoneNoticeTimerRef.current) clearTimeout(turnDoneNoticeTimerRef.current)
-    turnDoneNoticeTimerRef.current = setTimeout(() => {
-      setTurnDoneNotice(false)
-      turnDoneNoticeTimerRef.current = null
-    }, 8000)
-
-    if (!document.hidden) {
-      const messageKey = `turn-done-${sessionId}`
-      message.success({
-        content: (
-          <span
-            onClick={() => {
-              focusOwnDockTab()
-              message.destroy(messageKey)
-            }}
-            style={{ cursor: 'pointer' }}
-          >
-            {t(TURN_DONE_TEXT_KEY)}
-            <span style={{ marginLeft: 6, opacity: 0.7, fontSize: 12 }}>{t('session:terminal.turnDoneClickHint')}</span>
-          </span>
-        ),
-        key: messageKey,
-        duration: 6,
-      })
-    }
-
-    const permission = getBrowserNotificationPermission()
-    setNotificationPermission(permission)
-    if (!shouldSendTurnDoneSystemNotification({
-      permission,
-      documentHidden: document.hidden,
-      windowFocused: windowFocusedRef.current,
-    })) {
-      return
-    }
-
-    try {
-      const notification = new window.Notification('AgentQuad', {
-        body: t(TURN_DONE_TEXT_KEY),
-        tag: `agentquad-turn-done-${sessionId}`,
-      })
-      notification.onclick = () => {
-        focusOwnDockTab()
-        try { notification.close() } catch {}
-      }
-    } catch (error) {
-      console.warn('[AiTerminalMini] show browser notification failed:', error)
-    }
-  }, [sessionId, focusOwnDockTab])
 
   /** 去抖发送 resize 到服务端：cols/rows 必须稳定 RESIZE_STABILITY_MS 才真正发，
    *  防止切 tab / 展开瞬间的中间态被后端 PTY 吃掉，进而让 Claude 按窄 cols 折行污染 scrollback。 */
@@ -740,7 +629,6 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
                 }
                 break
               case 'turn_done': {
-                showTurnDoneReminder()
                 markSessionTurnDone(sessionId, msg.status || 'idle', msg.timestamp || Date.now())
                 break
               }
@@ -1015,7 +903,7 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
       disposedRef.current = true
       if (cleanup) cleanup()
     }
-  }, [sessionId, tryAutoRecover, showTurnDoneReminder, markSessionTurnDone])
+  }, [sessionId, tryAutoRecover, markSessionTurnDone])
 
   useEffect(() => { setSessionStatus(status) }, [status])
 
@@ -1218,18 +1106,14 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
         // 用 box-shadow 表达 pending 高亮，避免改 border 宽度引起 1px 布局抖动
         boxShadow: sessionStatus === 'ai_pending'
           ? '0 0 0 1px #ff4d4f, 0 10px 24px rgba(8, 13, 30, 0.16)'
-          : turnDoneNotice
-            ? '0 0 0 1px #52c41a, 0 10px 24px rgba(8, 13, 30, 0.16)'
-            : '0 10px 24px rgba(8, 13, 30, 0.16)',
+          : '0 10px 24px rgba(8, 13, 30, 0.16)',
       } : {
         overflow: 'hidden', background: chrome.outer,
         display: 'flex', flexDirection: 'column' as const, width: '100%',
         border: `1px solid ${chrome.border}`,
         boxShadow: sessionStatus === 'ai_pending'
           ? '0 0 0 1px #ff4d4f, 0 10px 24px rgba(8, 13, 30, 0.16)'
-          : turnDoneNotice
-            ? '0 0 0 1px #52c41a, 0 10px 24px rgba(8, 13, 30, 0.16)'
-            : '0 10px 24px rgba(8, 13, 30, 0.16)',
+          : '0 10px 24px rgba(8, 13, 30, 0.16)',
       }}
     >
       {/* 工具栏 */}
@@ -1248,9 +1132,6 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
         </span>
         {sessionStatus === 'ai_done' && (
           <Tag color="warning" style={{ fontSize: 10, lineHeight: '16px', margin: 0 }}>{t('session:terminal.toolbar.pendingAccept')}</Tag>
-        )}
-        {turnDoneNotice && sessionStatus !== 'ai_done' && (
-          <Tag color="success" style={{ fontSize: 10, lineHeight: '16px', margin: 0 }}>{t('session:terminal.toolbar.turnDone')}</Tag>
         )}
         {sessionExpired && (
           <Tag color="error" style={{ fontSize: 10, lineHeight: '16px', margin: 0 }}>
