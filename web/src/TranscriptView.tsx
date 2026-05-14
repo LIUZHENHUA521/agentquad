@@ -465,6 +465,27 @@ const TurnItem = React.memo(function TurnItem({ turn, index, keyword, canFork, c
 
 type LocalTurn = TranscriptTurn & { optimisticId?: string }
 
+// 把"增量 turns + 它们在整段 transcript 里的起点"按位置安全合并进 current。
+// 用来解决 SSE 推送 和 主动 incremental fetch 两条通路对同一段区间重复 append
+// 导致 Conversation 出现重复消息的问题（偶发，取决于谁先到）。
+// incomingStart: 这批 turns 在服务端整段里的起始索引（jsonl 第几条）
+function mergeTurnsByPosition<T extends TranscriptTurn>(
+  current: T[],
+  incoming: T[],
+  incomingStart: number,
+): T[] {
+  if (!incoming.length) return current
+  const incomingEnd = incomingStart + incoming.length
+  // 完全在已渲染区间之内：丢弃
+  if (incomingEnd <= current.length) return current
+  // 部分重叠：只取超出 current.length 的那一截
+  if (incomingStart < current.length) {
+    return [...current, ...incoming.slice(current.length - incomingStart)]
+  }
+  // 完全不重叠：直接拼接
+  return [...current, ...incoming]
+}
+
 const MIN_HEIGHT = 240
 const MAX_HEIGHT = 1200
 
@@ -566,7 +587,7 @@ export default function TranscriptView({ todoId, sessionId, onFork, autoRefreshM
           return {
             ...r,
             offset: 0,
-            turns: [...current.turns, ...r.turns],
+            turns: mergeTurnsByPosition(current.turns, r.turns, r.offset ?? since),
           }
         }
         return r
@@ -661,10 +682,13 @@ export default function TranscriptView({ todoId, sessionId, onFork, autoRefreshM
     const handleTurnAdded = (e: MessageEvent) => {
       try {
         const payload = JSON.parse(e.data)
+        const incoming = (payload.turns as TranscriptTurn[]) || []
+        const incomingTotal = typeof payload.total === 'number' ? payload.total : 0
+        const incomingStart = Math.max(0, incomingTotal - incoming.length)
         setData(current => current ? {
           ...current,
-          turns: [...current.turns, ...(payload.turns as TranscriptTurn[])],
-          total: payload.total,
+          turns: mergeTurnsByPosition(current.turns, incoming, incomingStart),
+          total: Math.max(current.total, incomingTotal),
         } : current)
         if (payload.turns?.length) {
           setOptimisticTurns([])
