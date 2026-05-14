@@ -17,8 +17,8 @@
   justify-content: space-between;
   gap: 16px;
   padding: 16px 18px;
-  background: linear-gradient(135deg, color-mix(in srgb, var(--ai-pending-confirm) 12%, var(--surface-1)) 0%, color-mix(in srgb, var(--ai-pending-confirm) 22%, var(--surface-1)) 100%);
-  border: 1px solid color-mix(in srgb, var(--ai-pending-confirm) 40%, var(--surface-1));
+  background: linear-gradient(135deg, color-mix(in srgb, var(--heat-base) 12%, var(--surface-1)) 0%, color-mix(in srgb, var(--heat-base) 22%, var(--surface-1)) 100%);
+  border: 1px solid color-mix(in srgb, var(--heat-base) 40%, var(--surface-1));
   border-radius: 12px;
   flex-wrap: wrap;
 }
@@ -39,7 +39,7 @@
 .report-hero-num {
   font-size: 32px;
   font-weight: 700;
-  color: var(--ai-pending-confirm);
+  color: var(--heat-base);
   margin: 0 4px;
   letter-spacing: -0.02em;
 }
@@ -82,10 +82,10 @@
 }
 
 .report-heat-l0 { background: var(--surface-2); color: var(--text-disabled); }
-.report-heat-l1 { background: color-mix(in srgb, var(--ai-pending-confirm) 22%, var(--surface-1)); color: var(--ai-pending-confirm); }
-.report-heat-l2 { background: color-mix(in srgb, var(--ai-pending-confirm) 45%, var(--surface-1)); color: var(--text-primary); }
-.report-heat-l3 { background: color-mix(in srgb, var(--ai-pending-confirm) 70%, var(--surface-1)); color: var(--surface-0); }
-.report-heat-l4 { background: var(--ai-pending-confirm); color: var(--surface-0); }
+.report-heat-l1 { background: color-mix(in srgb, var(--heat-base) 22%, var(--surface-1)); color: var(--heat-base); }
+.report-heat-l2 { background: color-mix(in srgb, var(--heat-base) 45%, var(--surface-1)); color: var(--text-primary); }
+.report-heat-l3 { background: color-mix(in srgb, var(--heat-base) 70%, var(--surface-1)); color: var(--surface-0); }
+.report-heat-l4 { background: var(--heat-base); color: var(--surface-0); }
 
 .report-heat-label {
   font-size: 10px;
@@ -151,7 +151,7 @@
 }
 
 .report-day-count b {
-  color: var(--ai-pending-confirm);
+  color: var(--heat-base);
   font-size: 14px;
   font-weight: 700;
   margin: 0 2px;

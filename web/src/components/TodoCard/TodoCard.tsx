@@ -214,7 +214,8 @@ export function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo =
                 const sessionUnread = isSessionUnread(turnDoneAt, lastSeenMap.get(session.sessionId))
                 // 历史条目内的 AI 三态徽标（running / pending / idle，详见
                 // docs/superpowers/specs/2026-05-13-ai-state-3-state-strict-design.md）。
-                // idle（已结束 / 沉默中）不渲染徽标，避免给所有终态会话堆视觉噪音。
+                // idle 仅在 liveSession 存在时渲染——与顶栏 idle pill 的计数口径保持一致：
+                // 顶栏数它则卡片显示它，反之亦然（避免给所有终态历史会话堆视觉噪音）。
                 // 优先吃 effectiveStatus：后端兜底"PTY 还在喷但 hook/watcher 误判 idle"的边界。
                 const sessionState = deriveAiState(
                   liveSession?.effectiveStatus ?? liveSession?.status ?? session.status,
@@ -278,7 +279,7 @@ export function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo =
                           {toolDisplayName(session.tool)}
                         </span>
                         <span className="todo-history-time">{formatSessionTime(session.startedAt || session.completedAt)}</span>
-                        {sessionState !== 'idle' && (
+                        {(sessionState !== 'idle' || liveSession) && (
                           <span className={`todo-ai-state todo-ai-state-${sessionState}`}>{AI_STATE_ICON[sessionState]()}{' '}{t(AI_STATE_LABEL_KEY[sessionState])}</span>
                         )}
                         {session.localResume?.openedAt && (

@@ -51,7 +51,7 @@ export function StatsReportsDrawer() {
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 15, fontWeight: 600 }}>
       {activeTab === 'stats'
         ? <LineChartOutlined />
-        : <TrophyOutlined style={{ color: 'var(--ai-pending-confirm)' }} />}
+        : <TrophyOutlined style={{ color: 'var(--heat-base)' }} />}
       数据 & 报告
     </span>
   )

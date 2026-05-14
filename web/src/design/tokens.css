@@ -34,9 +34,11 @@
   /* AI session */
   --ai-running: #4ade80;
   --ai-thinking: #4DE5FF;
-  --ai-pending-confirm: #ffb84d;
-  --ai-idle: #6b7280;
+  --ai-pending-confirm: #f97316;
+  --ai-idle: #facc15;
   --ai-error: #ef4444;
+  /* 活跃度 / 成就语义（热力图、奖杯等）独立色源，与 pending_confirm 语义解耦 */
+  --heat-base: #ffb84d;
 
   /* Agent brand colors — small icon next to "Claude Code / Codex / Cursor" labels */
   --agent-claude: #D97757;
@@ -75,9 +77,10 @@
 
   --ai-running: #16a34a;
   --ai-thinking: #00a3c4;
-  --ai-pending-confirm: #d97706;
-  --ai-idle: #6b7280;
+  --ai-pending-confirm: #ea580c;
+  --ai-idle: #eab308;
   --ai-error: #dc2626;
+  --heat-base: #d97706;
 
   --agent-claude: #D97757;
   --agent-codex: #1f2937;
