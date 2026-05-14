@@ -1182,6 +1182,34 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
     }
   }
 
+  // 历史回填：hook 守卫加之前，bypass session 的 idle Notification 会把 status 翻成
+  // pending_confirm（见 openclaw-hook.js 的 markPendingConfirm 调用点）。前端没有清这种
+  // 误翻的入口，session 会永远卡在"待确认"。这里启动时一次性把 DB 里 bypass+
+  // pending_confirm 的持久化记录翻回 idle，救掉 server 升级前留下的 stuck session。
+  function sweepStuckBypassPendingConfirm() {
+    try {
+      for (const todo of db.listTodos()) {
+        const aiSessions = todo.aiSessions || []
+        let mutated = false
+        const next = aiSessions.map((s) => {
+          if (s?.permissionMode === 'bypass' && s.status === 'pending_confirm') {
+            mutated = true
+            return { ...s, status: 'idle' }
+          }
+          return s
+        })
+        if (!mutated) continue
+        const patch = { aiSessions: next }
+        if (todo.status === 'ai_pending') patch.status = 'ai_running'
+        db.updateTodo(todo.id, patch)
+        console.log(`[ai-terminal] sweep: bypass+pending_confirm → idle on todo ${todo.id}`)
+      }
+    } catch (e) {
+      console.warn('[ai-terminal] sweepStuckBypassPendingConfirm failed:', e.message)
+    }
+  }
+
+  sweepStuckBypassPendingConfirm()
   recoverPendingTodosOnStartup()
 
   return {

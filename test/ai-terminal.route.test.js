@@ -383,6 +383,56 @@ describe('routes/ai-terminal', () => {
     db.close()
   })
 
+  it('startup sweep flips bypass+pending_confirm back to idle so stuck cards are released', () => {
+    const db = openDb(':memory:')
+    const bypassTodo = db.createTodo({
+      title: 'bypass-stuck',
+      quadrant: 1,
+      status: 'ai_pending',
+      aiSessions: [{
+        sessionId: 'old-bypass-session',
+        tool: 'claude',
+        nativeSessionId: null,            // 不可恢复 → 只走 sweep,不走 recover
+        permissionMode: 'bypass',
+        status: 'pending_confirm',         // 历史 stuck:idle Notification 误翻
+        startedAt: 1,
+        completedAt: null,
+        prompt: 'old prompt',
+      }],
+    })
+    const otherTodo = db.createTodo({
+      title: 'non-bypass-real-permission',
+      quadrant: 1,
+      status: 'ai_pending',
+      aiSessions: [{
+        sessionId: 'real-pending',
+        tool: 'claude',
+        nativeSessionId: null,
+        permissionMode: 'default',         // 真实权限请求 — sweep 不应该动
+        status: 'pending_confirm',
+        startedAt: 1,
+        completedAt: null,
+        prompt: 'old prompt',
+      }],
+    })
+    const pty = new FakePty()
+    const logDir = mkdtempSync(join(tmpdir(), 'quadtodo-log-'))
+    const ait = createAiTerminal({ db, pty, logDir })
+
+    const swept = db.getTodo(bypassTodo.id)
+    expect(swept.aiSession.status).toBe('idle')
+    // bypass session 没法 recover(无 nativeSessionId),todo 退回 'todo' 是 recover 的常规行为;
+    // 重要的是 aiSession.status 已经从 pending_confirm 翻回 idle,前端不再卡"待确认"。
+    expect(swept.status).toBe('todo')
+
+    const untouched = db.getTodo(otherTodo.id)
+    expect(untouched.aiSession.status).toBe('pending_confirm')
+
+    ait.close()
+    rmSync(logDir, { recursive: true, force: true })
+    db.close()
+  })
+
   it('startup recovery resets todo when no recoverable native session exists', () => {
     const db = openDb(':memory:')
     const todo = db.createTodo({

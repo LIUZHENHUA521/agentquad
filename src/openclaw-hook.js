@@ -772,7 +772,13 @@ export function createOpenClawHookHandler(deps = {}) {
     // 不再用正则/关键词反推 message 内容是不是"权限相关"。任何 Notification 都
     // 翻 session.status 成 pending_confirm，让前端 deriveAiState 渲染"待确认"。
     // markPendingConfirm 幂等 + 仅对 LIVE session 生效。
-    if (evt === 'notification' && sessionId) {
+    //
+    // bypass 模式例外：该模式下工具调用预授权，Notification 永远不代表真实权限
+    // 请求，只是 Claude Code 的 idle 心跳。翻 pending_confirm 之后没有"用户按 y/n"
+    // 路径把状态翻回去（markSessionRunningAfterInput 只对真实输入生效，前端 focus
+    // 也只清 unread 不动 status），session 会永远卡在"待确认"。所以 bypass session
+    // 跳过 markPendingConfirm。
+    if (evt === 'notification' && sessionId && getSessionPermissionMode(sessionId) !== 'bypass') {
       try { aiTerminal?.markPendingConfirm?.(sessionId, { source: 'claude-notification' }) } catch { /* ignore */ }
     }
 
