@@ -252,13 +252,11 @@ export function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo =
                             style={{ flex: 1, fontSize: 11 }}
                           />
                         </div>
-                      ) : (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: session.label ? 2 : 0 }}>
-                          {session.label && (
-                            <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={session.label}>
-                              {session.label}
-                            </span>
-                          )}
+                      ) : session.label ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 2 }}>
+                          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={session.label}>
+                            {session.label}
+                          </span>
                           <button
                             type="button"
                             className="todo-history-link"
@@ -273,7 +271,7 @@ export function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo =
                             <Pencil size={10} />
                           </button>
                         </div>
-                      )}
+                      ) : null}
                       <div className="todo-history-headline">
                         <span className="todo-history-tool">
                           <AgentIcon tool={session.tool} />
@@ -301,6 +299,21 @@ export function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo =
                           <Tooltip title={t('todo:card.missingCwdTooltip')}>
                             <Tag color="warning" style={{ marginLeft: 6 }}>{t('todo:card.missingCwd')}</Tag>
                           </Tooltip>
+                        )}
+                        {!session.label && editingLabelSessionId !== session.sessionId && (
+                          <button
+                            type="button"
+                            className="todo-history-link"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setEditingLabelSessionId(session.sessionId)
+                              setEditingLabelText('')
+                            }}
+                            title={t('todo:card.editLabelTooltip')}
+                            style={{ flexShrink: 0, marginLeft: 'auto' }}
+                          >
+                            <Pencil size={10} />
+                          </button>
                         )}
                       </div>
                     </div>
