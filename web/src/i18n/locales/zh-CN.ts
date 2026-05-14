@@ -319,14 +319,14 @@ const zh = {
     },
     aiState: {
       label: {
-        running: 'running',
+        running: '运行中',
         pending: '待确认',
         idle: '空闲',
       },
       pill: {
-        running: 'running',
+        running: '运行中',
         pending: '待确认',
-        idle: 'idle',
+        idle: '空闲',
       },
     },
     turnDone: {
