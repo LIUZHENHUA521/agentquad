@@ -461,8 +461,6 @@ const en = {
       searchPlaceholder: 'Search transcript...',
       expandAll: 'Expand tools',
       collapseAll: 'Collapse tools',
-      fullscreen: 'Fullscreen',
-      exitFullscreen: 'Exit fullscreen (Esc)',
     },
     empty: 'No transcript yet',
     emptyStarting: 'AI starting',
@@ -514,7 +512,6 @@ const en = {
     resize: {
       tooltip: 'Drag to resize',
     },
-    fullscreenHint: 'Press Esc or click top-right to exit fullscreen',
     message: {
       interrupted: 'Interrupt sent (Ctrl+C)',
       sessionEnded: 'Session ended',
@@ -658,6 +655,14 @@ const en = {
       language: '语言 / Language',
       startup: 'Startup',
       service: 'Service',
+      toolDefaults: 'Defaults & Dispatch',
+      toolCommands: 'Tool Commands',
+      larkBasic: 'Basics',
+      larkBehavior: 'Groups & Threads',
+      larkNotify: 'Notifications',
+      pricingDisplay: 'Push Display',
+      pricingDefault: 'Default Rate (fallback)',
+      pricingByModel: 'Per-Model Overrides',
     },
     language: {
       label: 'Interface language',

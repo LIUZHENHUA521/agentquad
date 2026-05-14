@@ -11,9 +11,106 @@
   user-select: all;
 }
 
-.settings-section-title {
+/* ---------- Card-based section grouping ---------- */
+
+.settings-card {
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: 16px 18px 4px;
+  margin-bottom: 14px;
+  position: relative;
+  overflow: hidden;
+  transition: border-color var(--motion-normal) var(--ease-standard);
+}
+
+.settings-card:hover {
+  border-color: var(--border-default);
+}
+
+.settings-card::before {
+  content: '';
+  position: absolute;
+  top: 18px;
+  left: 0;
+  width: 2px;
+  height: 18px;
+  border-radius: 0 2px 2px 0;
+  background: var(--accent-electric);
+  opacity: 0.85;
+}
+
+.settings-card-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
   font-weight: 600;
-  margin-top: 8px;
-  margin-bottom: 12px;
+  color: var(--text-secondary);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-bottom: 14px;
+}
+
+.settings-card-header-desc {
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 400;
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  margin-left: var(--space-2);
+}
+
+.settings-card-body .ant-form-item-label > label {
+  font-weight: 500;
   color: var(--text-primary);
+  font-size: var(--text-base);
+}
+
+.settings-card-body .ant-form-item-extra {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  margin-top: 4px;
+  line-height: 1.55;
+}
+
+.settings-card-body .ant-form-item:last-child {
+  margin-bottom: 12px;
+}
+
+/* Make the Tabs body breathe so cards don't kiss the tab bar */
+.ant-drawer .ant-tabs-left > .ant-tabs-content-holder {
+  padding-left: 4px;
+}
+
+/* Pin left tab nav inside the scrollable drawer body so it stays visible
+   when the active tab's content scrolls past the viewport. Background matches
+   the drawer content so the nav blends in (AntD Drawer body inherits from
+   .ant-drawer-content = --surface-1 in dark, white in light). */
+.ant-drawer .ant-tabs-left > .ant-tabs-nav {
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
+  max-height: calc(100vh - 120px);
+  background: var(--surface-1);
+  border-right: 1px solid var(--border-subtle);
+  z-index: 1;
+}
+
+/* Differentiate hover/focus from the active tab — AntD defaults to using the
+   primary color for both, which makes the recently-clicked tab look like
+   it's still selected. Reserve --accent-electric for the actual active tab. */
+.ant-drawer .ant-tabs-left .ant-tabs-tab:not(.ant-tabs-tab-active) .ant-tabs-tab-btn {
+  color: var(--text-secondary);
+}
+
+.ant-drawer .ant-tabs-left .ant-tabs-tab:not(.ant-tabs-tab-active):hover .ant-tabs-tab-btn,
+.ant-drawer .ant-tabs-left .ant-tabs-tab:not(.ant-tabs-tab-active) .ant-tabs-tab-btn:focus,
+.ant-drawer .ant-tabs-left .ant-tabs-tab:not(.ant-tabs-tab-active) .ant-tabs-tab-btn:focus-visible {
+  color: var(--text-primary);
+  outline: none;
+}
+
+.ant-drawer .ant-tabs-left .ant-tabs-tab-active .ant-tabs-tab-btn {
+  color: var(--accent-electric);
 }

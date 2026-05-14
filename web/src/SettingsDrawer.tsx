@@ -16,7 +16,7 @@ import larkSetupMd from '../../docs/LARK.md?raw'
 import { AgentIcon } from './components/AgentIcon'
 import './SettingsDrawer.css'
 
-const { Paragraph, Text } = Typography
+const { Text } = Typography
 
 interface Props {
   open: boolean
@@ -505,81 +505,90 @@ export default function SettingsDrawer({ open, onClose }: Props) {
 
   const runTab = (
     <>
-      <div className="settings-section-title">{t('settings:section.language')}</div>
-
-      <Form.Item
-        label={t('settings:language.label')}
-        extra={t('settings:language.extra')}
-      >
-        <Segmented
-          value={currentLang}
-          onChange={(v) => {
-            const lng = v as SupportedLng
-            void i18n.changeLanguage(lng)
-            try { localStorage.setItem(LANG_STORAGE_KEY, lng) } catch {}
-          }}
-          options={[
-            { label: '中文', value: 'zh-CN' },
-            { label: 'English', value: 'en-US' },
-          ]}
-        />
-      </Form.Item>
-
-      <div className="settings-section-title">{t('settings:section.startup')}</div>
-
-      <Form.Item
-        label={t('settings:general.defaultCwdLabel')}
-        extra={t('settings:general.defaultCwdExtra')}
-      >
-        <Space.Compact block>
-          <Form.Item name="defaultCwd" noStyle rules={[{ required: true, message: t('settings:general.defaultCwdRequired') }]}>
-            <Input allowClear placeholder={t('settings:general.defaultCwdPlaceholder')} />
+      <div className="settings-card">
+        <div className="settings-card-header">{t('settings:section.language')}</div>
+        <div className="settings-card-body">
+          <Form.Item
+            label={t('settings:language.label')}
+            extra={t('settings:language.extra')}
+          >
+            <Segmented
+              value={currentLang}
+              onChange={(v) => {
+                const lng = v as SupportedLng
+                void i18n.changeLanguage(lng)
+                try { localStorage.setItem(LANG_STORAGE_KEY, lng) } catch {}
+              }}
+              options={[
+                { label: '中文', value: 'zh-CN' },
+                { label: 'English', value: 'en-US' },
+              ]}
+            />
           </Form.Item>
-          <Button loading={pickingDefaultCwd} onClick={handlePickDefaultCwd}>{t('settings:general.pickDir')}</Button>
-        </Space.Compact>
-      </Form.Item>
+        </div>
+      </div>
 
-      <Form.Item
-        label={t('settings:general.linkEditorLabel')}
-        extra={t('settings:general.linkEditorExtra')}
-      >
-        <Radio.Group
-          value={linkEditor}
-          onChange={(e) => {
-            const v = e.target.value as 'trae-cn' | 'trae' | 'cursor'
-            setLinkEditor(v)
-            // rebrand: localStorage key kept for backward compatibility
-            try { localStorage.setItem('quadtodo.editor', v) } catch {}
-          }}
-        >
-          <Radio.Button value="trae-cn">Trae CN</Radio.Button>
-          <Radio.Button value="trae">Trae</Radio.Button>
-          <Radio.Button value="cursor">Cursor</Radio.Button>
-        </Radio.Group>
-      </Form.Item>
+      <div className="settings-card">
+        <div className="settings-card-header">{t('settings:section.startup')}</div>
+        <div className="settings-card-body">
+          <Form.Item
+            label={t('settings:general.defaultCwdLabel')}
+            extra={t('settings:general.defaultCwdExtra')}
+          >
+            <Space.Compact block>
+              <Form.Item name="defaultCwd" noStyle rules={[{ required: true, message: t('settings:general.defaultCwdRequired') }]}>
+                <Input allowClear placeholder={t('settings:general.defaultCwdPlaceholder')} />
+              </Form.Item>
+              <Button loading={pickingDefaultCwd} onClick={handlePickDefaultCwd}>{t('settings:general.pickDir')}</Button>
+            </Space.Compact>
+          </Form.Item>
 
-      <Form.Item
-        name="defaultPermissionMode"
-        label={t('settings:general.permissionModeLabel')}
-        extra={t('settings:general.permissionModeExtra')}
-      >
-        <Radio.Group>
-          <Radio.Button value="default">{t('settings:general.permission.default')}</Radio.Button>
-          <Radio.Button value="acceptEdits">{t('settings:general.permission.acceptEdits')}</Radio.Button>
-          <Radio.Button value="bypass">{t('settings:general.permission.bypass')}</Radio.Button>
-        </Radio.Group>
-      </Form.Item>
+          <Form.Item
+            label={t('settings:general.linkEditorLabel')}
+            extra={t('settings:general.linkEditorExtra')}
+          >
+            <Radio.Group
+              value={linkEditor}
+              onChange={(e) => {
+                const v = e.target.value as 'trae-cn' | 'trae' | 'cursor'
+                setLinkEditor(v)
+                // rebrand: localStorage key kept for backward compatibility
+                try { localStorage.setItem('quadtodo.editor', v) } catch {}
+              }}
+            >
+              <Radio.Button value="trae-cn">Trae CN</Radio.Button>
+              <Radio.Button value="trae">Trae</Radio.Button>
+              <Radio.Button value="cursor">Cursor</Radio.Button>
+            </Radio.Group>
+          </Form.Item>
 
-      <div className="settings-section-title">{t('settings:section.service')}</div>
+          <Form.Item
+            name="defaultPermissionMode"
+            label={t('settings:general.permissionModeLabel')}
+            extra={t('settings:general.permissionModeExtra')}
+          >
+            <Radio.Group>
+              <Radio.Button value="default">{t('settings:general.permission.default')}</Radio.Button>
+              <Radio.Button value="acceptEdits">{t('settings:general.permission.acceptEdits')}</Radio.Button>
+              <Radio.Button value="bypass">{t('settings:general.permission.bypass')}</Radio.Button>
+            </Radio.Group>
+          </Form.Item>
+        </div>
+      </div>
 
-      <Form.Item
-        name="port"
-        label={t('settings:general.portLabel')}
-        rules={[{ required: true, message: t('settings:general.portRequired') }]}
-        extra={t('settings:general.portExtra')}
-      >
-        <InputNumber min={1} max={65535} style={{ width: 160 }} />
-      </Form.Item>
+      <div className="settings-card">
+        <div className="settings-card-header">{t('settings:section.service')}</div>
+        <div className="settings-card-body">
+          <Form.Item
+            name="port"
+            label={t('settings:general.portLabel')}
+            rules={[{ required: true, message: t('settings:general.portRequired') }]}
+            extra={t('settings:general.portExtra')}
+          >
+            <InputNumber min={1} max={65535} style={{ width: 160 }} />
+          </Form.Item>
+        </div>
+      </div>
     </>
   )
 
@@ -731,41 +740,51 @@ export default function SettingsDrawer({ open, onClose }: Props) {
 
   const toolsTab = (
     <>
-      <Form.Item
-        name="defaultTool"
-        label={t('settings:tools.defaultToolLabel')}
-        extra={t('settings:tools.defaultToolExtra')}
-        rules={[{ required: true, message: t('settings:tools.defaultToolRequired') }]}
-      >
-        <Radio.Group>
-          <Radio.Button value="claude"><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><AgentIcon tool="claude" />Claude</span></Radio.Button>
-          <Radio.Button value="codex"><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><AgentIcon tool="codex" />Codex</span></Radio.Button>
-          <Radio.Button value="cursor"><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><AgentIcon tool="cursor" />Cursor</span></Radio.Button>
-        </Radio.Group>
-      </Form.Item>
+      <div className="settings-card">
+        <div className="settings-card-header">{t('settings:section.toolDefaults')}</div>
+        <div className="settings-card-body">
+          <Form.Item
+            name="defaultTool"
+            label={t('settings:tools.defaultToolLabel')}
+            extra={t('settings:tools.defaultToolExtra')}
+            rules={[{ required: true, message: t('settings:tools.defaultToolRequired') }]}
+          >
+            <Radio.Group>
+              <Radio.Button value="claude"><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><AgentIcon tool="claude" />Claude</span></Radio.Button>
+              <Radio.Button value="codex"><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><AgentIcon tool="codex" />Codex</span></Radio.Button>
+              <Radio.Button value="cursor"><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><AgentIcon tool="cursor" />Cursor</span></Radio.Button>
+            </Radio.Group>
+          </Form.Item>
 
-      {dispatchSection}
+          {dispatchSection}
+        </div>
+      </div>
 
-      <Form.Item label={t('settings:tools.viewToolLabel')}>
-        <Segmented
-          value={viewingTool}
-          onChange={(v) => setViewingTool(v as ToolKey)}
-          options={TOOLS.map((tool) => ({
-            value: tool,
-            label: (
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                <AgentIcon tool={tool} />
-                {TOOL_LABEL[tool]}
-              </span>
-            ),
-          }))}
-        />
-      </Form.Item>
+      <div className="settings-card">
+        <div className="settings-card-header">{t('settings:section.toolCommands')}</div>
+        <div className="settings-card-body">
+          <Form.Item label={t('settings:tools.viewToolLabel')}>
+            <Segmented
+              value={viewingTool}
+              onChange={(v) => setViewingTool(v as ToolKey)}
+              options={TOOLS.map((tool) => ({
+                value: tool,
+                label: (
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    <AgentIcon tool={tool} />
+                    {TOOL_LABEL[tool]}
+                  </span>
+                ),
+              }))}
+            />
+          </Form.Item>
 
-      {/* 同时挂载三组 Form.Item，未选中的隐藏。这样所有字段都被 Form 管理，切换不丢值。 */}
-      <div style={{ display: viewingTool === 'claude' ? 'block' : 'none' }}>{renderToolFields('claude')}</div>
-      <div style={{ display: viewingTool === 'codex' ? 'block' : 'none' }}>{renderToolFields('codex')}</div>
-      <div style={{ display: viewingTool === 'cursor' ? 'block' : 'none' }}>{renderToolFields('cursor')}</div>
+          {/* 同时挂载三组 Form.Item，未选中的隐藏。这样所有字段都被 Form 管理，切换不丢值。 */}
+          <div style={{ display: viewingTool === 'claude' ? 'block' : 'none' }}>{renderToolFields('claude')}</div>
+          <div style={{ display: viewingTool === 'codex' ? 'block' : 'none' }}>{renderToolFields('codex')}</div>
+          <div style={{ display: viewingTool === 'cursor' ? 'block' : 'none' }}>{renderToolFields('cursor')}</div>
+        </div>
+      </div>
     </>
   )
 
@@ -977,109 +996,124 @@ export default function SettingsDrawer({ open, onClose }: Props) {
         description={t('settings:lark.adaptInfoDesc')}
       />
 
-      <Form.Item name="larkEnabled" label={t('settings:lark.enableLabel')} valuePropName="checked">
-        <Switch />
-      </Form.Item>
-
-      <Form.Item name="larkAppId" label={t('settings:lark.appIdLabel')} extra={t('settings:lark.appIdExtra')}>
-        <Input placeholder={t('settings:lark.appIdPlaceholder')} />
-      </Form.Item>
-
-      <Form.Item label={t('settings:lark.appSecretLabel')} required>
-        <Space.Compact style={{ width: '100%' }}>
-          <Form.Item name="larkAppSecret" noStyle>
-            <Input.Password placeholder={t('settings:lark.appSecretPlaceholder')} autoComplete="new-password" />
+      <div className="settings-card">
+        <div className="settings-card-header">{t('settings:section.larkBasic')}</div>
+        <div className="settings-card-body">
+          <Form.Item name="larkEnabled" label={t('settings:lark.enableLabel')} valuePropName="checked">
+            <Switch />
           </Form.Item>
-          <Button
-            loading={larkTesting}
-            onClick={async () => {
-              setLarkTesting(true)
-              try {
-                const rawAppId = String(form.getFieldValue('larkAppId') || '').trim()
-                const rawSecret = String(form.getFieldValue('larkAppSecret') || '').trim()
-                const input = {
-                  appId: rawAppId,
-                  appSecret: rawSecret && !isMaskedLarkSecret(rawSecret) ? rawSecret : undefined,
-                }
-                const r = await testLark(input)
-                if (r.ok) {
-                  setLarkTestResult(t('settings:lark.testSuccessSource', { source: larkSourceLabel(r.source, t) }))
-                  message.success(r.source === 'input' ? t('settings:lark.testSuccessSaveFirst') : t('settings:lark.testSuccess'))
-                } else {
-                  setLarkTestResult(`✗ ${r.errorReason || 'unknown'}`)
-                  message.error(r.errorReason || t('settings:telegram.testFailed'))
-                }
-              } catch (e: any) {
-                setLarkTestResult(`✗ ${e.message}`)
-              } finally {
-                setLarkTesting(false)
-              }
-            }}
-          >{t('settings:telegram.test')}</Button>
-        </Space.Compact>
-        <div style={{ marginTop: 4, fontSize: 12 }}>
-          <Tag color={larkSecretSource === 'agentquad' ? 'default' : 'error'}>
-            {larkSecretSource === 'agentquad' && t('settings:telegram.sourceAgentquad')}
-            {larkSecretSource === 'missing' && t('settings:telegram.sourceMissing')}
-          </Tag>
-          {larkTestResult && <span style={{ marginLeft: 8 }}>{larkTestResult}</span>}
+
+          <Form.Item name="larkAppId" label={t('settings:lark.appIdLabel')} extra={t('settings:lark.appIdExtra')}>
+            <Input placeholder={t('settings:lark.appIdPlaceholder')} />
+          </Form.Item>
+
+          <Form.Item label={t('settings:lark.appSecretLabel')} required>
+            <Space.Compact style={{ width: '100%' }}>
+              <Form.Item name="larkAppSecret" noStyle>
+                <Input.Password placeholder={t('settings:lark.appSecretPlaceholder')} autoComplete="new-password" />
+              </Form.Item>
+              <Button
+                loading={larkTesting}
+                onClick={async () => {
+                  setLarkTesting(true)
+                  try {
+                    const rawAppId = String(form.getFieldValue('larkAppId') || '').trim()
+                    const rawSecret = String(form.getFieldValue('larkAppSecret') || '').trim()
+                    const input = {
+                      appId: rawAppId,
+                      appSecret: rawSecret && !isMaskedLarkSecret(rawSecret) ? rawSecret : undefined,
+                    }
+                    const r = await testLark(input)
+                    if (r.ok) {
+                      setLarkTestResult(t('settings:lark.testSuccessSource', { source: larkSourceLabel(r.source, t) }))
+                      message.success(r.source === 'input' ? t('settings:lark.testSuccessSaveFirst') : t('settings:lark.testSuccess'))
+                    } else {
+                      setLarkTestResult(`✗ ${r.errorReason || 'unknown'}`)
+                      message.error(r.errorReason || t('settings:telegram.testFailed'))
+                    }
+                  } catch (e: any) {
+                    setLarkTestResult(`✗ ${e.message}`)
+                  } finally {
+                    setLarkTesting(false)
+                  }
+                }}
+              >{t('settings:telegram.test')}</Button>
+            </Space.Compact>
+            <div style={{ marginTop: 4, fontSize: 12 }}>
+              <Tag color={larkSecretSource === 'agentquad' ? 'default' : 'error'}>
+                {larkSecretSource === 'agentquad' && t('settings:telegram.sourceAgentquad')}
+                {larkSecretSource === 'missing' && t('settings:telegram.sourceMissing')}
+              </Tag>
+              {larkTestResult && <span style={{ marginLeft: 8 }}>{larkTestResult}</span>}
+            </div>
+          </Form.Item>
+
+          <Form.Item
+            name="larkChatId"
+            label={t('settings:lark.chatIdLabel')}
+            extra={t('settings:lark.chatIdExtra')}
+          >
+            <Input placeholder={t('settings:lark.chatIdPlaceholder')} />
+          </Form.Item>
         </div>
-      </Form.Item>
+      </div>
 
-      <Form.Item
-        name="larkChatId"
-        label={t('settings:lark.chatIdLabel')}
-        extra={t('settings:lark.chatIdExtra')}
-      >
-        <Input placeholder={t('settings:lark.chatIdPlaceholder')} />
-      </Form.Item>
+      <div className="settings-card">
+        <div className="settings-card-header">{t('settings:section.larkBehavior')}</div>
+        <div className="settings-card-body">
+          <Form.Item
+            name="larkRequireThreadGroup"
+            label={t('settings:lark.requireThreadLabel')}
+            valuePropName="checked"
+            extra={t('settings:lark.requireThreadExtra')}
+          >
+            <Switch />
+          </Form.Item>
 
-      <Form.Item
-        name="larkRequireThreadGroup"
-        label={t('settings:lark.requireThreadLabel')}
-        valuePropName="checked"
-        extra={t('settings:lark.requireThreadExtra')}
-      >
-        <Switch />
-      </Form.Item>
+          <Form.Item
+            name="larkEventSubscribeEnabled"
+            label={t('settings:lark.eventSubLabel')}
+            valuePropName="checked"
+            extra={t('settings:lark.eventSubExtra')}
+          >
+            <Switch />
+          </Form.Item>
 
-      <Form.Item
-        name="larkEventSubscribeEnabled"
-        label={t('settings:lark.eventSubLabel')}
-        valuePropName="checked"
-        extra={t('settings:lark.eventSubExtra')}
-      >
-        <Switch />
-      </Form.Item>
+          <Form.Item
+            name="larkAutoCreateTopic"
+            label={t('settings:lark.autoCreateTopicLabel')}
+            valuePropName="checked"
+            extra={t('settings:lark.autoCreateTopicExtra')}
+          >
+            <Switch />
+          </Form.Item>
+        </div>
+      </div>
 
-      <Form.Item
-        name="larkAutoCreateTopic"
-        label={t('settings:lark.autoCreateTopicLabel')}
-        valuePropName="checked"
-        extra={t('settings:lark.autoCreateTopicExtra')}
-      >
-        <Switch />
-      </Form.Item>
+      <div className="settings-card">
+        <div className="settings-card-header">{t('settings:section.larkNotify')}</div>
+        <div className="settings-card-body">
+          <Form.Item
+            name="larkDefaultPermissionMode"
+            label={t('settings:lark.permissionModeLabel')}
+            extra={t('settings:lark.permissionModeExtra')}
+          >
+            <Radio.Group>
+              <Radio.Button value="default">{t('settings:telegram.permission.default')}</Radio.Button>
+              <Radio.Button value="acceptEdits">{t('settings:telegram.permission.acceptEdits')}</Radio.Button>
+              <Radio.Button value="bypass">{t('settings:telegram.permission.bypass')}</Radio.Button>
+            </Radio.Group>
+          </Form.Item>
 
-      <Form.Item
-        name="larkDefaultPermissionMode"
-        label={t('settings:lark.permissionModeLabel')}
-        extra={t('settings:lark.permissionModeExtra')}
-      >
-        <Radio.Group>
-          <Radio.Button value="default">{t('settings:telegram.permission.default')}</Radio.Button>
-          <Radio.Button value="acceptEdits">{t('settings:telegram.permission.acceptEdits')}</Radio.Button>
-          <Radio.Button value="bypass">{t('settings:telegram.permission.bypass')}</Radio.Button>
-        </Radio.Group>
-      </Form.Item>
-
-      <Form.Item
-        name="larkNotificationCooldownMs"
-        label={t('settings:lark.cooldownLabel')}
-        extra={t('settings:lark.cooldownExtra')}
-      >
-        <InputNumber min={0} step={60_000} style={{ width: '100%' }} />
-      </Form.Item>
+          <Form.Item
+            name="larkNotificationCooldownMs"
+            label={t('settings:lark.cooldownLabel')}
+            extra={t('settings:lark.cooldownExtra')}
+          >
+            <InputNumber min={0} step={60_000} style={{ width: '100%' }} />
+          </Form.Item>
+        </div>
+      </div>
     </>
   )
 
@@ -1099,116 +1133,125 @@ export default function SettingsDrawer({ open, onClose }: Props) {
         }
       />
 
-      <Form.Item
-        name="pricingShowInPush"
-        label={t('settings:pricing.showInPushLabel')}
-        valuePropName="checked"
-        extra={t('settings:pricing.showInPushExtra')}
-      >
-        <Switch />
-      </Form.Item>
-      <Form.Item noStyle shouldUpdate={(p, n) => p.pricingShowInPush !== n.pricingShowInPush}>
-        {({ getFieldValue }) => (
+      <div className="settings-card">
+        <div className="settings-card-header">{t('settings:section.pricingDisplay')}</div>
+        <div className="settings-card-body">
           <Form.Item
-            name="pricingShowCnyInPush"
-            label={t('settings:pricing.showCnyLabel')}
+            name="pricingShowInPush"
+            label={t('settings:pricing.showInPushLabel')}
             valuePropName="checked"
-            extra={t('settings:pricing.showCnyExtra')}
+            extra={t('settings:pricing.showInPushExtra')}
           >
-            <Switch disabled={!getFieldValue('pricingShowInPush')} />
+            <Switch />
           </Form.Item>
-        )}
-      </Form.Item>
-
-      <Form.Item
-        name="pricingCnyRate"
-        label={t('settings:pricing.cnyRateLabel')}
-        extra={t('settings:pricing.cnyRateExtra')}
-        rules={[{ required: true, message: t('settings:pricing.cnyRateRequired') }]}
-      >
-        <InputNumber min={0} step={0.1} style={{ width: 160 }} />
-      </Form.Item>
-
-      <Paragraph style={{ marginTop: 8, marginBottom: 8 }}>
-        <Text>{t('settings:pricing.defaultRateTitle')}</Text>
-      </Paragraph>
-      <Space wrap size={[12, 8]} style={{ marginBottom: 12 }}>
-        <Form.Item name={['pricingDefault', 'input']} label="input" style={{ marginBottom: 0 }}>
-          <InputNumber min={0} step={0.01} style={{ width: 110 }} />
-        </Form.Item>
-        <Form.Item name={['pricingDefault', 'output']} label="output" style={{ marginBottom: 0 }}>
-          <InputNumber min={0} step={0.01} style={{ width: 110 }} />
-        </Form.Item>
-        <Form.Item name={['pricingDefault', 'cacheRead']} label="cacheRead" style={{ marginBottom: 0 }}>
-          <InputNumber min={0} step={0.01} style={{ width: 110 }} />
-        </Form.Item>
-        <Form.Item name={['pricingDefault', 'cacheWrite']} label="cacheWrite" style={{ marginBottom: 0 }}>
-          <InputNumber min={0} step={0.01} style={{ width: 110 }} />
-        </Form.Item>
-      </Space>
-
-      <Paragraph style={{ marginTop: 8, marginBottom: 8 }}>
-        <Text>{t('settings:pricing.byModelTitle')}</Text>
-      </Paragraph>
-      <Form.List name="pricingModels">
-        {(fields, { add, remove }) => (
-          <>
-            {fields.map(({ key, name, ...rest }) => (
-              <div
-                key={key}
-                style={{
-                  padding: 10,
-                  border: '1px solid var(--border-subtle)',
-                  borderRadius: 6,
-                  marginBottom: 8,
-                  background: 'var(--surface-2)',
-                }}
+          <Form.Item noStyle shouldUpdate={(p, n) => p.pricingShowInPush !== n.pricingShowInPush}>
+            {({ getFieldValue }) => (
+              <Form.Item
+                name="pricingShowCnyInPush"
+                label={t('settings:pricing.showCnyLabel')}
+                valuePropName="checked"
+                extra={t('settings:pricing.showCnyExtra')}
               >
-                <Space wrap size={[12, 4]} style={{ width: '100%' }}>
-                  <Form.Item
-                    {...rest}
-                    name={[name, 'pattern']}
-                    label={t('settings:pricing.patternLabel')}
-                    style={{ marginBottom: 0 }}
+                <Switch disabled={!getFieldValue('pricingShowInPush')} />
+              </Form.Item>
+            )}
+          </Form.Item>
+
+          <Form.Item
+            name="pricingCnyRate"
+            label={t('settings:pricing.cnyRateLabel')}
+            extra={t('settings:pricing.cnyRateExtra')}
+            rules={[{ required: true, message: t('settings:pricing.cnyRateRequired') }]}
+          >
+            <InputNumber min={0} step={0.1} style={{ width: 160 }} />
+          </Form.Item>
+        </div>
+      </div>
+
+      <div className="settings-card">
+        <div className="settings-card-header">{t('settings:section.pricingDefault')}</div>
+        <div className="settings-card-body">
+          <Space wrap size={[12, 8]} style={{ marginBottom: 12 }}>
+            <Form.Item name={['pricingDefault', 'input']} label="input" style={{ marginBottom: 0 }}>
+              <InputNumber min={0} step={0.01} style={{ width: 110 }} />
+            </Form.Item>
+            <Form.Item name={['pricingDefault', 'output']} label="output" style={{ marginBottom: 0 }}>
+              <InputNumber min={0} step={0.01} style={{ width: 110 }} />
+            </Form.Item>
+            <Form.Item name={['pricingDefault', 'cacheRead']} label="cacheRead" style={{ marginBottom: 0 }}>
+              <InputNumber min={0} step={0.01} style={{ width: 110 }} />
+            </Form.Item>
+            <Form.Item name={['pricingDefault', 'cacheWrite']} label="cacheWrite" style={{ marginBottom: 0 }}>
+              <InputNumber min={0} step={0.01} style={{ width: 110 }} />
+            </Form.Item>
+          </Space>
+        </div>
+      </div>
+
+      <div className="settings-card">
+        <div className="settings-card-header">{t('settings:section.pricingByModel')}</div>
+        <div className="settings-card-body">
+          <Form.List name="pricingModels">
+            {(fields, { add, remove }) => (
+              <>
+                {fields.map(({ key, name, ...rest }) => (
+                  <div
+                    key={key}
+                    style={{
+                      padding: 10,
+                      border: '1px solid var(--border-subtle)',
+                      borderRadius: 6,
+                      marginBottom: 8,
+                      background: 'var(--surface-2)',
+                    }}
                   >
-                    <Input placeholder={t('settings:pricing.patternPlaceholder')} style={{ width: 200 }} />
-                  </Form.Item>
-                  <Form.Item {...rest} name={[name, 'input']} label="input" style={{ marginBottom: 0 }}>
-                    <InputNumber min={0} step={0.01} style={{ width: 100 }} />
-                  </Form.Item>
-                  <Form.Item {...rest} name={[name, 'output']} label="output" style={{ marginBottom: 0 }}>
-                    <InputNumber min={0} step={0.01} style={{ width: 100 }} />
-                  </Form.Item>
-                  <Form.Item {...rest} name={[name, 'cacheRead']} label="cacheRead" style={{ marginBottom: 0 }}>
-                    <InputNumber min={0} step={0.01} style={{ width: 100 }} />
-                  </Form.Item>
-                  <Form.Item {...rest} name={[name, 'cacheWrite']} label="cacheWrite" style={{ marginBottom: 0 }}>
-                    <InputNumber min={0} step={0.01} style={{ width: 100 }} />
-                  </Form.Item>
-                  <Button
-                    type="text"
-                    danger
-                    icon={<MinusCircleOutlined />}
-                    onClick={() => remove(name)}
-                  >
-                    {t('settings:pricing.delete')}
-                  </Button>
-                </Space>
-              </div>
-            ))}
-            <Button
-              type="dashed"
-              onClick={() =>
-                add({ pattern: '', input: 0, output: 0, cacheRead: 0, cacheWrite: 0 })
-              }
-              icon={<PlusOutlined />}
-              block
-            >
-              {t('settings:pricing.addModel')}
-            </Button>
-          </>
-        )}
-      </Form.List>
+                    <Space wrap size={[12, 4]} style={{ width: '100%' }}>
+                      <Form.Item
+                        {...rest}
+                        name={[name, 'pattern']}
+                        label={t('settings:pricing.patternLabel')}
+                        style={{ marginBottom: 0 }}
+                      >
+                        <Input placeholder={t('settings:pricing.patternPlaceholder')} style={{ width: 200 }} />
+                      </Form.Item>
+                      <Form.Item {...rest} name={[name, 'input']} label="input" style={{ marginBottom: 0 }}>
+                        <InputNumber min={0} step={0.01} style={{ width: 100 }} />
+                      </Form.Item>
+                      <Form.Item {...rest} name={[name, 'output']} label="output" style={{ marginBottom: 0 }}>
+                        <InputNumber min={0} step={0.01} style={{ width: 100 }} />
+                      </Form.Item>
+                      <Form.Item {...rest} name={[name, 'cacheRead']} label="cacheRead" style={{ marginBottom: 0 }}>
+                        <InputNumber min={0} step={0.01} style={{ width: 100 }} />
+                      </Form.Item>
+                      <Form.Item {...rest} name={[name, 'cacheWrite']} label="cacheWrite" style={{ marginBottom: 0 }}>
+                        <InputNumber min={0} step={0.01} style={{ width: 100 }} />
+                      </Form.Item>
+                      <Button
+                        type="text"
+                        danger
+                        icon={<MinusCircleOutlined />}
+                        onClick={() => remove(name)}
+                      >
+                        {t('settings:pricing.delete')}
+                      </Button>
+                    </Space>
+                  </div>
+                ))}
+                <Button
+                  type="dashed"
+                  onClick={() =>
+                    add({ pattern: '', input: 0, output: 0, cacheRead: 0, cacheWrite: 0 })
+                  }
+                  icon={<PlusOutlined />}
+                  block
+                >
+                  {t('settings:pricing.addModel')}
+                </Button>
+              </>
+            )}
+          </Form.List>
+        </div>
+      </div>
     </>
   )
 

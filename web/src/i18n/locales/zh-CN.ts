@@ -458,8 +458,6 @@ const zh = {
       searchPlaceholder: '搜索对话...',
       expandAll: '展开工具',
       collapseAll: '折叠工具',
-      fullscreen: '全屏',
-      exitFullscreen: '退出全屏 (Esc)',
     },
     empty: '暂无对话记录',
     emptyStarting: 'AI 启动中',
@@ -511,7 +509,6 @@ const zh = {
     resize: {
       tooltip: '拖动调整高度',
     },
-    fullscreenHint: '按 Esc 或点击右上角退出全屏',
     message: {
       interrupted: '已发送中断（Ctrl+C）',
       sessionEnded: '会话已结束',
@@ -655,6 +652,14 @@ const zh = {
       language: '语言 / Language',
       startup: '启动',
       service: '服务',
+      toolDefaults: '默认与分发',
+      toolCommands: '工具命令',
+      larkBasic: '基础',
+      larkBehavior: '群与会话',
+      larkNotify: '通知',
+      pricingDisplay: '推送展示',
+      pricingDefault: '默认费率（fallback）',
+      pricingByModel: '按模型匹配',
     },
     language: {
       label: '界面语言',
