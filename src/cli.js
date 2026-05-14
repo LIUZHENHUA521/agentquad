@@ -290,25 +290,35 @@ export async function doctorReport({ rootDir = DEFAULT_ROOT_DIR } = {}) {
       })
     }
 
-    // 4. Claude Code hook 安装状态（主动推送）
+    // 4. （历史保留位）claude-code hook 现在挪到 oc.enabled 外面统一检查
+  }
+
+  // ─── AI CLI hooks 安装状态（claude / codex / cursor）——所有用户都看 ──
+  // 不再绑定 openclaw 启用与否，因为 hook 还服务 Telegram / Lark 推送
+  const HOOK_DOCTOR_TOOLS = [
+    { name: 'claude-code', mod: './openclaw-hook-installer.js', flag: 'claude' },
+    { name: 'codex',       mod: './codex-hook-installer.js',    flag: 'codex'  },
+    { name: 'cursor',      mod: './cursor-hook-installer.js',   flag: 'cursor' },
+  ]
+  for (const { name, mod, flag } of HOOK_DOCTOR_TOOLS) {
     try {
-      const { inspectHooks } = await import('./openclaw-hook-installer.js')
-      const hk = inspectHooks()
+      const m = await import(mod)
+      const hk = m.inspectHooks()
       checks.push({
-        name: 'claude-code hook script',
+        name: `${name} hook script`,
         ok: hk.scriptExists,
         detail: hk.hookScriptPath + (hk.scriptExists ? '' : ' (missing — should be auto-installed)'),
       })
       checks.push({
-        name: 'claude-code hooks installed',
+        name: `${name} hooks installed`,
         ok: hk.installed,
         detail: hk.installed
           ? `events: ${hk.eventsInstalled.join(', ')}`
-          : '缺失：跑 `agentquad openclaw install-hook` 一次',
+          : `缺失：跑 \`agentquad hook bootstrap --${flag}\` 一次`,
       })
     } catch (e) {
       checks.push({
-        name: 'claude-code hooks',
+        name: `${name} hooks`,
         ok: false,
         detail: `inspect failed: ${e.message}`,
       })
@@ -455,34 +465,44 @@ export async function runStart(cmdOpts = {}) {
   console.log(buildStartupBanner({ port: actualPort, host }))
   console.log(`AI terminal default cwd: ${defaultCwd}`)
 
-  // ─── 自动 bootstrap Claude Code hook（部署 notify.js + 合入 settings.json）───
-  // 设计：缺啥补啥 / 已装则 noop / 用户跑过 uninstall-hook 留下的 marker 会被尊重
+  // ─── 自动 bootstrap 3 个 AI CLI 的 hook（claude / codex / cursor）───
+  // 设计：每个工具独立 try/catch；缺啥补啥 / 已装则 noop / uninstall marker 被尊重
   // 任何错误一律 warn-skip，绝不让 hook bootstrap 把 agentquad start 挂掉
-  try {
-    const { bootstrapHooks } = await import('./openclaw-hook-installer.js')
-    const r = bootstrapHooks()
-    if (r.skipped) {
-      if (r.reason === 'uninstall_marker') {
-        console.log(`ℹ claude-code hook: 已被你 uninstall-hook 拒绝；想恢复跑 'agentquad openclaw bootstrap'`)
-      } else if (r.reason === 'malformed_settings') {
-        console.warn(`⚠ claude-code hook: ~/.claude/settings.json JSON 损坏，跳过自动安装；修好后跑 'agentquad openclaw bootstrap'`)
-      } else {
-        console.log(`ℹ claude-code hook bootstrap skipped: ${r.reason}`)
+  const BOOTSTRAP_TOOLS = [
+    { tool: 'claude-code', mod: './openclaw-hook-installer.js', fn: 'bootstrapHooks',       malformedReason: 'malformed_settings'  },
+    { tool: 'codex',       mod: './codex-hook-installer.js',    fn: 'bootstrapCodexHooks',  malformedReason: 'malformed_hooks_json' },
+    { tool: 'cursor',      mod: './cursor-hook-installer.js',   fn: 'bootstrapCursorHooks', malformedReason: 'malformed_hooks_json' },
+  ]
+  for (const { tool, mod, fn, malformedReason } of BOOTSTRAP_TOOLS) {
+    try {
+      const m = await import(mod)
+      const r = m[fn]()
+      if (r.skipped) {
+        if (r.reason === 'uninstall_marker') {
+          console.log(`ℹ ${tool} hook: 已被你 hook uninstall 拒绝；想恢复跑 'agentquad hook bootstrap --${tool === 'claude-code' ? 'claude' : tool}'`)
+        } else if (r.reason === malformedReason) {
+          console.warn(`⚠ ${tool} hook: 配置 JSON 损坏，跳过自动安装；修好后跑 'agentquad hook bootstrap --${tool === 'claude-code' ? 'claude' : tool}'`)
+        } else {
+          console.log(`ℹ ${tool} hook bootstrap skipped: ${r.reason}`)
+        }
+        continue
       }
-    } else {
       if (r.scriptResult.action === 'installed') {
-        console.log(`✓ claude-code hook script installed (v${r.scriptResult.version}) → ${r.scriptResult.scriptPath}`)
+        console.log(`✓ ${tool} hook script installed (v${r.scriptResult.version}) → ${r.scriptResult.scriptPath}`)
       } else if (r.scriptResult.action === 'upgraded') {
-        console.log(`✓ claude-code hook script upgraded v${r.scriptResult.previousVersion ?? 0} → v${r.scriptResult.version} (backup: ${r.scriptResult.backup})`)
+        console.log(`✓ ${tool} hook script upgraded v${r.scriptResult.previousVersion ?? 0} → v${r.scriptResult.version} (backup: ${r.scriptResult.backup})`)
       }
       if (r.alreadyInstalled) {
         // 静默：避免每次 start 都刷屏。doctor 会显示状态
       } else if (r.hookResult) {
-        console.log(`✓ claude-code hooks installed: ${r.hookResult.added.join(', ')}`)
+        console.log(`✓ ${tool} hooks installed: ${r.hookResult.added.join(', ')}`)
+        if (r.hookResult.configResult?.action && r.hookResult.configResult.action !== 'already_present') {
+          console.log(`  feature flag ${r.hookResult.configResult.action} → ${r.hookResult.configResult.configPath}`)
+        }
       }
+    } catch (e) {
+      console.warn(`⚠ ${tool} hook bootstrap failed: ${e?.message || e}`)
     }
-  } catch (e) {
-    console.warn(`⚠ claude-code hook bootstrap failed: ${e?.message || e}`)
   }
 
   // listen 完成后异步发"重启完成 + Resume N 个会话"通知到 telegram。
@@ -892,25 +912,154 @@ async function actHookStatus() {
   if (r.error) console.log(`  ⚠️  ${r.error}`)
 }
 
+// ─── 多工具 hook 操作（claude / codex / cursor）─────────────────────
+export function planHookTools(opts) {
+  const flags = opts || {}
+  const explicit = []
+  if (flags.claude) explicit.push('claude')
+  if (flags.codex)  explicit.push('codex')
+  if (flags.cursor) explicit.push('cursor')
+  if (flags.all || explicit.length === 0) return ['claude', 'codex', 'cursor']
+  return explicit
+}
+
+const HOOK_INSTALLERS = {
+  claude: { mod: () => import('./openclaw-hook-installer.js'), bootstrap: 'bootstrapHooks' },
+  codex:  { mod: () => import('./codex-hook-installer.js'),    bootstrap: 'bootstrapCodexHooks' },
+  cursor: { mod: () => import('./cursor-hook-installer.js'),   bootstrap: 'bootstrapCursorHooks' },
+}
+
+async function actInstallHookMulti(opts) {
+  let allOk = true
+  for (const tool of planHookTools(opts)) {
+    try {
+      const m = await HOOK_INSTALLERS[tool].mod()
+      const out = m.installHooks()
+      const path = out.settingsPath || out.hooksPath
+      console.log(`✓ [${tool}] installed ${out.added.join(', ')} → ${path}`)
+      if (out.backup) console.log(`   backup: ${out.backup}`)
+      if (out.configResult?.action && out.configResult.action !== 'already_present') {
+        console.log(`   feature flag ${out.configResult.action} → ${out.configResult.configPath}`)
+      }
+      if (out.markerCleared) console.log(`   uninstall marker cleared`)
+    } catch (e) {
+      console.error(`✗ [${tool}] ${e.message}`)
+      if (e.code === 'hook_script_missing') {
+        console.error(`   跑 'agentquad hook bootstrap --${tool}' 一键部署 + 安装`)
+      }
+      allOk = false
+    }
+  }
+  if (!allOk) process.exit(1)
+}
+
+async function actUninstallHookMulti(opts) {
+  let allOk = true
+  for (const tool of planHookTools(opts)) {
+    try {
+      const m = await HOOK_INSTALLERS[tool].mod()
+      const out = m.uninstallHooks({ writeUninstallMarker: opts.marker !== false })
+      const path = out.settingsPath || out.hooksPath
+      if (out.removed.length === 0) {
+        console.log(`= [${tool}] no AgentQuad hooks; nothing to remove`)
+      } else {
+        const total = out.removed.reduce((s, r) => s + r.removedCount, 0)
+        console.log(`✓ [${tool}] removed ${total} entries → ${path}`)
+        for (const r of out.removed) console.log(`     ${r.event}: -${r.removedCount}`)
+        if (out.backup) console.log(`   backup: ${out.backup}`)
+      }
+      if (out.markerWritten) console.log(`   marker written`)
+    } catch (e) {
+      console.error(`✗ [${tool}] ${e.message}`)
+      allOk = false
+    }
+  }
+  if (!allOk) process.exit(1)
+}
+
+async function actHookStatusMulti(opts) {
+  for (const tool of planHookTools(opts)) {
+    try {
+      const m = await HOOK_INSTALLERS[tool].mod()
+      const r = m.inspectHooks()
+      const icon = r.installed ? '✓' : '✗'
+      const path = r.settingsPath || r.hooksPath
+      console.log(`${icon} [${tool}] installed: ${r.installed}`)
+      console.log(`   events: ${r.eventsInstalled.length ? r.eventsInstalled.join(', ') : '(none)'}`)
+      console.log(`   config: ${path}`)
+      console.log(`   script: ${r.hookScriptPath} (${r.scriptExists ? 'exists' : 'MISSING'})`)
+      if (r.featureFlagOk === false) console.log(`   ⚠️  codex_hooks feature flag not set in ~/.codex/config.toml`)
+      if (r.error) console.log(`   ⚠️  ${r.error}`)
+    } catch (e) {
+      console.error(`✗ [${tool}] ${e.message}`)
+    }
+  }
+}
+
+async function actBootstrapHookMulti(opts) {
+  let allOk = true
+  for (const tool of planHookTools(opts)) {
+    const cfg = HOOK_INSTALLERS[tool]
+    try {
+      const m = await cfg.mod()
+      const r = m[cfg.bootstrap]({ respectUninstallMarker: false })
+      if (r.skipped) {
+        const reasonTxt = r.reason === 'malformed_settings' || r.reason === 'malformed_hooks_json'
+          ? `${r.reason} — 请先修复 JSON 再试`
+          : r.reason
+        console.log(`= [${tool}] skipped: ${reasonTxt}`)
+        if (r.reason === 'malformed_settings' || r.reason === 'malformed_hooks_json') allOk = false
+        continue
+      }
+      const sr = r.scriptResult
+      const verb = sr.action === 'unchanged' ? '=' : '✓'
+      console.log(`${verb} [${tool}] script ${sr.action} (v${sr.version})`)
+      if (sr.backup) console.log(`   script backup: ${sr.backup}`)
+      if (r.alreadyInstalled) {
+        console.log(`   hooks already installed`)
+      } else if (r.hookResult) {
+        console.log(`   hooks installed: ${r.hookResult.added.join(', ')}`)
+        if (r.hookResult.backup) console.log(`   config backup: ${r.hookResult.backup}`)
+        if (r.hookResult.configResult?.action && r.hookResult.configResult.action !== 'already_present') {
+          console.log(`   feature flag ${r.hookResult.configResult.action} → ${r.hookResult.configResult.configPath}`)
+        }
+      }
+      if (r.markerCleared) console.log(`   uninstall marker cleared`)
+    } catch (e) {
+      console.error(`✗ [${tool}] ${e.message}`)
+      allOk = false
+    }
+  }
+  if (!allOk) process.exit(1)
+}
+
+function addToolFlags(cmd) {
+  return cmd
+    .option('--claude', 'apply to Claude Code hooks (~/.claude/settings.json)')
+    .option('--codex', 'apply to OpenAI Codex hooks (~/.codex/hooks.json + config.toml)')
+    .option('--cursor', 'apply to Cursor Agent hooks (~/.cursor/hooks.json)')
+    .option('--all', 'apply to all tools (default if no flag given)')
+}
+
 // ─── 顶层 hook 子命令组（首选入口；发现性比埋在 openclaw 下好）──────
-const hookCmd = program.command('hook').description('管理 AgentQuad 在 ~/.claude/settings.json 里安装的 hook（装/删/查/恢复）')
+const hookCmd = program.command('hook').description('管理 AgentQuad 在 Claude Code / Codex / Cursor 里安装的 hook（装/删/查/恢复）')
 
-hookCmd.command('install')
-  .description('把 AgentQuad 的 3 个 hook（Stop/Notification/SessionEnd）合并写入 ~/.claude/settings.json')
-  .action(actInstallHook)
+addToolFlags(hookCmd.command('install'))
+  .description('合并写入 hook 配置；默认 --all（claude + codex + cursor）')
+  .action(actInstallHookMulti)
 
-hookCmd.command('uninstall')
-  .description('从 ~/.claude/settings.json 移除 AgentQuad 加的 hook entry，保留你其他 hook（默认写 .uninstalled marker，下次 start 不再自动装回）')
+addToolFlags(hookCmd.command('uninstall'))
+  .description('移除 AgentQuad 加的 hook entry，保留你其他 hook；默认写 .uninstalled marker，下次 start 不再装回')
   .option('--no-marker', '不写 .uninstalled marker（下次 agentquad start 会自动装回）')
-  .action(actUninstallHook)
+  .action(actUninstallHookMulti)
 
-hookCmd.command('status')
-  .description('查看 AgentQuad hook 是否安装到 ~/.claude/settings.json')
-  .action(actHookStatus)
+addToolFlags(hookCmd.command('status'))
+  .description('查看每个工具的 hook 安装状态')
+  .action(actHookStatusMulti)
 
-hookCmd.command('bootstrap')
+addToolFlags(hookCmd.command('bootstrap'))
   .description('一键部署 hook script + 安装 hooks（强制忽略 .uninstalled marker，用于"删过又想恢复"场景）')
-  .action(actBootstrapHook)
+  .action(actBootstrapHookMulti)
 
 // ─── openclaw 子命令组：保留旧路径以向后兼容；hook 操作建议改用 `agentquad hook *` ───
 const openclawCmd = program.command('openclaw').description('OpenClaw bridge: install/uninstall Claude Code hooks for proactive WeChat push')
