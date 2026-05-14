@@ -474,6 +474,84 @@ describe('routes/ai-terminal', () => {
     db.close()
   })
 
+  it('startup recovery preserves permissionMode stored on the aiSession', () => {
+    const db = openDb(':memory:')
+    const realCwd = mkdtempSync(join(tmpdir(), 'quadtodo-cwd-'))
+    const todo = db.createTodo({
+      title: 'T',
+      quadrant: 1,
+      status: 'ai_running',
+      aiSessions: [{
+        sessionId: 'old-session',
+        tool: 'claude',
+        nativeSessionId: 'abcdef12-3456-7890-abcd-ef1234567890',
+        cwd: realCwd,
+        status: 'running',
+        startedAt: 1,
+        completedAt: null,
+        prompt: 'old prompt',
+        permissionMode: 'bypass',
+      }],
+    })
+    const pty = new FakePty()
+    pty.findClaudeSession = () => ({ filePath: 'x.jsonl', cwd: realCwd })
+    const logDir = mkdtempSync(join(tmpdir(), 'quadtodo-log-'))
+    const ait = createAiTerminal({ db, pty, logDir })
+    expect(pty.started).toHaveLength(1)
+    expect(pty.started[0].permissionMode).toBe('bypass')
+    const recovered = [...ait.sessions.values()][0]
+    expect(recovered.permissionMode).toBe('bypass')
+    expect(recovered.autoMode).toBe('bypass')
+    ait.close()
+    rmSync(logDir, { recursive: true, force: true })
+    rmSync(realCwd, { recursive: true, force: true })
+    db.close()
+  })
+
+  it('startup recovery falls back to config defaultPermissionMode when DB record is missing it', () => {
+    const rootDir = mkdtempSync(join(tmpdir(), 'quadtodo-root-'))
+    loadConfig({ rootDir })
+    setConfigValue('defaultPermissionMode', 'bypass', { rootDir })
+    const db = openDb(':memory:')
+    const realCwd = mkdtempSync(join(tmpdir(), 'quadtodo-cwd-'))
+    db.createTodo({
+      title: 'T',
+      quadrant: 1,
+      status: 'ai_running',
+      aiSessions: [{
+        sessionId: 'old-session',
+        tool: 'claude',
+        nativeSessionId: 'abcdef12-3456-7890-abcd-ef1234567890',
+        cwd: realCwd,
+        status: 'running',
+        startedAt: 1,
+        completedAt: null,
+        prompt: 'old prompt',
+        // no permissionMode — simulates pre-fix DB record
+      }],
+    })
+    const pty = new FakePty()
+    pty.findClaudeSession = () => ({ filePath: 'x.jsonl', cwd: realCwd })
+    const logDir = mkdtempSync(join(tmpdir(), 'quadtodo-log-'))
+    const ait = createAiTerminal({ db, pty, logDir, rootDir })
+    expect(pty.started).toHaveLength(1)
+    expect(pty.started[0].permissionMode).toBe('bypass')
+    ait.close()
+    rmSync(logDir, { recursive: true, force: true })
+    rmSync(realCwd, { recursive: true, force: true })
+    rmSync(rootDir, { recursive: true, force: true })
+    db.close()
+  })
+
+  it('spawnSession persists permissionMode into todo.aiSessions for future recovery', async () => {
+    const todo = ctx.db.createTodo({ title: 'persisted mode', quadrant: 1 })
+    const exec = await request(ctx.app).post('/api/ai-terminal/exec')
+      .send({ todoId: todo.id, prompt: 'hi', tool: 'claude', permissionMode: 'bypass' })
+    expect(exec.status).toBe(200)
+    const persisted = ctx.db.getTodo(todo.id)
+    expect(persisted.aiSessions[0].permissionMode).toBe('bypass')
+  })
+
   it('output event is captured in history buffer', async () => {
     const todo = ctx.db.createTodo({ title: 'T', quadrant: 1 })
     const { body } = await request(ctx.app).post('/api/ai-terminal/exec')
@@ -1468,6 +1546,122 @@ describe('routes/ai-terminal', () => {
       expect(r.status).toBe(200)
       expect(r.body.ok).toBe(true)
       expect(r.body.resources).toEqual([])
+    })
+  })
+
+  describe('interrupt key → idle scheduler', () => {
+    // 回归：running 中按 Ctrl+C/Esc 后，没有 Stop hook 也没有 jsonl end_turn 时，
+    // 状态不能卡死在 running。1.5s grace + 800ms quiet 后兜底翻 idle。
+    async function startRunningSession() {
+      const todo = ctx.db.createTodo({ title: 'T', quadrant: 1 })
+      const exec = await request(ctx.app).post('/api/ai-terminal/exec')
+        .send({ todoId: todo.id, prompt: 'hi', tool: 'claude' })
+      return ctx.ait.sessions.get(exec.body.sessionId)
+    }
+
+    it('POST /input Ctrl+C → grace 后 session 翻 idle 并广播 turn_done(event=interrupted)', async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true })
+      try {
+        const session = await startRunningSession()
+        const sent = []
+        const ws = { readyState: 1, OPEN: 1, send: (d) => sent.push(JSON.parse(d)) }
+        ctx.ait.addBrowser(session.sessionId, ws)
+        sent.length = 0
+
+        expect(session.status).toBe('running')
+        await request(ctx.app).post('/api/ai-terminal/input').send({ sessionId: session.sessionId, data: '\x03' })
+
+        // 还没到 1500ms：状态保持 running
+        await vi.advanceTimersByTimeAsync(1000)
+        expect(session.status).toBe('running')
+
+        // 跨过 grace 窗口（lastOutputAt 从未推进过 → 直接判 idle）
+        await vi.advanceTimersByTimeAsync(800)
+        expect(session.status).toBe('idle')
+        const interruptMsg = sent.find(m => m.type === 'turn_done' && m.event === 'interrupted')
+        expect(interruptMsg).toBeTruthy()
+        expect(interruptMsg.status).toBe('idle')
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('handleBrowserMessage Esc 单键 → 同样翻 idle（箭头键 \\x1b[A 不算）', async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true })
+      try {
+        const session = await startRunningSession()
+        const fakeWs = { readyState: 1, OPEN: 1, send() {} }
+
+        // 箭头键不应触发调度
+        ctx.ait.handleBrowserMessage(session.sessionId, { type: 'input', data: '\x1b[A' }, fakeWs)
+        await vi.advanceTimersByTimeAsync(3000)
+        expect(session.status).toBe('running')
+
+        // 裸 Esc 触发调度
+        ctx.ait.handleBrowserMessage(session.sessionId, { type: 'input', data: '\x1b' }, fakeWs)
+        await vi.advanceTimersByTimeAsync(1600)
+        expect(session.status).toBe('idle')
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('打断后 PTY 仍在喷输出 → 重试直至放弃，期间不误翻 idle', async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true })
+      try {
+        const session = await startRunningSession()
+        const fakeWs = { readyState: 1, OPEN: 1, send() {} }
+        ctx.ait.handleBrowserMessage(session.sessionId, { type: 'input', data: '\x03' }, fakeWs)
+
+        // 模拟 agent 每 600ms 喷一段输出（< 800ms quiet 阈值），running 应保持
+        for (let i = 0; i < 4; i++) {
+          ctx.pty.emit('output', { sessionId: session.sessionId, data: 'x' })
+          await vi.advanceTimersByTimeAsync(600)
+          expect(session.status).toBe('running')
+        }
+
+        // 停止喷输出，给足时间走完最大重试
+        await vi.advanceTimersByTimeAsync(5000)
+        expect(session.status).toBe('idle')
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('自然 turn done 已经把状态翻 idle 后，打断 timer 到点也不应再次广播', async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true })
+      try {
+        const session = await startRunningSession()
+        const sent = []
+        const ws = { readyState: 1, OPEN: 1, send: (d) => sent.push(JSON.parse(d)) }
+        ctx.ait.addBrowser(session.sessionId, ws)
+
+        ctx.ait.handleBrowserMessage(session.sessionId, { type: 'input', data: '\x03' }, ws)
+        // 自然 turn done 先到
+        ctx.ait.notifyTurnDone(session.sessionId, { event: 'stop', status: 'idle' })
+        expect(session.status).toBe('idle')
+        sent.length = 0
+
+        // grace 之后不能再来一条 interrupted
+        await vi.advanceTimersByTimeAsync(3000)
+        const interruptMsg = sent.find(m => m.type === 'turn_done' && m.event === 'interrupted')
+        expect(interruptMsg).toBeFalsy()
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('普通字符不触发打断调度（防 IM 队列死锁回归）', async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true })
+      try {
+        const session = await startRunningSession()
+        await request(ctx.app).post('/api/ai-terminal/input').send({ sessionId: session.sessionId, data: 'a' })
+        await request(ctx.app).post('/api/ai-terminal/input').send({ sessionId: session.sessionId, data: '\x1b[I' })
+        await vi.advanceTimersByTimeAsync(3000)
+        expect(session.status).toBe('running')
+      } finally {
+        vi.useRealTimers()
+      }
     })
   })
 

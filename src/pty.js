@@ -720,8 +720,25 @@ export class PtyManager extends EventEmitter {
               // 不区分 tool_result vs 真用户输入：两者都意味着 "Claude 正在/即将处理"
               // → awaitingReply=false。tool_result 是 Claude 自家 tool_use → tool_result 闭环，
               // 看到 tool_result 说明上一拍的 assistant 还会继续追加内容，没结束。
-              void blocks
-              kind = 'turn-started'
+              //
+              // 例外：Claude Code 在用户 Esc/Ctrl+C 打断时会写入一条 type=user 的消息，
+              // 内容里带 "[Request interrupted by user" 文本（可能在 string content 里，也
+              // 可能落在某个 tool_result.content 里）。这种情况 Stop hook 不会 fire，
+              // stop_reason 也不会是 end_turn → 不识别就 stuck-running。这里检出 marker
+              // 后把它当作"轮次已结束"看，让上层走 markSessionAwaitingReply(true) 路径。
+              const contentText = typeof content === 'string'
+                ? content
+                : blocks.map(b => {
+                    if (!b) return ''
+                    if (typeof b.text === 'string') return b.text
+                    if (typeof b.content === 'string') return b.content
+                    return ''
+                  }).join('\n')
+              if (contentText.includes('[Request interrupted by user')) {
+                kind = 'turn-done'
+              } else {
+                kind = 'turn-started'
+              }
             } else {
               // assistant：仅 stop_reason==='end_turn' 才算真完成；tool_use / max_tokens / null 都是中间态
               const sr = obj.message?.stop_reason

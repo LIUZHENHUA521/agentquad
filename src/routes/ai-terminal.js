@@ -18,6 +18,17 @@ const LIVE_AI_STATUSES = new Set(['running', 'idle', 'pending_confirm'])
 const TERMINAL_RESIZE_STATUSES = new Set(['done', 'failed', 'stopped'])
 // 防御：claude end_turn 之后那几帧 TUI redraw 不计为"新一轮的活动"
 const EFFECTIVE_STATUS_OUTPUT_GRACE_MS = 500
+// 用户按打断键（Ctrl+C / Esc）后到再次轮询 lastOutputAt 的等待时间。
+// 取 1500ms：长于 EFFECTIVE_STATUS_OUTPUT_GRACE_MS（500ms），盖住 Claude/Codex 收尾打印
+// 那条 "Interrupted by user" 之类的 echo；又短于 stop hook 的常见到达延迟，保证 UI 翻状态
+// 比 hook 早。
+const INTERRUPT_GRACE_MS = 1500
+// "停顿够久才视为真 idle"：等 INTERRUPT_GRACE_MS 之后再看，如果距上次 PTY 输出 ≥ 这个值，
+// 才相信 agent 已经停了。低于此值 → 还在喷收尾文本 → 再等一轮。
+const INTERRUPT_QUIET_MS = 800
+// 兜底的最大重试次数：避免遇到一直喷输出的奇怪 agent 时无限挂钩；超过后让 stop hook /
+// jsonl watcher 继续接力，本地静默放弃。
+const INTERRUPT_MAX_RETRIES = 3
 
 /**
  * 计算前端展示用的 effectiveStatus —— 用 PTY 输出活性兜底"hook/watcher 判定结束错了"的边界。
@@ -136,6 +147,9 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
     session.status = 'idle'
     session.awaitingReply = true
     session.recentOutput = ''
+    // 一旦走到 idle，不管来源是 Stop hook / jsonl watcher / 还是用户打断键调度器，
+    // 都要清掉打断 timer：否则 timer 之后还可能再次触发 turn_done 广播。
+    clearInterruptTimer(session)
     persistLiveSessionState(session, 'idle', 'ai_done', { lastTurnDoneAt: ts })
     return true
   }
@@ -338,6 +352,7 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
     session.status = aiStatus
     session.completedAt = Date.now()
     session.awaitingReply = false
+    clearInterruptTimer(session)
 
     const superseded = Boolean(session.replacedBySessionId) || todoSessionMap.get(session.todoId) !== sessionId
     const todo = db.getTodo(session.todoId)
@@ -530,6 +545,7 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
           startedAt: session.startedAt,
           completedAt: null,
           prompt,
+          permissionMode: effectivePermissionMode,
           ...(label ? { label } : {}),
         }),
       })
@@ -735,6 +751,8 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
       // 如果在这里无条件翻 false，dispatcher 会把同一 chat 后续的 IM 消息全部 queue，
       // 而队列只能等下一次 Stop hook 才会 flush，导致飞书消息延迟数分钟才送达。
       if (isPendingClearingInput(data)) markSessionRunningAfterInput(session)
+      // running 中遇到打断键 → 排一个 idle 兜底检查（Stop hook 不 fire 时也能翻状态）
+      if (session.status === 'running' && isInterruptInput(data)) scheduleInterruptIdleCheck(session)
       writeRestInputToPty(sessionId, data)
       res.json({ ok: true })
     } catch (e) {
@@ -801,6 +819,70 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
   function isPendingClearingInput(data) {
     if (typeof data !== 'string' || !data) return false
     return /[\r\n\x03\x04]/.test(data)
+  }
+
+  // 用户希望"打断当前轮"的按键：Ctrl+C（\x03）或 Esc（裸 \x1b / \x1b\x1b）。
+  // 注意：必须排除 ANSI 转义序列 —— 箭头键是 '\x1b[A'、焦点切换是 '\x1b[I'，
+  // 它们都以 \x1b 起头，但不是用户意图上的"打断"。所以只认严格匹配的两种形态。
+  // 这里不区分 status：调用方负责按 session.status === 'running' 决定是否调度。
+  function isInterruptInput(data) {
+    if (typeof data !== 'string' || !data) return false
+    if (data.includes('\x03')) return true
+    if (data === '\x1b' || data === '\x1b\x1b') return true
+    return false
+  }
+
+  // running 中的会话遇到用户按 Ctrl+C/Esc 时被调用。
+  // 现状：Claude / Codex 自然 turn done 才发 Stop hook 和 stop_reason='end_turn'，
+  // 用户打断不发 → session.status 卡在 running、computeEffectiveStatus 又因 lastOutputAt
+  // 推进而强转 running，前端徽标永远转圈。
+  //
+  // 策略：从按下打断键起延后 INTERRUPT_GRACE_MS 检查 lastOutputAt；若 PTY 已经静默
+  // ≥ INTERRUPT_QUIET_MS 则视为打断成功，复用 markSessionIdleAfterTurn 走与自然 turn done
+  // 同样的持久化路径（todo.status → ai_done、broadcast turn_done），保留会话本身（PTY 不退）。
+  // 若 PTY 还在喷收尾输出，重试 INTERRUPT_MAX_RETRIES 次后放弃，留给 stop hook / jsonl
+  // watcher 接力（双层防御互不依赖）。
+  function scheduleInterruptIdleCheck(session) {
+    if (!session) return
+    if (session.interruptTimer) {
+      clearTimeout(session.interruptTimer)
+      session.interruptTimer = null
+    }
+    session.interruptRetries = 0
+    const tryFlip = () => {
+      session.interruptTimer = null
+      if (!sessions.has(session.sessionId)) return
+      if (session.status !== 'running') return
+      const lastOutputAt = Number(session.lastOutputAt || 0)
+      const now = Date.now()
+      if (lastOutputAt > 0 && now - lastOutputAt < INTERRUPT_QUIET_MS) {
+        session.interruptRetries = (session.interruptRetries || 0) + 1
+        if (session.interruptRetries >= INTERRUPT_MAX_RETRIES) return
+        session.interruptTimer = setTimeout(tryFlip, INTERRUPT_GRACE_MS)
+        session.interruptTimer.unref?.()
+        return
+      }
+      const ts = now
+      session.lastTurnDoneAt = ts
+      markSessionIdleAfterTurn(session, ts)
+      broadcastToSession(session, {
+        type: 'turn_done',
+        event: 'interrupted',
+        status: session.status || 'idle',
+        timestamp: ts,
+      })
+    }
+    session.interruptTimer = setTimeout(tryFlip, INTERRUPT_GRACE_MS)
+    session.interruptTimer.unref?.()
+  }
+
+  function clearInterruptTimer(session) {
+    if (!session) return
+    if (session.interruptTimer) {
+      clearTimeout(session.interruptTimer)
+      session.interruptTimer = null
+    }
+    session.interruptRetries = 0
   }
 
   function writeRestInputToPty(sessionId, data) {
@@ -891,6 +973,8 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
       // 浏览器侧每次按键都收到 pending_cleared → pending_confirm 一对消息，导致前端 border
       // 在 1px ↔ 2px 之间反复，肉眼上就是"打字时终端布局抖动"。
       if (isPendingClearingInput(msg.data)) markSessionRunningAfterInput(session)
+      // 同 REST /input：running 中遇到打断键 → 排 idle 兜底检查，给前端 1.5s 后翻状态
+      if (session?.status === 'running' && isInterruptInput(msg.data)) scheduleInterruptIdleCheck(session)
       // 同 REST /input：只在真正的"提交"键才翻 false，避免普通字符 / 焦点序列 / 粘贴
       // 中间态把 awaitingReply 推回 false，导致 dispatcher 把 IM 消息死锁在队列里
       // 直到下一次 Stop。
@@ -988,6 +1072,15 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
   }
 
   function recoverPendingTodosOnStartup() {
+    // 启动期一次性读 config：恢复一条没记 permissionMode 的老 session 时回退到全局默认。
+    // 用户在设置里选了"完全托管"但 DB 里没存 → 这里把意图重新接上，否则 claude --resume
+    // 会用交互式默认（= UI 上显示"手动"）。
+    let startupDefaultPermissionMode = null
+    try {
+      startupDefaultPermissionMode = loadConfig({ rootDir }).defaultPermissionMode || null
+    } catch (e) {
+      console.warn('[ai-terminal] recover: loadConfig failed:', e.message)
+    }
     const todos = db.listTodos()
       .filter(todo => ['ai_running', 'ai_pending'].includes(todo.status))
     for (const todo of todos) {
@@ -1015,6 +1108,9 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
       }
       const sessionId = `ai-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
       const cwd = resolveSessionCwd(recoverable.cwd || todo.workDir)
+      // DB 里记的优先（尊重用户在该 session 上的显式选择，包括运行中切到 bypass 的那条）；
+      // 没记 → 回退到 config 全局默认；都没有 → null（即 'default'，原始行为）。
+      const recoveredPermissionMode = recoverable.permissionMode || startupDefaultPermissionMode || null
       const session = {
         sessionId,
         todoId: todo.id,
@@ -1030,7 +1126,8 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
         recentOutput: '',
         cwd,
         currentCwd: cwd,
-        autoMode: null,
+        permissionMode: recoveredPermissionMode || 'default',
+        autoMode: recoveredPermissionMode && recoveredPermissionMode !== 'default' ? recoveredPermissionMode : null,
         lastOutputAt: null,
         lastTurnDoneAt: null,
         outputBytesTotal: 0,
@@ -1049,6 +1146,7 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
           status: 'running',
           startedAt: Date.now(),
           completedAt: null,
+          permissionMode: recoveredPermissionMode || recoverable.permissionMode || null,
         }),
       })
       try {
@@ -1058,6 +1156,7 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
           prompt: null,
           cwd,
           resumeNativeId: recoverable.nativeSessionId,
+          permissionMode: recoveredPermissionMode || undefined,
           extraEnv: {
             QUADTODO_SESSION_ID: sessionId,
             QUADTODO_TODO_ID: String(todo.id),

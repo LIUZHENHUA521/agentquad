@@ -763,6 +763,34 @@ describe('PtyManager', () => {
       } finally { t.cleanup() }
     })
 
+    it('treats user line containing "[Request interrupted by user" as turn-done (interrupt-aware)', () => {
+      // 回归 running 状态机：用户 Esc/Ctrl+C 打断时 Claude Code 会写一条带此 marker 的 user
+      // 消息，Stop hook 不 fire 也无 end_turn → 不识别就 stuck-running。
+      const t = setupClaudeWatcher(
+        JSON.stringify({ type: 'user', message: { role: 'user', content: 'do thing' } }) + '\n' +
+        JSON.stringify({ type: 'assistant', message: { role: 'assistant', stop_reason: 'tool_use', content: [{ type: 'tool_use', name: 'Bash' }] } }) + '\n' +
+        JSON.stringify({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'x', content: '[Request interrupted by user for tool use]' }] } }) + '\n',
+      )
+      try {
+        t.tick()
+        expect(t.events.done).toEqual([
+          { sessionId: 's1', nativeId: 'abcdef12-3456-7890-abcd-ef1234567890' },
+        ])
+        expect(t.events.started).toEqual([])
+      } finally { t.cleanup() }
+    })
+
+    it('also detects interrupt marker when content is a plain string', () => {
+      const t = setupClaudeWatcher(
+        JSON.stringify({ type: 'user', message: { role: 'user', content: '[Request interrupted by user]' } }) + '\n',
+      )
+      try {
+        t.tick()
+        expect(t.events.done).toHaveLength(1)
+        expect(t.events.started).toEqual([])
+      } finally { t.cleanup() }
+    })
+
     it('does not run watcher for non-claude tools', () => {
       vi.useFakeTimers()
       const factory = makeFakePty()
