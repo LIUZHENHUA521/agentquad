@@ -3,7 +3,6 @@ import { Popover } from 'antd'
 import { ListFilter } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useDispatchStore, type BoardFilter } from '../../store/dispatchStore'
-import { useTodoSnapshotStore } from '../../store/todoSnapshotStore'
 
 const ORDER: BoardFilter[] = ['todo', 'done', 'all']
 
@@ -18,7 +17,6 @@ export function BoardFilterPill() {
   const [open, setOpen] = useState(false)
   const boardFilter = useDispatchStore((s) => s.boardFilter)
   const setBoardFilter = useDispatchStore((s) => s.setBoardFilter)
-  const count = useTodoSnapshotStore((s) => s.todos.length)
 
   const labelFor = (f: BoardFilter): string => {
     if (f === 'done') return t('topbar:filter.labelDone')
@@ -72,7 +70,6 @@ export function BoardFilterPill() {
           <span className="stat-pill-custom-icon" style={{ color: 'var(--accent-electric)' }}>
             <ListFilter size={13} />
           </span>
-          <span className="stat-pill-value">{count}</span>
           <span className="stat-pill-label">
             {labelFor(boardFilter)}
             <span className="topbar-filter-caret">▾</span>
