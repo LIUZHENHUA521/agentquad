@@ -69,6 +69,49 @@ describe('openclaw-hook codex branch', () => {
     expect(sent.message).toContain('fallback hi')
   })
 
+  it('flips AgentQuad session to idle on Stop / TurnAborted (markSessionAwaitingReply + notifyTurnDone + dispatcher flush)', async () => {
+    // 回归：codex task_complete → handleCodexJsonl 早期只推 IM，从来不动 ait 状态，导致
+    // 前端 deriveAiState 看到 status='running'/awaitingReply=false → pill 永远显示"运行中"。
+    // 这条断言确保 Stop 和 TurnAborted 都会把状态翻成 awaitingReply=true 并 flush dispatcher。
+    const bridge = fakeBridge()
+    const aiTerminal = {
+      sessions: new Map([['qs1', { status: 'running', awaitingReply: false, todoId: 't1' }]]),
+      markSessionAwaitingReply: vi.fn(() => true),
+      notifyTurnDone: vi.fn(),
+    }
+    const sessionInputDispatcher = { onSessionIdle: vi.fn(async () => {}) }
+    const sidecar = { lookup: () => ({ quadtodoSessionId: 'qs1', todoId: 't1', cwd: '/x' }) }
+    const handler = createOpenClawHookHandler({
+      bridge,
+      openclaw: bridge,
+      db: { listPendingQuestions: () => [], getTodo: () => null },
+      aiTerminal,
+      sidecar,
+      sessionInputDispatcher,
+      pty: { findCodexSession: () => ({ filePath: 'fake.jsonl', cwd: '/x', nativeId: 'n1' }) },
+      readLatestCodexTurnFresh: async () => ({ text: 'codex finished', raw: {}, timestamp: null }),
+      buildFullCodexTranscript: () => ({ markdown: '' }),
+      extractCodexTurnUsageFromLines: () => null,
+      extractSessionUsageFromLines: () => null,
+      readJsonlLines: () => [],
+      logger: { warn: () => {}, info: () => {} },
+    })
+
+    await handler.handle({ source: 'codex', path: 'jsonl', event: 'Stop', nativeId: 'n1', transcript_path: 'fake.jsonl' })
+    expect(aiTerminal.markSessionAwaitingReply).toHaveBeenCalledWith('qs1', true)
+    expect(aiTerminal.notifyTurnDone).toHaveBeenCalledWith('qs1', expect.objectContaining({ event: 'stop', status: 'idle' }))
+    expect(sessionInputDispatcher.onSessionIdle).toHaveBeenCalledWith('qs1')
+
+    // TurnAborted（用户按 Esc 中断）也走同样翻转
+    aiTerminal.markSessionAwaitingReply.mockClear()
+    aiTerminal.notifyTurnDone.mockClear()
+    sessionInputDispatcher.onSessionIdle.mockClear()
+    await handler.handle({ source: 'codex', path: 'jsonl', event: 'TurnAborted', nativeId: 'n1', transcript_path: 'fake.jsonl' })
+    expect(aiTerminal.markSessionAwaitingReply).toHaveBeenCalledWith('qs1', true)
+    expect(aiTerminal.notifyTurnDone).toHaveBeenCalledWith('qs1', expect.objectContaining({ event: 'stop', status: 'idle' }))
+    expect(sessionInputDispatcher.onSessionIdle).toHaveBeenCalledWith('qs1')
+  })
+
   it('handler returns error when nativeId not in sidecar nor sessions', async () => {
     const bridge = fakeBridge()
     const handler = createOpenClawHookHandler({

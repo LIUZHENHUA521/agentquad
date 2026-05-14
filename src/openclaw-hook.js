@@ -483,6 +483,35 @@ export function createOpenClawHookHandler(deps = {}) {
       return { ok: false, reason: 'no_quadtodo_session' }
     }
 
+    // 1.5) 翻转 AgentQuad 会话状态 —— 与 Claude Stop 路径对齐
+    //
+    // 历史回归：codex 的 task_complete 事件流水线（emitter→server→/openclaw/hook→handleCodexJsonl）
+    // 只负责 IM 推送，从来没有调过 ait 的 markSessionAwaitingReply / notifyTurnDone；导致 codex
+    // 一轮跑完后 deriveAiState 仍然吃到 (status=running, awaitingReply=false) → UI pill 永远显
+    // 示"运行中"。这里补齐：Stop 与 TurnAborted（用户按 Esc 中断也等价于"本轮结束、等用户"）
+    // 都翻状态。push 失败不阻塞翻转——理由跟 Claude 路径同：awaitingReply 描述的是 AI 自身
+    // 状态，跟 IM 是否送达无关；吞掉会让 dispatcher 永远 busy。
+    if ((event === 'Stop' || event === 'TurnAborted') && aiTerminal) {
+      try {
+        aiTerminal.notifyTurnDone?.(quadtodoSessionId, { event: 'stop', status: 'idle' })
+      } catch (e) {
+        logger.warn?.(`[codex-hook] notifyTurnDone failed: ${e.message}`)
+      }
+      try {
+        const ok = aiTerminal.markSessionAwaitingReply?.(quadtodoSessionId, true)
+        if (ok === false) {
+          const sess = aiTerminal.sessions?.get?.(quadtodoSessionId)
+          logger.warn?.(`[codex-hook] markSessionAwaitingReply(true) NO-OP sid=${quadtodoSessionId} sessionExists=${!!sess} status=${sess?.status || 'null'} awaitingReply=${sess?.awaitingReply}`)
+        }
+      } catch (e) {
+        logger.warn?.(`[codex-hook] markSessionAwaitingReply failed: ${e.message}`)
+      }
+      if (sessionInputDispatcher?.onSessionIdle) {
+        Promise.resolve(sessionInputDispatcher.onSessionIdle(quadtodoSessionId))
+          .catch((e) => logger.warn?.(`[codex-hook] dispatcher.onSessionIdle failed: ${e.message}`))
+      }
+    }
+
     // 2) 定位 jsonl
     const filePath = transcript_path || pty?.findCodexSession?.(nativeId)?.filePath || null
     if (!filePath) return { ok: false, reason: 'no_transcript' }
