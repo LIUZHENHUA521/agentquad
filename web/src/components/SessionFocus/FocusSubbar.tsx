@@ -1,11 +1,12 @@
 import { useState } from 'react'
-import { Tooltip, Button, message } from 'antd'
+import { Tooltip, Button, Dropdown, message } from 'antd'
+import { Code } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { SessionMeta } from '../../store/aiSessionStore'
 import { useAiSessionStore } from '../../store/aiSessionStore'
 import { useDispatchStore } from '../../store/dispatchStore'
-import type { AiStatus, AiTool } from '../../api'
-import { startAiExec, ApiError } from '../../api'
+import type { AiStatus, AiTool, EditorKind } from '../../api'
+import { startAiExec, openTraeCN, ApiError } from '../../api'
 import { deriveAiState, AI_STATE_PILL_LABEL_KEY } from '../../design/aiPresentationState'
 import { useUnreadStore, isSessionUnread } from '../../store/unreadStore'
 
@@ -39,7 +40,7 @@ export function FocusSubbar({
   onResumed,
   onClose,
 }: Props) {
-  const { t } = useTranslation(['session'])
+  const { t } = useTranslation(['session', 'todo', 'errors'])
   const title = session?.todoTitle ?? fallbackTitle ?? t('session:focusSubbar.untitled')
   const tool = session?.tool ?? fallbackTool ?? 'ai'
   const fullSessionId = session?.sessionId ?? null
@@ -60,6 +61,18 @@ export function FocusSubbar({
   const handleConfirm = () => {
     if (!session?.sessionId) return
     markSeen(session.sessionId, session.lastTurnDoneAt || Date.now())
+  }
+
+  const editorCwd = session?.cwd ?? fallbackCwd ?? ''
+  const handleOpenEditor = async (editor: EditorKind) => {
+    try { localStorage.setItem('quadtodo.editor', editor) } catch {}
+    const label = editor === 'trae-cn' ? 'Trae CN' : editor === 'trae' ? 'Trae' : 'Cursor'
+    try {
+      await openTraeCN(editorCwd, editor)
+      message.success(t('todo:message.openedEditor', { label }))
+    } catch (e: any) {
+      message.error(e?.message || t('errors:openEditorFailed', { label }))
+    }
   }
 
   const [resuming, setResuming] = useState(false)
@@ -132,6 +145,21 @@ export function FocusSubbar({
         <span className="focus-task-id">#{sessionShortId}</span>
       </div>
       <div className="focus-actions">
+        <Dropdown
+          menu={{
+            items: [
+              { key: 'trae-cn', label: 'Trae CN' },
+              { key: 'trae', label: 'Trae' },
+              { key: 'cursor', label: 'Cursor' },
+            ],
+            onClick: ({ key }) => handleOpenEditor(key as EditorKind),
+          }}
+          trigger={['click']}
+        >
+          <Tooltip title={t('todo:card.openEditorTooltip')}>
+            <Button size="small" icon={<Code size={13} />} style={{ height: 28 }} />
+          </Tooltip>
+        </Dropdown>
         <span className={`pill-select ${state === 'pending' ? 'pending' : state === 'running' ? 'green' : 'idle'}`}>
           {tool} · {statusLabel}
         </span>
