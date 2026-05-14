@@ -42,43 +42,6 @@ export function computeEffectiveStatus(session, now = Date.now()) {
   if (lastOutputAt > lastTurnDoneAt + EFFECTIVE_STATUS_OUTPUT_GRACE_MS) return 'running'
   return status
 }
-const DEFAULT_CONFIRM_PATTERNS = [
-  /Press Enter to confirm/i,
-  /Do you want to proceed/i,
-  /Do you want to /i,
-  /Continue\?/i,
-  /Proceed\?/i,
-  /\(y\/n\)/i,
-  /\[Y\/n\]/i,
-  /\[yes\/no\]/i,
-  /确认/i,
-  /是否继续/i,
-  /按回车确认/i,
-]
-
-// 把 CSI / OSC 序列替换为空格（而不是直接删除）：Claude Code 新版 TUI（ink）
-// 在单词之间用光标定位 CSI 序列代替空格渲染（如 "Do\x1b[5GYou\x1b[9Gwant"），
-// 直接删 CSI 会把单词粘成 "DoYouwant"，导致 "Do you want to" 这类 confirm 正则
-// 全部漏判，session.status 卡在 'running'。改成插空格后 collapse \s+ 还原词边界。
-function compactTerminalText(text = '') {
-  return String(text)
-    .replace(/\x1b\[[0-9;?]*[A-Za-z~]/g, ' ')
-    .replace(/\x1b\][^\x07]*\x07/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-}
-
-function detectConfirmMatch(text) {
-  const haystack = compactTerminalText(text)
-  if (!haystack) return null
-  for (const pattern of DEFAULT_CONFIRM_PATTERNS) {
-    if (pattern.test(haystack)) return pattern.source
-  }
-  return null
-}
-
-export { compactTerminalText, detectConfirmMatch }
-
 function isValidResizeSize(cols, rows) {
   return Number.isFinite(cols) && Number.isFinite(rows) && cols >= MIN_RESIZE_COLS && rows > 0
 }
@@ -189,6 +152,46 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
     return true
   }
 
+  // 由 hook 路径调用：Claude Code 的 Notification + permissionish，或 codex-prompt-detector
+  // 命中真实的工具授权弹窗时，这里把 session.status 翻成 'pending_confirm'，让
+  // /api/ai-terminal/sessions 立刻反映"等授权"状态。
+  //
+  // 跟旧的 PTY 正则路径相比，区别是：信号源是 agent 本身（Claude Code hook / Codex sidecar），
+  // 不会因为 AI 回复文本里出现"Do you want to..."等关键词被误触发。
+  //
+  // 幂等：已经处于 pending_confirm 直接返回 true；非 LIVE_AI_STATUSES（已 done/failed/stopped）
+  // 返回 false 不动状态。
+  function markPendingConfirm(sessionId, { source = null } = {}) {
+    const session = sessions.get(sessionId)
+    if (!session) return false
+    if (!LIVE_AI_STATUSES.has(session.status)) return false
+    if (session.status === 'pending_confirm') return true
+    session.status = 'pending_confirm'
+    const todo = db.getTodo(session.todoId)
+    if (todo) {
+      const current = (todo.aiSessions || []).find(item => item.sessionId === sessionId) || todo.aiSession || {}
+      db.updateTodo(session.todoId, {
+        status: 'ai_pending',
+        aiSessions: mergeTodoAiSessions(todo, {
+          ...current,
+          sessionId: session.sessionId,
+          tool: session.tool,
+          nativeSessionId: session.nativeSessionId || current.nativeSessionId || null,
+          status: 'pending_confirm',
+          startedAt: session.startedAt,
+          completedAt: null,
+          prompt: session.prompt,
+        }),
+      })
+    }
+    broadcastToSession(session, {
+      type: 'pending_confirm',
+      snippet: session.recentOutput ? session.recentOutput.slice(-500) : '',
+      source: source || 'hook',
+    })
+    return true
+  }
+
   function notifyTurnDone(sessionId, payload = {}) {
     const session = sessions.get(sessionId)
     if (!session) return false
@@ -265,30 +268,6 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
     session.recentOutput = `${session.recentOutput || ''}${data}`.slice(-4000)
     session.lastOutputAt = Date.now()
     session.outputBytesTotal = (session.outputBytesTotal || 0) + data.length
-
-    const confirmMatch = detectConfirmMatch(session.recentOutput)
-    if (confirmMatch && session.status !== 'pending_confirm') {
-      session.status = 'pending_confirm'
-      const todo = db.getTodo(session.todoId)
-      if (todo) {
-        const current = (todo.aiSessions || []).find(item => item.sessionId === sessionId) || todo.aiSession || {}
-        db.updateTodo(session.todoId, {
-          status: 'ai_pending',
-          aiSessions: mergeTodoAiSessions(todo, {
-            ...current,
-            sessionId: session.sessionId,
-            tool: session.tool,
-            nativeSessionId: session.nativeSessionId || current.nativeSessionId || null,
-            status: 'pending_confirm',
-            startedAt: session.startedAt,
-            completedAt: null,
-            prompt: session.prompt,
-          }),
-        })
-      }
-      const snippet = session.recentOutput.slice(-500)
-      broadcastToSession(session, { type: 'pending_confirm', snippet, matchedKeyword: confirmMatch })
-    }
     broadcastToSession(session, { type: 'output', data })
   })
 
@@ -1118,6 +1097,7 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
     notifyTurnDone,
     spawnSession,
     markSessionAwaitingReply,
+    markPendingConfirm,
     isSessionAwaitingReply,
     close,
   }

@@ -26,13 +26,19 @@ describe('deriveAiState', () => {
     expect(deriveAiState('idle', false)).toBe('idle')
   })
 
-  it('returns idle when not running and not unread (including pending_confirm with no unread)', () => {
+  it('returns idle when not running and not unread (terminal closed states)', () => {
     expect(deriveAiState('done', false)).toBe('idle')
     expect(deriveAiState('failed', false)).toBe('idle')
     expect(deriveAiState('stopped', false)).toBe('idle')
-    expect(deriveAiState('pending_confirm', false)).toBe('idle')
     expect(deriveAiState(undefined, false)).toBe('idle')
     expect(deriveAiState(null, false)).toBe('idle')
+  })
+
+  it('pending_confirm 恒为 pending（独立于 unread）—— agent 请求授权是阻塞动作项', () => {
+    expect(deriveAiState('pending_confirm', false)).toBe('pending')
+    expect(deriveAiState('pending_confirm', true)).toBe('pending')
+    expect(deriveAiState('pending_confirm', false, false)).toBe('pending')
+    expect(deriveAiState('pending_confirm', false, true)).toBe('pending')
   })
 
   it('treats running+awaitingReply as not-running (PTY alive but stop hook fired)', () => {

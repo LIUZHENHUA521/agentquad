@@ -7,25 +7,25 @@ export type AiPresentationState = 'running' | 'pending' | 'idle'
 /**
  * 单一来源：把后端 AiStatus + unread + awaitingReply 推导成 3 态展示态。
  *
- * 规则：
- *   - status === 'running'                                      → running
- *   - status === 'idle'                                         → unread 时 pending，否则 idle
- *   - 其它非 running 状态 + unread                                     →  pending
- *   - 其它一切                                                          →  idle
+ * 规则（"待确认"两条入口）：
+ *   1. status === 'pending_confirm'   → pending（agent 工具请求授权，阻塞型动作项，
+ *                                        即使用户已读也不归 idle，要等真正按下 y/n 让
+ *                                        后端把 status 翻回 running）
+ *   2. unread === true                → pending（AI 完成一轮回复但用户没看过）
  *
- * 后端现在把"PTY 还活着但一轮已结束"建模为真实 status === 'idle'。
- * awaitingReply 只作为旧接口/dispatcher 的兼容信号保留：若后端仍短暂返回
- * running+awaitingReply=true，前端按 idle 处理。
+ *   - status === 'running' 且 !awaitingReply → running
+ *   - 其它（包括 idle / done / failed / stopped 已读）→ idle
  *
- * 注意：status === 'pending_confirm' 不再是 pending 的充分条件；
- * 用户看过后即归 idle，直到后端把 status 推回 running。
+ * 后端 status === 'pending_confirm' 现在只由 hook 信号（Claude Notification +
+ * permissionish / codex-prompt-detector）触发，不再走 PTY 输出正则——避免 AI 回复
+ * 文本里出现 "Do you want to..." 这类关键词导致的误判。
  */
 export function deriveAiState(
   status: AiStatus | undefined | null,
   unread: boolean,
   awaitingReply: boolean = false,
 ): AiPresentationState {
-  if (status === 'idle') return unread ? 'pending' : 'idle'
+  if (status === 'pending_confirm') return 'pending'
   if (status === 'running' && !awaitingReply) return 'running'
   if (unread) return 'pending'
   return 'idle'

@@ -859,7 +859,7 @@ describe('routes/ai-terminal', () => {
       .send({ todoId: todo.id, prompt: 'hi', tool: 'claude' })
     const ws = { readyState: 1, OPEN: 1, send: vi.fn() }
     ctx.ait.addBrowser(body.sessionId, ws)
-    ctx.pty.emit('output', { sessionId: body.sessionId, data: 'Press Enter to confirm' })
+    ctx.ait.markPendingConfirm(body.sessionId, { source: 'test' })
     expect(ctx.ait.sessions.get(body.sessionId).status).toBe('pending_confirm')
 
     ctx.ait.handleBrowserMessage(body.sessionId, { type: 'resize', cols: 120, rows: 30 }, ws)
@@ -1159,7 +1159,7 @@ describe('routes/ai-terminal', () => {
     expect(updated.aiSession.status).toBe('running')
   })
 
-  it('confirm-like output marks todo as ai_pending and broadcasts pending_confirm', async () => {
+  it('markPendingConfirm marks todo as ai_pending and broadcasts pending_confirm', async () => {
     const todo = ctx.db.createTodo({ title: 'T', quadrant: 1 })
     const { body } = await request(ctx.app).post('/api/ai-terminal/exec')
       .send({ todoId: todo.id, prompt: 'hi', tool: 'claude' })
@@ -1167,15 +1167,45 @@ describe('routes/ai-terminal', () => {
     const ws = { readyState: 1, OPEN: 1, send: (d) => sent.push(JSON.parse(d)) }
     ctx.ait.addBrowser(body.sessionId, ws)
 
-    ctx.pty.emit('output', { sessionId: body.sessionId, data: 'Press Enter to confirm' })
+    const ok = ctx.ait.markPendingConfirm(body.sessionId, { source: 'claude-notification' })
+    expect(ok).toBe(true)
 
     const updated = ctx.db.getTodo(todo.id)
     expect(updated.status).toBe('ai_pending')
     expect(updated.aiSession.status).toBe('pending_confirm')
     expect(sent).toContainEqual(expect.objectContaining({
       type: 'pending_confirm',
-      matchedKeyword: 'Press Enter to confirm',
+      source: 'claude-notification',
     }))
+  })
+
+  it('markPendingConfirm 幂等：重复调用不会重复广播', async () => {
+    const todo = ctx.db.createTodo({ title: 'T', quadrant: 1 })
+    const { body } = await request(ctx.app).post('/api/ai-terminal/exec')
+      .send({ todoId: todo.id, prompt: 'hi', tool: 'claude' })
+    const sent = []
+    const ws = { readyState: 1, OPEN: 1, send: (d) => sent.push(JSON.parse(d)) }
+    ctx.ait.addBrowser(body.sessionId, ws)
+
+    expect(ctx.ait.markPendingConfirm(body.sessionId, { source: 'a' })).toBe(true)
+    expect(ctx.ait.markPendingConfirm(body.sessionId, { source: 'b' })).toBe(true)
+    const pendingEvents = sent.filter(m => m.type === 'pending_confirm')
+    expect(pendingEvents.length).toBe(1)
+  })
+
+  it('markPendingConfirm 对已 done/failed/stopped 的 session 不生效', async () => {
+    const todo = ctx.db.createTodo({ title: 'T', quadrant: 1 })
+    const { body } = await request(ctx.app).post('/api/ai-terminal/exec')
+      .send({ todoId: todo.id, prompt: 'hi', tool: 'claude' })
+    const sess = ctx.ait.sessions.get(body.sessionId)
+    sess.status = 'done'
+
+    expect(ctx.ait.markPendingConfirm(body.sessionId, { source: 'x' })).toBe(false)
+    expect(ctx.ait.sessions.get(body.sessionId).status).toBe('done')
+  })
+
+  it('markPendingConfirm 对不存在的 session 返回 false', async () => {
+    expect(ctx.ait.markPendingConfirm('not-a-session', { source: 'x' })).toBe(false)
   })
 
   it('keyword-like output does not send webhook notifications from legacy config', async () => {
@@ -1218,8 +1248,8 @@ describe('routes/ai-terminal', () => {
     const ws = { readyState: 1, OPEN: 1, send: (d) => sent.push(JSON.parse(d)) }
     ctx.ait.addBrowser(body.sessionId, ws)
 
-    // Trigger pending_confirm
-    ctx.pty.emit('output', { sessionId: body.sessionId, data: 'Press Enter to confirm' })
+    // Trigger pending_confirm via hook signal
+    ctx.ait.markPendingConfirm(body.sessionId, { source: 'test' })
     expect(ctx.db.getTodo(todo.id).status).toBe('ai_pending')
     expect(ctx.ait.sessions.get(body.sessionId).status).toBe('pending_confirm')
 
@@ -1249,11 +1279,11 @@ describe('routes/ai-terminal', () => {
     const ws = { readyState: 1, OPEN: 1, send: (d) => sent.push(JSON.parse(d)) }
     ctx.ait.addBrowser(body.sessionId, ws)
 
-    ctx.pty.emit('output', { sessionId: body.sessionId, data: 'Press Enter to confirm' })
+    ctx.ait.markPendingConfirm(body.sessionId, { source: 'test' })
     ctx.ait.handleBrowserMessage(body.sessionId, { type: 'input', data: '\r' })
 
     // Second pending prompt should re-broadcast
-    ctx.pty.emit('output', { sessionId: body.sessionId, data: 'Press Enter to confirm' })
+    ctx.ait.markPendingConfirm(body.sessionId, { source: 'test' })
     expect(ctx.ait.sessions.get(body.sessionId).status).toBe('pending_confirm')
     const pendingEvents = sent.filter(m => m.type === 'pending_confirm')
     expect(pendingEvents.length).toBe(2)
@@ -1270,7 +1300,7 @@ describe('routes/ai-terminal', () => {
     ctx.ait.addBrowser(body.sessionId, ws)
 
     // 触发 pending_confirm
-    ctx.pty.emit('output', { sessionId: body.sessionId, data: 'Press Enter to confirm' })
+    ctx.ait.markPendingConfirm(body.sessionId, { source: 'test' })
     expect(ctx.ait.sessions.get(body.sessionId).status).toBe('pending_confirm')
 
     // 普通可见字符——不应清掉 pending（之前的实现会清掉，前端 border 抖动）

@@ -586,6 +586,9 @@ export function createOpenClawHookHandler(deps = {}) {
     if (!sessionId) return { ok: false, reason: 'no_sessionId' }
     const sess = aiTerminal?.sessions?.get(sessionId)
     if (!sess) return { ok: false, reason: 'session_gone' }
+    // 把 session.status 翻成 pending_confirm —— 前端 deriveAiState 据此显示"待确认"。
+    // 信号源是 codex-prompt-detector（已经过 AI self-quoted 过滤），比旧的 PTY 正则路径准。
+    try { aiTerminal?.markPendingConfirm?.(sessionId, { source: 'codex-detector' }) } catch { /* ignore */ }
     const todoId = sess.todoId
     let todoTitle = todoId
     try {
@@ -784,6 +787,13 @@ export function createOpenClawHookHandler(deps = {}) {
       hookPayload,
       message,
     }))
+
+    // permissionish Notification 命中 → 翻 session.status 成 pending_confirm，
+    // 让前端 deriveAiState 渲染"待确认"。注意这里独立于 Telegram 抑制/cooldown：
+    // 即便后续不推 IM，也要把内部状态翻正。markPendingConfirm 幂等 + 仅对 LIVE session 生效。
+    if (permissionish && sessionId) {
+      try { aiTerminal?.markPendingConfirm?.(sessionId, { source: 'claude-notification' }) } catch { /* ignore */ }
+    }
 
     // 1b-pre) 默认抑制 idle Notification（noise）。Notification 需要先构造可检查的内容，
     // 只有显式 Telegram 路由上的非 bypass 授权提示才允许绕过抑制。
