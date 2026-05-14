@@ -294,9 +294,9 @@ export function TopbarDispatch({ unreadItems, onJump, onFocusSession, onStopSess
         </span>
       </Popover>
 
-      <BoardFilterPill />
-
       <div className="topbar-spacer" />
+
+      <BoardFilterPill />
 
       <button className="topbar-cmdk-btn" onClick={togglePalette} data-testid="topbar-cmdk-btn">
         <span className="topbar-cmdk-prefix">⌘</span>
