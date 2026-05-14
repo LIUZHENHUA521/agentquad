@@ -1,6 +1,6 @@
 {
   "name": "agentquad",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "AgentQuad — local four-quadrant AI task scheduler with embedded Claude Code / Codex terminals",
   "license": "MIT",
   "author": "LIUZHENHUA521",
