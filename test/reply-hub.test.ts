@@ -235,4 +235,40 @@ describe('buildUnreadSessionItems', () => {
 
     expect(items).toEqual([])
   })
+
+  it('drops sessions whose parent todo has been marked done (snapshot path)', () => {
+    // 复现 bug：todo 上有一条 pending_confirm 的 session（lastTurnDoneAt > lastSeen），
+    // 用户直接把 todo 标成 'done' 后，顶栏 pending pill 数字应立即降下来。
+    // 之前只过滤 status==='running'，闭合态 / 用户主动 stop 的 session 一直留在列表里。
+    const items = buildUnreadSessionItems({
+      todos: [
+        todo({
+          id: 'todo-done',
+          title: 'User just marked done',
+          status: 'done',
+          aiSessions: [session({ sessionId: 's-pc', status: 'pending_confirm', lastTurnDoneAt: 5000 })],
+        }),
+      ],
+      liveSessions: [live({ sessionId: 's-pc', todoId: 'todo-done', status: 'pending_confirm', lastTurnDoneAt: 5000 })],
+      lastSeenMap: new Map([['s-pc', 4000]]),
+    })
+
+    expect(items).toEqual([])
+  })
+
+  it('drops live-only sessions whose snapshot todo is done', () => {
+    // 'all' filter 之外的视图下，todo 自己可能没出现在 todos[]（被状态过滤掉），但 live
+    // 端短暂还能看到那条 session。这种情况若用户把 todo 标了 done，也不该再算待确认。
+    // 这里通过另一个同状态的兄弟 todo 让 doneTodoIds 集合带上目标 id（实际生产中 'all'
+    // 视图就是这样），验证 live 路径也会被 done 过滤吃掉。
+    const items = buildUnreadSessionItems({
+      todos: [
+        todo({ id: 'todo-done', title: 'Done in snapshot', status: 'done' }),
+      ],
+      liveSessions: [live({ sessionId: 's-orphan', todoId: 'todo-done', status: 'stopped', lastTurnDoneAt: 7000 })],
+      lastSeenMap: new Map(),
+    })
+
+    expect(items).toEqual([])
+  })
 })

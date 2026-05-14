@@ -669,6 +669,20 @@ export default function TodoManage() {
       : 0
     const doUpdate = async () => {
       try {
+        // 标 done 之前先把这条 todo 名下所有 session 的 lastSeenAt 顶到当前，
+        // 这样顶栏「待确认」pill 立刻减一——后端 pty.stop 是异步的，session.status
+        // 翻到 'stopped' 走 WS 还有几百毫秒延迟，期间默认 'todo' filter 视图下
+        // todo 已经从列表里消失，没法靠 replyHub 的 doneTodoIds 兜底过滤。
+        if (newStatus === 'done') {
+          const markSeen = useUnreadStore.getState().markSeen
+          const now = Date.now()
+          const seen = new Set<string>()
+          for (const s of todo.aiSessions || []) {
+            if (s?.sessionId) seen.add(s.sessionId)
+          }
+          if (todo.aiSession?.sessionId) seen.add(todo.aiSession.sessionId)
+          for (const sid of seen) markSeen(sid, now)
+        }
         await updateTodo(todo.id, { status: newStatus })
         fetchTodos()
       } catch (e: any) {
