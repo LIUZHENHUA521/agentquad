@@ -527,7 +527,7 @@ body {
 .todo-history-item {
   position: relative;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 10px;
   /* flex-wrap 兜底：即使容器查询没触发，也允许 actions 在塞不下时换到下一行 */
   flex-wrap: wrap;
@@ -656,7 +656,6 @@ body {
   align-items: center;
   gap: 10px;
   margin-left: auto;
-  padding-top: 2px;
 }
 
 .todo-history-link,
