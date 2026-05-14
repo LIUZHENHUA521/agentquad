@@ -38,10 +38,6 @@ export function createTemplatesRouter({ db }) {
       }
       res.json({ ok: true, template: tpl })
     } catch (e) {
-      if (e.message === 'builtin_template_readonly') {
-        res.status(400).json({ ok: false, error: '内置模板不可编辑，请先复制再修改' })
-        return
-      }
       res.status(500).json({ ok: false, error: e.message })
     }
   })

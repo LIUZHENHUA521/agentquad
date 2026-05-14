@@ -981,9 +981,6 @@ export function openDb(file = ':memory:') {
   function updateTemplate(id, patch) {
     const existing = ptStmts.get.get(id)
     if (!existing) return null
-    if (existing.builtin) {
-      throw new Error('builtin_template_readonly')
-    }
     ptStmts.update.run({
       id,
       name: patch.name ?? existing.name,

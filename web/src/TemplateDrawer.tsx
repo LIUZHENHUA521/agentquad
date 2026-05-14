@@ -148,8 +148,8 @@ export default function TemplateDrawer({ open, onClose, onChanged }: Props) {
                   <Tooltip title={t('settings:template.copyForMe')} key="copy">
                     <Button type="text" size="small" icon={<CopyOutlined />} onClick={() => handleCopy(tpl)} />
                   </Tooltip>,
-                  <Tooltip title={tpl.builtin ? t('settings:template.builtinTooltipEdit') : t('settings:template.editTooltip')} key="edit">
-                    <Button type="text" size="small" icon={<EditOutlined />} disabled={tpl.builtin} onClick={() => handleEdit(tpl)} />
+                  <Tooltip title={t('settings:template.editTooltip')} key="edit">
+                    <Button type="text" size="small" icon={<EditOutlined />} onClick={() => handleEdit(tpl)} />
                   </Tooltip>,
                   <Popconfirm key="del" title={t('settings:template.deleteConfirm')} disabled={tpl.builtin} onConfirm={() => handleDelete(tpl)}>
                     <Tooltip title={tpl.builtin ? t('settings:template.builtinTooltipDelete') : t('settings:template.deleteTooltip')}>
