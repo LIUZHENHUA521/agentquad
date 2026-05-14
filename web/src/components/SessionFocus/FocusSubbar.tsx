@@ -3,6 +3,7 @@ import { Tooltip, Button, message } from 'antd'
 import { useTranslation } from 'react-i18next'
 import type { SessionMeta } from '../../store/aiSessionStore'
 import { useAiSessionStore } from '../../store/aiSessionStore'
+import { useDispatchStore } from '../../store/dispatchStore'
 import type { AiStatus, AiTool } from '../../api'
 import { startAiExec, ApiError } from '../../api'
 import { deriveAiState, AI_STATE_PILL_LABEL_KEY } from '../../design/aiPresentationState'
@@ -101,6 +102,9 @@ export function FocusSubbar({
         outputBytesTotal: 0,
       }
       useAiSessionStore.getState().upsertSession(optimistic)
+      // 刷新 todo 列表，新 recover 出来的 session 才会同步进 todo.aiSessions / todo.aiSession，
+      // 否则关掉 focus 再从 todo card 点回来会沿用旧 sessionId，进的是已死的历史会话。
+      useDispatchStore.getState().signal('refreshTodos')
       message.success(t('session:focusSubbar.resumeOk'))
       onResumed?.(nextSessionId)
     } catch (err: any) {
