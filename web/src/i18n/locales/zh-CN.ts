@@ -184,6 +184,7 @@ const zh = {
       liveRunningElapsed: '已运行 {{ago}}',
       liveWaiting: '等待 {{ago}}',
       liveLastActive: '上次活跃 {{ago}} 前',
+      tokenNA: 'token 暂无',
       sessionNotFinished: '未正常结束',
       sessionNotFinishedTooltip: '该会话未正常结束，没有拿到原生 session ID，无法 resume/fork。请在 AI 完成后在终端里按 Ctrl+D 或 /exit 正常退出。',
       missingCwd: '缺少 cwd',

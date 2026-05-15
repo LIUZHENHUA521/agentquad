@@ -5,7 +5,7 @@ import { useSortable, SortableContext, verticalListSortingStrategy } from '@dnd-
 import { CSS } from '@dnd-kit/utilities'
 import dayjs from 'dayjs'
 import { useTranslation } from 'react-i18next'
-import { updateTodo, type Todo, type AiTool, type StageTag, type LiveSession } from '../../api'
+import { updateTodo, type Todo, type AiTool, type StageTag, type LiveSession, type SessionUsage } from '../../api'
 import { StageTagChip } from '../StageTagChip'
 import { AgentIcon } from '../AgentIcon'
 import { useAppMessages } from '../../design/useAppMessages'
@@ -442,6 +442,7 @@ function LiveInfoBadge({
             {t('todo:card.liveRunningElapsed', { ago: formatRelativeShort(Date.now() - runStartedAt) })}
           </span>
         ) : null}
+        <TokenChip tool={liveSession.tool} usage={liveSession.usage ?? null} />
       </span>
     )
   }
@@ -474,6 +475,41 @@ function LiveInfoBadge({
       <span className="todo-history-live-text">
         {t('todo:card.liveLastActive', { ago: formatRelativeShort(Date.now() - refTs) })}
       </span>
+      <TokenChip tool={liveSession.tool} usage={liveSession.usage ?? null} />
+    </span>
+  )
+}
+
+// Context window 默认值。Claude 4.x 加 [1m] flag 才到 1M，没法从 JSONL 反查，
+// 全员按 200K 估算 —— 用 [1m] 的会看到 %偏高但能用，绝大多数场景准确。
+function contextWindowFor(tool: AiTool): number {
+  if (tool === 'codex') return 400_000  // GPT-5 默认
+  return 200_000                          // Claude / 其他兜底
+}
+
+function formatTokens(n: number): string {
+  if (n < 1000) return String(n)
+  if (n < 10_000) return (n / 1000).toFixed(1) + 'k'
+  if (n < 1_000_000) return Math.round(n / 1000) + 'k'
+  return (n / 1_000_000).toFixed(2) + 'M'
+}
+
+function TokenChip({ tool, usage }: { tool: AiTool; usage: SessionUsage | null }) {
+  const { t } = useTranslation(['todo'])
+  if (tool === 'cursor') {
+    return <span className="todo-history-tokens todo-history-tokens-na">{t('todo:card.tokenNA')}</span>
+  }
+  if (!usage) return null
+  // Claude TUI 显示的"当前 context size" = input + cache_read + cache_creation
+  const contextTokens = (usage.input || 0) + (usage.cacheRead || 0) + (usage.cacheCreation || 0)
+  if (contextTokens === 0) return null
+  const window = contextWindowFor(tool)
+  const pct = Math.min(100, Math.round((contextTokens / window) * 100))
+  const title = `input ${usage.input.toLocaleString()} · cache ${(usage.cacheRead + usage.cacheCreation).toLocaleString()} · output ${usage.output.toLocaleString()}${usage.model ? ` · ${usage.model}` : ''}`
+  return (
+    <span className="todo-history-tokens" title={title}>
+      <span className="todo-history-tokens-count">↓ {formatTokens(contextTokens)}</span>
+      <span className={pct >= 80 ? 'todo-history-tokens-pct is-warn' : 'todo-history-tokens-pct'}>{pct}%</span>
     </span>
   )
 }

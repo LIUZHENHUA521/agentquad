@@ -187,6 +187,7 @@ const en = {
       liveRunningElapsed: 'Running {{ago}}',
       liveWaiting: 'Waiting {{ago}}',
       liveLastActive: 'Last active {{ago}} ago',
+      tokenNA: 'tokens N/A',
       sessionNotFinished: 'Not finished',
       sessionNotFinishedTooltip: 'This session did not exit cleanly and is missing the native session ID, so resume/fork is unavailable. Please exit AI via Ctrl+D or /exit next time.',
       missingCwd: 'No cwd',

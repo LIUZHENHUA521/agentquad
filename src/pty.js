@@ -858,9 +858,81 @@ export class PtyManager extends EventEmitter {
           } else {
             this.emit('claude-turn-done', { sessionId, nativeId })
           }
+          // 顺手解析最新一条 assistant 的 usage，给 /sessions API 拼 token / context% 用。
+          // 反向找最近 assistant 消息（不一定是触发 kind 的那条；turn-started 也要更新）。
+          for (let i = lines.length - 1; i >= 0; i--) {
+            const ln = (lines[i] || '').trim()
+            if (!ln.startsWith('{')) continue
+            let obj
+            try { obj = JSON.parse(ln) } catch { continue }
+            if (obj.type !== 'assistant') continue
+            const u = obj.message?.usage
+            if (!u) continue
+            session.usage = {
+              input: Number(u.input_tokens) || 0,
+              output: Number(u.output_tokens) || 0,
+              cacheRead: Number(u.cache_read_input_tokens) || 0,
+              cacheCreation: Number(u.cache_creation_input_tokens) || 0,
+              model: obj.message?.model || null,
+              ts: obj.timestamp ? Date.parse(obj.timestamp) : Date.now(),
+            }
+            break
+          }
         } catch { /* ignore — watcher 不能影响 PTY 主链路 */ }
       }, 2000)
       session.claudeWatchTimer.unref?.()
+    }
+
+    // codex 专属：mtime-gated 周期扫 rollout-*.jsonl，抽 latest token_count 事件的
+    // total_token_usage（cumulative）给 /sessions API 用。跟 claudeWatchTimer 同步频率。
+    if (tool === 'codex') {
+      session.codexUsageLastMtimeMs = 0
+      session.codexUsageWatchTimer = setInterval(() => {
+        try {
+          const nativeId = session.nativeId
+          if (!nativeId) return
+          if (!session.codexUsageJsonlPath) {
+            const loc = this.codexSessionLocator(nativeId)
+            if (!loc?.filePath) return
+            session.codexUsageJsonlPath = loc.filePath
+          }
+          const jsonlPath = session.codexUsageJsonlPath
+          if (!existsSync(jsonlPath)) return
+          const st = statSync(jsonlPath)
+          if (st.mtimeMs <= session.codexUsageLastMtimeMs) return
+          session.codexUsageLastMtimeMs = st.mtimeMs
+          const lines = readFileSync(jsonlPath, 'utf8').split('\n')
+          let last = null
+          let model = null
+          for (let i = lines.length - 1; i >= 0; i--) {
+            const ln = (lines[i] || '').trim()
+            if (!ln.startsWith('{')) continue
+            let obj
+            try { obj = JSON.parse(ln) } catch { continue }
+            if (obj.type === 'event_msg' && obj.payload?.type === 'token_count') {
+              const info = obj.payload.info
+              if (info?.total_token_usage && !last) last = info.total_token_usage
+            }
+            if (!model && obj.type === 'turn_context') {
+              model = obj.payload?.model || obj.payload?.collaboration_mode?.settings?.model || null
+            }
+            if (!model && obj.type === 'session_meta') {
+              model = obj.payload?.model || obj.payload?.model_provider?.model || null
+            }
+            if (last && model) break
+          }
+          if (!last) return
+          session.usage = {
+            input: Number(last.input_tokens) || 0,
+            output: Number(last.output_tokens) || 0,
+            cacheRead: Number(last.cached_input_tokens || last.cache_read_input_tokens) || 0,
+            cacheCreation: Number(last.cache_creation_input_tokens) || 0,
+            model: model || null,
+            ts: Date.now(),
+          }
+        } catch { /* ignore */ }
+      }, 2000)
+      session.codexUsageWatchTimer.unref?.()
     }
 
     // cursor 专属：监听 chatId 的 jsonl，末行 role===assistant 且 mtime 推进
@@ -922,6 +994,7 @@ export class PtyManager extends EventEmitter {
       if (session.promptTimer) clearTimeout(session.promptTimer)
       if (session.cursorWatchTimer) { clearInterval(session.cursorWatchTimer); session.cursorWatchTimer = null }
       if (session.claudeWatchTimer) { clearInterval(session.claudeWatchTimer); session.claudeWatchTimer = null }
+      if (session.codexUsageWatchTimer) { clearInterval(session.codexUsageWatchTimer); session.codexUsageWatchTimer = null }
       if (session.fsWatcher) { try { session.fsWatcher.close() } catch { /* ignore */ } session.fsWatcher = null }
       if (session.detector) { try { session.detector.stop?.() } catch { /* ignore */ } session.detector = null }
       if (session.eventEmitter) {
@@ -1078,6 +1151,8 @@ export class PtyManager extends EventEmitter {
       if (s.promptTimer) { try { clearTimeout(s.promptTimer) } catch { /* ignore */ } s.promptTimer = null }
       if (s.detectTimer) { try { clearInterval(s.detectTimer) } catch { /* ignore */ } s.detectTimer = null }
       if (s.cursorWatchTimer) { try { clearInterval(s.cursorWatchTimer) } catch { /* ignore */ } s.cursorWatchTimer = null }
+      if (s.claudeWatchTimer) { try { clearInterval(s.claudeWatchTimer) } catch { /* ignore */ } s.claudeWatchTimer = null }
+      if (s.codexUsageWatchTimer) { try { clearInterval(s.codexUsageWatchTimer) } catch { /* ignore */ } s.codexUsageWatchTimer = null }
       if (s.fsWatcher) { try { s.fsWatcher.close() } catch { /* ignore */ } s.fsWatcher = null }
       // Cleanup runtime MCP config file (Task 10)
       if (s.mcpConfigPath) {

@@ -648,6 +648,18 @@ export interface LiveSession {
   // status === 'pending_confirm' 时由后端从 PTY 尾部提取的授权弹窗。
   // 其它状态恒为 null —— Conversation 面板的 PermissionCard 根据它来渲染。
   permissionPrompt?: PermissionPrompt | null
+  // Claude 取自 jsonl 最近一条 assistant 的 message.usage；Codex 取自最近
+  // token_count 事件的 total_token_usage。Cursor 始终为 null（JSONL 无 token 字段）。
+  usage?: SessionUsage | null
+}
+
+export interface SessionUsage {
+  input: number
+  output: number
+  cacheRead: number
+  cacheCreation: number
+  model: string | null
+  ts: number
 }
 
 export interface ResourceSnapshot {

@@ -764,6 +764,7 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
           outputBytesTotal: s.outputBytesTotal || 0,
           awaitingReply: !!s.awaitingReply,
           permissionPrompt: s.permissionPrompt || null,
+          usage: s.usage || null,
         })
       }
       res.json({ ok: true, sessions: out })
