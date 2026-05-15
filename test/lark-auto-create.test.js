@@ -160,3 +160,72 @@ describe('lark no-prefix auto-create — unbound thread (notFound branch)', () =
     expect(r.reply).toContain('没有找到对应运行中的任务')
   })
 })
+
+describe('lark no-prefix auto-create — precedence guards', () => {
+  it('#3 旧 "帮我做" 前缀仍走 step 3 NEW_TASK_TRIGGERS', async () => {
+    const { wizard } = makeWizard()
+    const r = await wizard.handleInbound({
+      channel: 'lark', chatId: 'oc_p2p', threadId: null, messageId: 'm1',
+      text: '帮我做 写个 demo',
+    })
+    expect(r.action).toBe('wizard_started')
+    expect(r.reply).toContain('写个 demo')
+  })
+
+  it('#4 lastPush 命中 → 走 step 5 PTY，不起 wizard', async () => {
+    const db = openDb(':memory:')
+    db.createTodo({ title: 'seed', quadrant: 1, workDir: '/tmp/foo' })
+    const ai = makeAi()
+    const bridge = makeBridge()
+    bridge.getLastPushedSession = () => 'sid_recent'
+    const writes = []
+    const pty = { has: (sid) => sid === 'sid_recent', write: (sid, d) => writes.push({ sid, d }) }
+    const pending = createPendingQuestionCoordinator({ db })
+    const wizard = createOpenClawWizard({
+      db, aiTerminal: ai, openclaw: bridge, pending, pty,
+      getConfig: () => ({ defaultCwd: '/tmp', port: 5677, lark: { autoCreateTodo: true } }),
+    })
+    const r = await wizard.handleInbound({
+      channel: 'lark', chatId: 'oc_p2p', threadId: null, messageId: 'm1',
+      text: '继续看一下',
+    })
+    expect(r.action).toBe('stdin_proxy')
+    expect(writes.length).toBeGreaterThan(0)
+  })
+
+  it('#5 绑定 alive lark thread → 走 step 0 stdin proxy', async () => {
+    const db = openDb(':memory:')
+    db.createTodo({ title: 'seed', quadrant: 1, workDir: '/tmp/foo' })
+    const ai = makeAi()
+    const bridge = makeBridge()
+    bridge.findSessionByRoute = ({ chatId, threadId }) =>
+      (chatId === 'oc_grp' && threadId === 'omt_alive') ? 'sid_alive' : null
+    const writes = []
+    const pty = { has: (sid) => sid === 'sid_alive', write: (sid, d) => writes.push({ sid, d }) }
+    const pending = createPendingQuestionCoordinator({ db })
+    const wizard = createOpenClawWizard({
+      db, aiTerminal: ai, openclaw: bridge, pending, pty,
+      getConfig: () => ({ defaultCwd: '/tmp', port: 5677, lark: { autoCreateTodo: true } }),
+    })
+    const r = await wizard.handleInbound({
+      channel: 'lark', chatId: 'oc_grp', threadId: 'omt_alive', rootMessageId: 'm_root',
+      messageId: 'm1', text: '改一下',
+    })
+    expect(r.action).toBe('stdin_proxy')
+    expect(writes.length).toBeGreaterThan(0)
+  })
+
+  it('#10 auto-create 起 wizard 后回 "取消" → wizard 被中止', async () => {
+    const { wizard } = makeWizard()
+    const r1 = await wizard.handleInbound({
+      channel: 'lark', chatId: 'oc_p2p', threadId: null, messageId: 'm1',
+      text: '登录功能有 bug',  // 非 NEW_TASK_TRIGGERS，强制走 auto-create
+    })
+    expect(r1.action).toBe('wizard_started')
+    const r2 = await wizard.handleInbound({
+      channel: 'lark', chatId: 'oc_p2p', threadId: null, messageId: 'm2',
+      text: '取消',
+    })
+    expect(r2.action).toBe('wizard_cancelled')
+  })
+})
