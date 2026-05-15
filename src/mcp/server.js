@@ -13,8 +13,10 @@ const SERVER_NAME = 'agentquad'
 /**
  * 创建一个挂在 Express 下的 MCP Streamable HTTP 路由。
  *
- * 工作方式：一个全局 McpServer + 一个全局 StreamableHTTPServerTransport，stateless 模式。
- * 每个 HTTP 请求都由 transport.handleRequest 完整处理。
+ * 关键：MCP SDK 的 stateless 模式（sessionIdGenerator: undefined）规定每个 HTTP 请求
+ * 必须用新的 transport —— 共享会抛 "Stateless transport cannot be reused"。所以我们
+ * 在每次请求时新建 transport + server + tool 注册，audit / scanner 这种重对象在 router
+ * 工厂里建一次就够，复用给每个 per-request server。
  *
  * 依赖：
  *   - db：openDb(...) 返回的句柄
@@ -33,34 +35,45 @@ export function createMcpRouter({
   if (!db) throw new Error('db_required')
   if (!searchService) throw new Error('searchService_required')
 
-  const server = new McpServer({
-    name: SERVER_NAME,
-    version: (typeof getVersion === 'function' && getVersion()) || '0.1.0',
-  })
-
+  // 重对象只建一次，复用给 per-request server
   const audit = rootDir ? createAuditLog({ rootDir }) : null
   const transcriptScanner = logDir ? createTranscriptScanner({ db, logDir }) : null
+  const serverVersion = (typeof getVersion === 'function' && getVersion()) || '0.1.0'
 
-  registerReadTools(server, { db, searchService, wikiDir, transcriptScanner })
-  registerWriteTools(server, { db })
-  registerDestructiveTools(server, { db, audit })
-  if (pending) {
-    registerOpenClawTools(server, { db, aiTerminal, openclaw, pending, getConfig })
+  function buildServer() {
+    const server = new McpServer({ name: SERVER_NAME, version: serverVersion })
+    registerReadTools(server, { db, searchService, wikiDir, transcriptScanner })
+    registerWriteTools(server, { db })
+    registerDestructiveTools(server, { db, audit })
+    if (pending) {
+      registerOpenClawTools(server, { db, aiTerminal, openclaw, pending, getConfig })
+    }
+    return server
   }
-
-  const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined })
-  // 异步 connect；路由处理器会等这个 promise resolve 之后再调 handleRequest。
-  const ready = server.connect(transport)
 
   const router = express.Router()
   // MCP Streamable HTTP 约定：客户端用 POST /mcp 下发 JSON-RPC；
-  // 对于 SSE 变体或重连，GET 会触发会话初始化。
-  // 我们是 stateless mode，所以两种方法都交给 transport.handleRequest。
+  // SSE 重连或 server-sent 流走 GET。stateless 模式下两种方法都走同一段：
+  // 每请求一个全新 transport + server。
   const handle = async (req, res) => {
+    let transport
+    let server
     try {
-      await ready
+      transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined })
+      server = buildServer()
+      await server.connect(transport)
+
+      // 请求结束/客户端断开时清理；防止泄漏
+      res.on('close', () => {
+        try { transport.close?.() } catch { /* ignore */ }
+        try { server.close?.() } catch { /* ignore */ }
+      })
+
       await transport.handleRequest(req, res, req.body)
     } catch (e) {
+      console.error('[mcp] handleRequest threw:', e?.stack || e?.message || e)
+      try { transport?.close?.() } catch { /* ignore */ }
+      try { server?.close?.() } catch { /* ignore */ }
       if (!res.headersSent) {
         res.status(500).json({
           jsonrpc: '2.0',
@@ -76,8 +89,8 @@ export function createMcpRouter({
 
   // 健康检查（MCP 客户端一般不走这个，但方便 `agentquad mcp status` 和运维）
   router.get('/health', (_req, res) => {
-    res.json({ ok: true, server: SERVER_NAME, tools: server._registeredTools ? Object.keys(server._registeredTools).length : undefined })
+    res.json({ ok: true, server: SERVER_NAME, version: serverVersion })
   })
 
-  return { router, server, transport }
+  return { router }
 }
