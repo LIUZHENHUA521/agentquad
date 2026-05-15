@@ -260,6 +260,7 @@ export function createSessionInputDispatcher({ pty, aiTerminal, callbacks = {}, 
   }
 
   async function onSessionEnd(sessionId) {
+    lastOrigins.delete(sessionId)
     const q = queues.get(sessionId)
     if (!q) return
     if (q.staleTimer) clearTimeout(q.staleTimer)

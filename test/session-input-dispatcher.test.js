@@ -447,4 +447,11 @@ describe('origin dedup table (recordOrigin / consumeOrigin)', () => {
     expect(() => d.recordOrigin('sid', 'x', '')).not.toThrow()
     expect(d.consumeOrigin('sid', 'x')).toBe(null)
   })
+
+  it('onSessionEnd 后 consumeOrigin 返回 null（清理）', async () => {
+    const d = makeMinimalDispatcher()
+    d.recordOrigin('sid-end', 'bye', 'telegram')
+    await d.onSessionEnd('sid-end')
+    expect(d.consumeOrigin('sid-end', 'bye')).toBe(null)
+  })
 })
