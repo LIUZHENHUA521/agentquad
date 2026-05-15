@@ -77,6 +77,34 @@ const RESIZE_STABILITY_MS = 200
 // fit 结果低于这两个阈值认为是布局中间态，直接跳过、等下一次触发
 const MIN_CONTAINER_WIDTH = 300
 const MIN_VALID_COLS = 30
+const PENDING_CHUNKS_CAP = 5 * 1024 * 1024
+const PROPOSED_CHAR_WIDTH_FALLBACK = 7.8
+const PROPOSED_BORDER_PX = 2
+const PROPOSED_XTERM_PADDING_PX = 14
+const PROPOSED_TOOLBAR_PX = 60
+const PROPOSED_LINE_HEIGHT_PX = 18
+const MIN_PROPOSED_WIDTH = 280
+
+export function proposeColsFromAncestor(
+  container: HTMLElement,
+  charWidth: number,
+): { cols: number; rows: number } | null {
+  let el: HTMLElement | null = container
+  while (el) {
+    if (el.offsetParent !== null && el.clientWidth >= MIN_CONTAINER_WIDTH) {
+      const rawW = el.clientWidth - PROPOSED_BORDER_PX - PROPOSED_XTERM_PADDING_PX
+      const availableW = Math.max(rawW, MIN_PROPOSED_WIDTH)
+      const rawH = (el.clientHeight || window.innerHeight * 0.6) - PROPOSED_TOOLBAR_PX
+      const availableH = Math.max(rawH, PROPOSED_LINE_HEIGHT_PX * 10)
+      const cw = charWidth > 0 ? charWidth : PROPOSED_CHAR_WIDTH_FALLBACK
+      const cols = Math.max(Math.floor(availableW / cw), MIN_VALID_COLS)
+      const rows = Math.max(Math.floor(availableH / PROPOSED_LINE_HEIGHT_PX), 10)
+      return { cols, rows }
+    }
+    el = el.parentElement
+  }
+  return null
+}
 
 // 后端 isValidResizeSize 把 cols < 30 视为无效 → 删除该 ws 的尺寸贡献并重算 min 聚合。
 // 同 session 被多个浏览器 tab 共享时，后台 tab 用这个发"我退出尺寸聚合"。
