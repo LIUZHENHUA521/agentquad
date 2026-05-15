@@ -10,7 +10,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { diffLines } from 'diff'
 import './design/highlight.css'
-import { getTranscript, ResumeSessionInput, sendAiInput, startAiExec, stopAiExec, TranscriptResponse, TranscriptTurn, uploadImage } from './api'
+import { getTranscript, PermissionPrompt, ResumeSessionInput, sendAiInput, startAiExec, stopAiExec, TranscriptResponse, TranscriptTurn, uploadImage } from './api'
 import { markdownComponents } from './markdownComponents'
 import './TranscriptView.css'
 import { deriveAiState, type AiPresentationState } from './design/aiPresentationState'
@@ -490,6 +490,125 @@ function mergeTurnsByPosition<T extends TranscriptTurn>(
 const MIN_HEIGHT = 240
 const MAX_HEIGHT = 1200
 
+// 授权弹窗卡片：在 Conversation 底部代替/补充 composer，让用户不用切 Live tab
+// 就能响应 Claude/Codex 的 permission prompt。按钮的"发什么"与 Telegram/飞书
+// 的 permission card 保持一致：Enter=允许 / Esc=拒绝 / 1\r 2\r... 选枚举项。
+//
+// 卡片何时显示由 TranscriptView 决定（status===pending_confirm + 有 prompt）；
+// 卡片自身不做条件渲染——它"显示出来 = 应该可点"，避免内部 flag 漂移。
+function PermissionCard({
+  sessionId,
+  prompt,
+  onCustomize,
+}: {
+  sessionId: string
+  prompt: PermissionPrompt
+  onCustomize: () => void
+}) {
+  const { t } = useTranslation(['transcript'])
+  const { message } = useAppMessages()
+  const [sending, setSending] = useState(false)
+  const [sentLabel, setSentLabel] = useState<string | null>(null)
+  const [warn, setWarn] = useState(false)
+  const warnTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => () => {
+    if (warnTimerRef.current) clearTimeout(warnTimerRef.current)
+  }, [])
+
+  // prompt 变化（新一轮授权）重置发送态——同一卡片实例可能在两轮间复用。
+  useEffect(() => {
+    setSending(false)
+    setSentLabel(null)
+    setWarn(false)
+    if (warnTimerRef.current) { clearTimeout(warnTimerRef.current); warnTimerRef.current = null }
+  }, [prompt.createdAt])
+
+  const send = useCallback(async (payload: string, label: string) => {
+    if (sending) return
+    setSending(true)
+    setSentLabel(label)
+    setWarn(false)
+    try {
+      await sendAiInput(sessionId, payload)
+      if (warnTimerRef.current) clearTimeout(warnTimerRef.current)
+      // 后端状态翻 running 后外层会卸载这个卡片；5s 还没卸载就提示"可能没生效"。
+      warnTimerRef.current = setTimeout(() => setWarn(true), 5000)
+    } catch (e: any) {
+      message.error(e?.message || t('transcript:permission.sendFailed'))
+      setSending(false)
+      setSentLabel(null)
+    }
+  }, [message, sending, sessionId, t])
+
+  const hasOptions = prompt.options && prompt.options.length > 0
+
+  // 给"看上去像 No"的选项贴 deny 红色样式：label 以 No 开头 / 含拒绝/否
+  const denyish = (label: string) => /^\s*(no\b|不|否|拒绝)/i.test(label)
+
+  return (
+    <div className="tv-permission-card" role="alertdialog" aria-live="polite">
+      <div className="tv-permission-header">
+        <span>⚠️ {t('transcript:permission.title')}</span>
+        {prompt.source ? <span className="tv-permission-header-source">[{prompt.source}]</span> : null}
+      </div>
+      {prompt.text
+        ? <pre className="tv-permission-prompt">{prompt.text}</pre>
+        : <div className="tv-permission-hint">{t('transcript:permission.noPromptText')}</div>}
+      <div className="tv-permission-actions">
+        {hasOptions
+          ? prompt.options.map((opt) => (
+            <button
+              key={opt.index}
+              className={
+                'tv-permission-btn ' +
+                (opt.index === 1 ? 'tv-permission-btn--allow' : denyish(opt.label) ? 'tv-permission-btn--deny' : '')
+              }
+              disabled={sending}
+              onClick={() => void send(`${opt.index}\r`, `${opt.index}. ${opt.label}`)}
+              title={`${opt.index}. ${opt.label}`}
+            >
+              {opt.index}. {opt.label}
+            </button>
+          ))
+          : (
+            <>
+              <button
+                className="tv-permission-btn tv-permission-btn--allow"
+                disabled={sending}
+                onClick={() => void send('\r', t('transcript:permission.allow'))}
+              >
+                ✅ {t('transcript:permission.allow')}
+              </button>
+              <button
+                className="tv-permission-btn tv-permission-btn--deny"
+                disabled={sending}
+                onClick={() => void send('\x1b', t('transcript:permission.deny'))}
+              >
+                🛑 {t('transcript:permission.deny')}
+              </button>
+            </>
+          )}
+        <button
+          className="tv-permission-btn tv-permission-btn--ghost"
+          disabled={sending}
+          onClick={onCustomize}
+          title={t('transcript:permission.customHint')}
+        >
+          💬 {t('transcript:permission.custom')}
+        </button>
+        {sentLabel
+          ? <span className={'tv-permission-hint' + (warn ? ' tv-permission-hint--warn' : '')}>
+              {warn
+                ? t('transcript:permission.timeoutWarn', { label: sentLabel })
+                : t('transcript:permission.sent', { label: sentLabel })}
+            </span>
+          : null}
+      </div>
+    </div>
+  )
+}
+
 export default function TranscriptView({ todoId, sessionId, onFork, autoRefreshMs = 0, resumeTarget = null, onSessionRecovered, fillHeight, cwd, active = true }: Props) {
   const { t } = useTranslation(['transcript', 'common', 'errors'])
   const { message } = useAppMessages()
@@ -503,6 +622,10 @@ export default function TranscriptView({ todoId, sessionId, onFork, autoRefreshM
   const [allToolsCollapsed, setAllToolsCollapsed] = useState(true)
   const [composer, setComposer] = useState('')
   const [optimisticTurns, setOptimisticTurns] = useState<LocalTurn[]>([])
+  // 用户点了"自定义答复"折叠卡片后，记录被折叠的那一轮 permissionPrompt.createdAt。
+  // 后端再次广播同一轮（createdAt 没变）就保持折叠；新一轮（createdAt 变了）卡片重新出现。
+  const [permissionCardDismissedAt, setPermissionCardDismissedAt] = useState<number | null>(null)
+  const composerRef = useRef<any>(null)
   // jsonl 只有消息收尾才落盘；服务端推来的 PTY 实时文本不再直接展示，
   // 这里只保留它作为"AI 正在生成"的信号。
   const [liveOutput, setLiveOutput] = useState<string | null>(null)
@@ -1236,6 +1359,30 @@ export default function TranscriptView({ todoId, sessionId, onFork, autoRefreshM
         </button>
       )}
       {(() => {
+        // 仅在 live store 报 pending_confirm + 有 permissionPrompt 时渲染卡片。
+        // 用 transcriptLiveSession 而非 data.session：后者来自 SSE snapshot，可能
+        // 落后于真实 status（snapshot 是从 todo.aiSessions 持久化里拉的，permissionPrompt
+        // 不在那条路径上）。
+        const liveStatus = transcriptLiveSession?.status
+        const liveBackedPending = liveStatus === 'pending_confirm' || data?.session.status === 'pending_confirm'
+        const prompt = transcriptLiveSession?.permissionPrompt
+        if (!liveBackedPending || !prompt) return null
+        if (permissionCardDismissedAt === prompt.createdAt) return null
+        return (
+          <PermissionCard
+            sessionId={sessionId}
+            prompt={prompt}
+            onCustomize={() => {
+              setPermissionCardDismissedAt(prompt.createdAt)
+              // 让用户立刻能开始打字
+              window.setTimeout(() => {
+                try { composerRef.current?.focus?.() } catch { /* ignore */ }
+              }, 0)
+            }}
+          />
+        )
+      })()}
+      {(() => {
         const canInterrupt = transcriptState === 'running' || data?.session.status === 'pending_confirm'
         const status = data?.session.status
         const statusDotCls =
@@ -1300,6 +1447,7 @@ export default function TranscriptView({ todoId, sessionId, onFork, autoRefreshM
       >
         <span className="tv-composer-prompt" aria-hidden>›</span>
         <Mentions
+          ref={composerRef}
           value={composer}
           onChange={(v) => setComposer(v)}
           prefix="/"

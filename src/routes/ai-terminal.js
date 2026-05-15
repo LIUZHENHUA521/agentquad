@@ -7,6 +7,7 @@ import { homedir } from 'node:os'
 import pidusage from 'pidusage'
 import { loadConfig, resolveToolsConfig, SUPPORTED_TOOLS, DEFAULT_ROOT_DIR } from '../config.js'
 import { writeRuntimeMcpConfig } from '../agent-installer-shared.js'
+import { extractPermissionPrompt } from '../permission-prompt.js'
 
 const MAX_OUTPUT_BUFFER = 5 * 1024 * 1024
 const CLEANUP_MS = 30 * 60_000
@@ -162,7 +163,10 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
     if (session.status === 'running' && session.awaitingReply === false) return false
     session.status = 'running'
     session.awaitingReply = false
-    if (wasPending) session.recentOutput = ''
+    if (wasPending) {
+      session.recentOutput = ''
+      session.permissionPrompt = null
+    }
     persistLiveSessionState(session, 'running', 'ai_running')
     if (wasPending) broadcastToSession(session, { type: 'pending_cleared' })
     return true
@@ -184,12 +188,43 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
   // 也翻 pending_confirm，会让 session 在 AI 完成回话之后无故卡在"待确认"，前端没有任何
   // 入口能把它清掉（focus 只清 unread；markSessionRunningAfterInput 需要真实输入）。
   // 所以 idle / 其它非 running 状态下，直接拒绝翻转。
-  function markPendingConfirm(sessionId, { source = null } = {}) {
+  // promptText 可由 caller 显式传入（Codex 的 prompt-detector 已经握有一段干净文本）；
+  // 不传则从 session.recentOutput 提取尾部（Claude Notification 路径走这条）。
+  // 状态已经是 pending_confirm 时也允许更新 pendingPrompt —— 同一轮等待中 PTY
+  // 可能继续追加输出（如选项变化、高亮位移），让前端拿到最新文案。
+  function markPendingConfirm(sessionId, { source = null, promptText = null } = {}) {
     const session = sessions.get(sessionId)
     if (!session) return false
     if (!LIVE_AI_STATUSES.has(session.status)) return false
-    if (session.status === 'pending_confirm') return true
-    if (session.status !== 'running') return false
+    const wasPending = session.status === 'pending_confirm'
+    if (!wasPending && session.status !== 'running') return false
+
+    const extractSource = promptText || session.recentOutput || ''
+    const { text, options } = extractPermissionPrompt(extractSource)
+    const hasContent = !!(text || options.length)
+    const prevPrompt = session.permissionPrompt || null
+
+    if (wasPending) {
+      // 已经是 pending_confirm：只在 prompt 文本/选项真的有变化时才更新并再广播。
+      // 多次 Notification/detector 在同一轮内反复 fire 是常态，不能每次都刷前端。
+      const sameText = (prevPrompt?.text || '') === text
+      const sameOptions = JSON.stringify(prevPrompt?.options || []) === JSON.stringify(options)
+      if (!hasContent || (sameText && sameOptions)) return true
+      session.permissionPrompt = { text, options, source: source || 'hook', createdAt: Date.now() }
+      broadcastToSession(session, {
+        type: 'pending_confirm',
+        snippet: session.recentOutput ? session.recentOutput.slice(-500) : '',
+        promptText: text,
+        options,
+        source: source || 'hook',
+      })
+      return true
+    }
+
+    session.permissionPrompt = hasContent
+      ? { text, options, source: source || 'hook', createdAt: Date.now() }
+      : null
+
     session.status = 'pending_confirm'
     const todo = db.getTodo(session.todoId)
     if (todo) {
@@ -211,6 +246,8 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
     broadcastToSession(session, {
       type: 'pending_confirm',
       snippet: session.recentOutput ? session.recentOutput.slice(-500) : '',
+      promptText: text,
+      options,
       source: source || 'hook',
     })
     return true
@@ -693,6 +730,7 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
           lastTurnDoneAt: s.lastTurnDoneAt || null,
           outputBytesTotal: s.outputBytesTotal || 0,
           awaitingReply: !!s.awaitingReply,
+          permissionPrompt: s.permissionPrompt || null,
         })
       }
       res.json({ ok: true, sessions: out })
@@ -838,18 +876,43 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
   // 同一个 session 被多个网页同时打开时（比如你在另一个 tab/window 又开了一遍
   // 同一个 todo），每个 tab 的 xterm fit 出的 cols/rows 都不一样，谁最后发谁
   // 赢就会在两个尺寸之间来回抖，Claude 的 TUI 不停重排、scrollback 全是残影。
-  // 取所有在线浏览器上报尺寸的 **最小值** 发给 PTY：最窄的窗口看得下，更宽的
-  // tab 只是右边留空白，整体输出保持稳定。
+  //
+  // 聚合策略：
+  // - 若有任意 viewer 声明 role='primary'（当前只有 SessionFocus 全屏视图会这么报）
+  //   → 只用 primary viewer 的尺寸，多个 primary 之间仍取 min 兜底
+  //   secondary viewer（Dock 卡片、迷你窗等）一律忽略，靠 xterm 软折行自己处理
+  // - 没有 primary → 退回历史行为：所有 viewer 的 min 聚合
   function applyAggregatedResize(session) {
     if (!canResizeSession(session)) return
 
-    let cols = Infinity
-    let rows = Infinity
+    let primaryCols = Infinity
+    let primaryRows = Infinity
+    let hasPrimary = false
+    let fallbackCols = Infinity
+    let fallbackRows = Infinity
+    let hasFallback = false
     for (const b of session.browsers) {
       const sz = b.__quadtodoSize
       if (!sz || !isValidResizeSize(sz.cols, sz.rows)) continue
-      if (sz.cols < cols) cols = sz.cols
-      if (sz.rows < rows) rows = sz.rows
+      if (b.__quadtodoRole === 'primary') {
+        hasPrimary = true
+        if (sz.cols < primaryCols) primaryCols = sz.cols
+        if (sz.rows < primaryRows) primaryRows = sz.rows
+      } else {
+        hasFallback = true
+        if (sz.cols < fallbackCols) fallbackCols = sz.cols
+        if (sz.rows < fallbackRows) fallbackRows = sz.rows
+      }
+    }
+    let cols, rows
+    if (hasPrimary) {
+      cols = primaryCols
+      rows = primaryRows
+    } else if (hasFallback) {
+      cols = fallbackCols
+      rows = fallbackRows
+    } else {
+      return
     }
     if (!isValidResizeSize(cols, rows)) return
     cols = clampPtyCols(cols)
@@ -1026,9 +1089,11 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
     } else if (msg.type === 'init') {
       const cols = Number(msg.cols)
       const rows = Number(msg.rows)
+      const role = msg.role === 'primary' ? 'primary' : 'secondary'
       const session = sessions.get(sessionId)
       if (!session) return
       if (!isValidResizeSize(cols, rows)) return
+      if (ws) ws.__quadtodoRole = role
       if (!session.spawned) {
         if (session.spawnFallbackTimer) {
           clearTimeout(session.spawnFallbackTimer)
@@ -1059,6 +1124,11 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
       const rows = Number(msg.rows)
       const session = sessions.get(sessionId)
       if (!canResizeSession(session)) return
+      // role 字段可选：只在显式传入时更新，避免普通 resize 把已声明的 primary
+      // 静默打回 secondary
+      if (ws && (msg.role === 'primary' || msg.role === 'secondary')) {
+        ws.__quadtodoRole = msg.role
+      }
       if (ws && session.browsers.has(ws)) {
         if (!isValidResizeSize(cols, rows)) {
           delete ws.__quadtodoSize

@@ -23,6 +23,8 @@ interface Props {
   mode?: ViewMode
   /** Notification when the inner switcher changes mode. */
   onModeChange?: (mode: ViewMode) => void
+  /** AiTerminalMini.viewerRole 透传：primary 独占 PTY 尺寸聚合（默认 secondary）。 */
+  viewerRole?: 'primary' | 'secondary'
 }
 
 type ViewMode = 'live' | 'transcript'

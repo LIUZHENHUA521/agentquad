@@ -606,6 +606,18 @@ export function getTerminalWsUrl(sessionId: string): string {
 
 // ─── Dashboard 相关 ───
 
+export interface PermissionOption {
+  index: number
+  label: string
+}
+
+export interface PermissionPrompt {
+  text: string
+  options: PermissionOption[]
+  source: string
+  createdAt: number
+}
+
 export interface LiveSession {
   sessionId: string
   todoId: string
@@ -626,6 +638,9 @@ export interface LiveSession {
   lastTurnDoneAt?: number | null
   outputBytesTotal: number
   awaitingReply?: boolean
+  // status === 'pending_confirm' 时由后端从 PTY 尾部提取的授权弹窗。
+  // 其它状态恒为 null —— Conversation 面板的 PermissionCard 根据它来渲染。
+  permissionPrompt?: PermissionPrompt | null
 }
 
 export interface ResourceSnapshot {

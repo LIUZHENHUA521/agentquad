@@ -117,6 +117,7 @@ export function SessionFocus() {
             hideTabs
             mode={sessionViewerMode}
             fillHeight
+            viewerRole="primary"
           />
         ) : (
           <div className="session-focus-empty">{t('session:focus.noActiveSession')}</div>

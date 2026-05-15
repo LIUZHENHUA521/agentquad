@@ -770,6 +770,70 @@ describe('routes/ai-terminal', () => {
     expect(sent1.some(item => JSON.parse(item).type === 'auto_mode')).toBe(true)
   })
 
+  it('primary viewer 独占聚合：忽略 secondary 的窄 cols 贡献', async () => {
+    const todo = ctx.db.createTodo({ title: 'T', quadrant: 1 })
+    const { body } = await request(ctx.app).post('/api/ai-terminal/exec')
+      .send({ todoId: todo.id, prompt: 'hi', tool: 'claude' })
+    const sessionId = body.sessionId
+
+    const dockWs = { readyState: 1, OPEN: 1, send: () => {} }
+    const focusWs = { readyState: 1, OPEN: 1, send: () => {} }
+    ctx.ait.addBrowser(sessionId, dockWs)
+    ctx.ait.addBrowser(sessionId, focusWs)
+
+    // Dock 卡片（secondary）先报 80 cols；不带 role 默认就是 secondary。
+    ctx.ait.handleBrowserMessage(sessionId, { type: 'resize', cols: 80, rows: 24 }, dockWs)
+    expect(ctx.pty.resizes[ctx.pty.resizes.length - 1]).toMatchObject({ cols: 80, rows: 24 })
+
+    // SessionFocus 视图（primary）报 220 cols：即使 dock 还在 80，PTY 必须切到 220。
+    ctx.ait.handleBrowserMessage(sessionId, { type: 'resize', cols: 220, rows: 60, role: 'primary' }, focusWs)
+    expect(ctx.pty.resizes[ctx.pty.resizes.length - 1]).toMatchObject({ cols: 220, rows: 60 })
+
+    // dock 上报新尺寸 100 不影响 PTY（仍 primary 说了算）。
+    const before = ctx.pty.resizes.length
+    ctx.ait.handleBrowserMessage(sessionId, { type: 'resize', cols: 100, rows: 28 }, dockWs)
+    expect(ctx.pty.resizes.length).toBe(before)
+  })
+
+  it('primary 离开后退回 secondary min 聚合', async () => {
+    const todo = ctx.db.createTodo({ title: 'T', quadrant: 1 })
+    const { body } = await request(ctx.app).post('/api/ai-terminal/exec')
+      .send({ todoId: todo.id, prompt: 'hi', tool: 'claude' })
+    const sessionId = body.sessionId
+
+    const dockWs = { readyState: 1, OPEN: 1, send: () => {} }
+    const focusWs = { readyState: 1, OPEN: 1, send: () => {} }
+    ctx.ait.addBrowser(sessionId, dockWs)
+    ctx.ait.addBrowser(sessionId, focusWs)
+
+    ctx.ait.handleBrowserMessage(sessionId, { type: 'resize', cols: 100, rows: 30 }, dockWs)
+    ctx.ait.handleBrowserMessage(sessionId, { type: 'resize', cols: 220, rows: 60, role: 'primary' }, focusWs)
+    expect(ctx.pty.resizes[ctx.pty.resizes.length - 1]).toMatchObject({ cols: 220, rows: 60 })
+
+    // primary viewer 离开：聚合回退到 secondary min（只剩 dock）。
+    ctx.ait.removeBrowser(sessionId, focusWs)
+    expect(ctx.pty.resizes[ctx.pty.resizes.length - 1]).toMatchObject({ cols: 100, rows: 30 })
+  })
+
+  it('resize 不传 role 不打回已声明的 primary', async () => {
+    const todo = ctx.db.createTodo({ title: 'T', quadrant: 1 })
+    const { body } = await request(ctx.app).post('/api/ai-terminal/exec')
+      .send({ todoId: todo.id, prompt: 'hi', tool: 'claude' })
+    const sessionId = body.sessionId
+
+    const dockWs = { readyState: 1, OPEN: 1, send: () => {} }
+    const focusWs = { readyState: 1, OPEN: 1, send: () => {} }
+    ctx.ait.addBrowser(sessionId, dockWs)
+    ctx.ait.addBrowser(sessionId, focusWs)
+
+    ctx.ait.handleBrowserMessage(sessionId, { type: 'resize', cols: 80, rows: 24 }, dockWs)
+    // primary 首次声明 role
+    ctx.ait.handleBrowserMessage(sessionId, { type: 'resize', cols: 220, rows: 60, role: 'primary' }, focusWs)
+    // 后续 resize 不带 role —— 仍应被视为 primary（独占聚合）
+    ctx.ait.handleBrowserMessage(sessionId, { type: 'resize', cols: 240, rows: 60 }, focusWs)
+    expect(ctx.pty.resizes[ctx.pty.resizes.length - 1]).toMatchObject({ cols: 240, rows: 60 })
+  })
+
   it('aggregated resize ignores tabs that unregister via cols=0/rows=0', async () => {
     const todo = ctx.db.createTodo({ title: 'T', quadrant: 1 })
     const { body } = await request(ctx.app).post('/api/ai-terminal/exec')
@@ -1318,6 +1382,54 @@ describe('routes/ai-terminal', () => {
     expect(ctx.ait.markPendingConfirm(body.sessionId, { source: 'b' })).toBe(true)
     const pendingEvents = sent.filter(m => m.type === 'pending_confirm')
     expect(pendingEvents.length).toBe(1)
+  })
+
+  it('markPendingConfirm 携带 promptText → 解析为 options + 暴露到 /sessions 与 ws 广播', async () => {
+    const todo = ctx.db.createTodo({ title: 'T', quadrant: 1 })
+    const { body } = await request(ctx.app).post('/api/ai-terminal/exec')
+      .send({ todoId: todo.id, prompt: 'hi', tool: 'claude' })
+    const sent = []
+    const ws = { readyState: 1, OPEN: 1, send: (d) => sent.push(JSON.parse(d)) }
+    ctx.ait.addBrowser(body.sessionId, ws)
+
+    const promptText = 'Do you want to proceed?\n1. Yes\n2. No, suggest changes'
+    const ok = ctx.ait.markPendingConfirm(body.sessionId, { source: 'codex-detector', promptText })
+    expect(ok).toBe(true)
+
+    // 广播带选项
+    const evt = sent.find(m => m.type === 'pending_confirm')
+    expect(evt.promptText).toContain('1. Yes')
+    expect(evt.options).toEqual([
+      { index: 1, label: 'Yes' },
+      { index: 2, label: 'No, suggest changes' },
+    ])
+
+    // /sessions 也带 permissionPrompt
+    const res = await request(ctx.app).get('/api/ai-terminal/sessions')
+    const found = res.body.sessions.find(s => s.sessionId === body.sessionId)
+    expect(found.permissionPrompt.options).toHaveLength(2)
+    expect(found.permissionPrompt.text).toContain('Do you want to proceed?')
+  })
+
+  it('用户 input \\r 清掉 permissionPrompt + 广播 pending_cleared', async () => {
+    const todo = ctx.db.createTodo({ title: 'T', quadrant: 1 })
+    const { body } = await request(ctx.app).post('/api/ai-terminal/exec')
+      .send({ todoId: todo.id, prompt: 'hi', tool: 'claude' })
+    const sent = []
+    const ws = { readyState: 1, OPEN: 1, send: (d) => sent.push(JSON.parse(d)) }
+    ctx.ait.addBrowser(body.sessionId, ws)
+
+    ctx.ait.markPendingConfirm(body.sessionId, {
+      source: 'claude-notification',
+      promptText: '1. Yes\n2. No',
+    })
+    expect(ctx.ait.sessions.get(body.sessionId).permissionPrompt).toBeTruthy()
+
+    await request(ctx.app).post('/api/ai-terminal/input')
+      .send({ sessionId: body.sessionId, data: '\r' })
+
+    expect(ctx.ait.sessions.get(body.sessionId).permissionPrompt).toBeNull()
+    expect(sent.some(m => m.type === 'pending_cleared')).toBe(true)
   })
 
   it('markPendingConfirm 对已 done/failed/stopped 的 session 不生效', async () => {

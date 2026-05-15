@@ -56,7 +56,7 @@ describe('agent-installer-shared', () => {
       expect(out.path).toMatch(/mcp-sid1\.json$/)
       const raw = JSON.parse(readFileSync(out.path, 'utf8'))
       expect(raw.mcpServers.agentquad.url).toBe('http://127.0.0.1:5678/mcp')
-      expect(raw.mcpServers.agentquad.transport ?? 'http').toBe('http')
+      expect(raw.mcpServers.agentquad.type).toBe('http')
     })
 
     it('writes codex-format toml config when tool=codex', () => {

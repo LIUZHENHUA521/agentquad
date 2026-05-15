@@ -605,7 +605,7 @@ export function createOpenClawHookHandler(deps = {}) {
     if (!sess) return { ok: false, reason: 'session_gone' }
     // 把 session.status 翻成 pending_confirm —— 前端 deriveAiState 据此显示"待确认"。
     // 信号源是 codex-prompt-detector（已经过 AI self-quoted 过滤），比旧的 PTY 正则路径准。
-    try { aiTerminal?.markPendingConfirm?.(sessionId, { source: 'codex-detector' }) } catch { /* ignore */ }
+    try { aiTerminal?.markPendingConfirm?.(sessionId, { source: 'codex-detector', promptText }) } catch { /* ignore */ }
     const todoId = sess.todoId
     let todoTitle = todoId
     try {

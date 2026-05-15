@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { AiStatus, AiTool, LiveSession, Quadrant, ResourceSnapshot } from '../api'
+import type { AiStatus, AiTool, LiveSession, PermissionPrompt, Quadrant, ResourceSnapshot } from '../api'
 
 export type PetState = 'idle' | 'working' | 'thinking' | 'calling' | 'celebrating' | 'fallen' | 'statue' | 'disconnected'
 
@@ -23,6 +23,7 @@ interface AiSessionState {
   updateSessionStatus: (sessionId: string, status: AiStatus, completedAt?: number | null) => void
   markSessionTurnDone: (sessionId: string, status: AiStatus, timestamp: number) => void
   markSessionAwaitingReply: (sessionId: string, awaitingReply: boolean) => void
+  setPermissionPrompt: (sessionId: string, prompt: PermissionPrompt | null) => void
   recordOutputBytes: (sessionId: string, len: number, at?: number) => void
   setResources: (list: ResourceSnapshot[]) => void
   replaceSessionId: (oldId: string, nextId: string) => void
@@ -91,6 +92,19 @@ export const useAiSessionStore = create<AiSessionState>((set) => ({
     if (s.awaitingReply === awaitingReply) return {}
     const m = new Map(state.sessions)
     m.set(sessionId, { ...s, awaitingReply })
+    return { sessions: m }
+  }),
+
+  // 来自 PTY WS 的 pending_confirm / pending_cleared，把 permissionPrompt
+  // 立刻塞进 live store；切到 Conversation tab 不必等 3s poll 卡片就能渲染。
+  // 状态 status 不在这里翻——AiTerminalMini 已经走 setSessionStatus 改 todo
+  // snapshot store，3s poll 会带回完整的 LiveSession，覆盖时也保留 permissionPrompt。
+  setPermissionPrompt: (sessionId, prompt) => set((state) => {
+    const s = state.sessions.get(sessionId)
+    if (!s) return {}
+    if (s.permissionPrompt == null && prompt == null) return {}
+    const m = new Map(state.sessions)
+    m.set(sessionId, { ...s, permissionPrompt: prompt })
     return { sessions: m }
   }),
 

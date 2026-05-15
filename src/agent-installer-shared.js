@@ -67,8 +67,8 @@ export function writeRuntimeMcpConfig({ runtimeDir, sessionId, port, tool }) {
   writeJsonAtomic(path, {
     mcpServers: {
       agentquad: {
+        type: 'http',
         url,
-        transport: 'http',
       },
     },
   })

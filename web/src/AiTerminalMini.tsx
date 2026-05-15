@@ -37,6 +37,13 @@ interface Props {
   onDone?: (result: { status: string; exitCode?: number }) => void
   onStatusChange?: (status: TodoStatus) => void
   fillHeight?: boolean
+  /**
+   * primary：本 viewer 独占 PTY 尺寸，后端忽略 secondary viewer 的 cols 贡献。
+   * 用于 SessionFocus 全屏视图——避免 Dock 卡片等小尺寸 viewer 把 PTY 拉窄、
+   * 引发 Claude TUI 框图按窄 cols 重排导致的乱码。
+   * 不传默认 secondary（沿用历史 min 聚合行为）。
+   */
+  viewerRole?: 'primary' | 'secondary'
 }
 
 const MAX_RECONNECT_DELAY = 10_000
@@ -100,7 +107,7 @@ async function waitTerminalReady(container: HTMLDivElement): Promise<void> {
   await new Promise<void>(r => requestAnimationFrame(() => r()))
 }
 
-export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeTarget, onSessionRecovered, onSessionSwitch, onClose, onDone, onStatusChange, fillHeight }: Props) {
+export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeTarget, onSessionRecovered, onSessionSwitch, onClose, onDone, onStatusChange, fillHeight, viewerRole = 'secondary' }: Props) {
   void onClose
   const { t } = useTranslation(['session'])
   const { message } = useAppMessages()
@@ -180,6 +187,10 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
   const resumeTargetRef = useRef<ResumeSessionInput | null>(resumeTarget || null)
   const onSessionRecoveredRef = useRef<typeof onSessionRecovered>(onSessionRecovered)
   const onSessionSwitchRef = useRef<typeof onSessionSwitch>(onSessionSwitch)
+  // 上一次发往后端的 role：role 切换时需要重传 init/resize 让后端切换聚合分支。
+  // 普通 resize 跑去抖路径不重发；只有"role 第一次同步"和"role 切换"才显式触发。
+  const viewerRoleRef = useRef<'primary' | 'secondary'>(viewerRole)
+  useEffect(() => { viewerRoleRef.current = viewerRole }, [viewerRole])
 
   useEffect(() => {
     resumeTargetRef.current = resumeTarget || null
@@ -192,6 +203,7 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
   }, [sessionId])
 
   const markSessionTurnDone = useAiSessionStore(s => s.markSessionTurnDone)
+  const setPermissionPrompt = useAiSessionStore(s => s.setPermissionPrompt)
 
   const tryAutoRecover = useCallback(async () => {
     const latestResumeTarget = resumeTargetRef.current
@@ -200,12 +212,18 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
     recoveryAttemptedRef.current = true
     try {
       termRef.current?.writeln(`\r\n\x1b[33m--- ${t('session:terminal.writeln.autoRecovering')} ---\x1b[0m\r`)
+      // 与 TodoManage.handleAiExec 对齐：localStorage 浏览器覆盖 > 设置里的全局默认；
+      // 不读这两层的话恢复出来的 PTY 会用后端默认 'default'，让"完全托管"失效。
+      let permissionMode: string | null = null
+      try { permissionMode = localStorage.getItem('quadtodo.autoMode') } catch { /* ignore */ }
+      if (!permissionMode) permissionMode = useAppConfigStore.getState().defaultPermissionMode
       const { sessionId: nextSessionId } = await startAiExec({
         todoId: latestResumeTarget.todoId,
         tool: latestResumeTarget.tool,
         prompt: latestResumeTarget.prompt,
         cwd: latestResumeTarget.cwd,
         resumeNativeId: latestResumeTarget.nativeSessionId,
+        permissionMode: permissionMode || undefined,
       })
       stopReconnectRef.current = true
       setSessionExpired(false)
@@ -253,7 +271,7 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
       const latestStatus = sessionStatusRef.current
       const canResize = (latestStatus === 'ai_running' || latestStatus === 'ai_pending') && !sessionExpiredRef.current
       if (canResize && ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: 'resize', cols, rows }))
+        ws.send(JSON.stringify({ type: 'resize', cols, rows, role: viewerRoleRef.current }))
         lastSentSizeRef.current = { cols, rows }
       }
     }, RESIZE_STABILITY_MS)
@@ -543,11 +561,11 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
             // 再切回前台已经太晚（首屏 80 列 banner 已经画完了）。发完立刻补一条
             // 0/0 unregister，把这个 tab 从聚合中踢出，避免后端按它的 cols 钳制 PTY。
             if (Number.isFinite(cols) && Number.isFinite(rows) && cols >= MIN_VALID_COLS && rows > 0) {
-              ws.send(JSON.stringify({ type: 'init', cols, rows }))
+              ws.send(JSON.stringify({ type: 'init', cols, rows, role: viewerRoleRef.current }))
             }
             sendUnregisterSize(ws)
           } else if (Number.isFinite(cols) && Number.isFinite(rows) && cols >= MIN_VALID_COLS && rows > 0) {
-            ws.send(JSON.stringify({ type: 'init', cols, rows }))
+            ws.send(JSON.stringify({ type: 'init', cols, rows, role: viewerRoleRef.current }))
             // 给 ResizeObserver 一个 baseline，避免它立刻又发一条 cols/rows 完全相同的 resize
             lastSentSizeRef.current = { cols, rows }
           } else {
@@ -596,9 +614,16 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
                 break
               case 'pending_confirm':
                 setSessionStatus('ai_pending')
+                setPermissionPrompt(sessionId, {
+                  text: typeof msg.promptText === 'string' ? msg.promptText : '',
+                  options: Array.isArray(msg.options) ? msg.options : [],
+                  source: msg.source || 'hook',
+                  createdAt: Date.now(),
+                })
                 break
               case 'pending_cleared':
                 setSessionStatus('ai_running')
+                setPermissionPrompt(sessionId, null)
                 break
               case 'auto_mode':
                 setAutoMode(msg.autoMode || null)

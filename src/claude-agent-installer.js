@@ -47,8 +47,8 @@ export function installAgent({
   cur.mcpServers = cur.mcpServers || {}
 
   const desired = {
+    type: 'http',
     url: `http://127.0.0.1:${port}/mcp`,
-    transport: 'http',
   }
   const prev = cur.mcpServers.agentquad
   const prevMarker = cur._agentquadManaged
