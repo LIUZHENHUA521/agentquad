@@ -126,6 +126,7 @@ const DEFAULT_LARK_CONFIG = {
 	requireThreadGroup: true,
 	eventSubscribeEnabled: true,
 	autoCreateTopic: true,
+	autoCreateTodo: true,
 	defaultPermissionMode: "bypass",
 	notificationCooldownMs: 600_000,
 };
