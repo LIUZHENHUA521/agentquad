@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
+import { mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync, mkdirSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -82,5 +82,21 @@ describe('claude-agent-installer', () => {
 
     const b = inspectAgent({ claudeJsonPath, skillsDir, expectedPort: 9999 })
     expect(b.drift).toBe(true)
+
+    const c = inspectAgent({ claudeJsonPath, skillsDir })  // expectedPort omitted
+    expect(c.drift).toBe(false)
+  })
+
+  it('uninstall on a file with no agentquad entries does not rewrite it', () => {
+    // 用户文件，没装过 agentquad
+    const original = JSON.stringify({ mcpServers: { other: { url: 'http://x' } }, foo: 'bar' })
+    writeFileSync(claudeJsonPath, original)
+    const mtimeBefore = statSync(claudeJsonPath).mtimeMs
+    // 等 5ms 确保 mtime 粒度
+    const wait = Date.now() + 5
+    while (Date.now() < wait) {}
+    uninstallAgent({ claudeJsonPath, skillsDir })
+    const after = readFileSync(claudeJsonPath, 'utf8')
+    expect(after).toBe(original)
   })
 })

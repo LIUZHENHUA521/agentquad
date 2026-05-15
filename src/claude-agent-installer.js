@@ -5,8 +5,8 @@
  *
  * 跟 src/openclaw-hook-installer.js 风格保持一致 —— 都是改 ~/.claude.json。
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync, copyFileSync, rmSync } from 'node:fs'
-import { join, dirname } from 'node:path'
+import { existsSync, mkdirSync, readFileSync, copyFileSync, rmSync } from 'node:fs'
+import { join } from 'node:path'
 import { homedir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { buildMarker, isAgentquadManaged, writeJsonAtomic } from './agent-installer-shared.js'
@@ -93,7 +93,7 @@ export function uninstallAgent({
       delete cur._agentquadManaged
       removed.push('marker')
     }
-    writeJsonAtomic(claudeJsonPath, cur)
+    if (removed.length > 0) writeJsonAtomic(claudeJsonPath, cur)
   }
   const skillDir = join(skillsDir, SKILL_NAME)
   if (existsSync(skillDir)) {
