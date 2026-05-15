@@ -221,6 +221,13 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
   const disposedRef = useRef(false)
   const effectGenRef = useRef(0)
   const lastSentSizeRef = useRef<{ cols: number; rows: number } | null>(null)
+  // term.open 是否已经调用 —— hidden-mount 路径下推迟到 IO 可见
+  const termOpenedRef = useRef<boolean>(false)
+  // term 还没 open 期间，WS 收到的 output/replay chunks 暂存到这里
+  // 结构：{ chunks: 累计字符串数组, totalBytes: 字节累计 }，封顶 5MB，溢出丢头部
+  const pendingChunksRef = useRef<{ chunks: string[]; totalBytes: number }>({ chunks: [], totalBytes: 0 })
+  // 走 proposed init 时记下当时报的 cols/rows，IO 触发 fit 后若实测不同就发一次 resize 校准
+  const pendingProposedInitRef = useRef<{ cols: number; rows: number } | null>(null)
   const resizeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const refitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const refitAttemptsRef = useRef(0)
