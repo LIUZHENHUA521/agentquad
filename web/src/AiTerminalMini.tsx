@@ -20,6 +20,7 @@ import { useAiSessionStore } from './store/aiSessionStore'
 import { useDispatchStore } from './store/dispatchStore'
 import { useAppConfigStore } from './store/appConfigStore'
 import { migrateDraft } from './composerDraft'
+import { runWithBackoff } from './aiTerminalRecovery'
 
 // 匹配 xterm 一行中的文件路径（相对或绝对，可带 :line 或 :line:col）
 // 规避回溯：只匹配不含空格/冒号/斜杠的 path segment + 已知扩展名
@@ -67,6 +68,8 @@ const MAX_RECONNECT_DELAY = 10_000
 const INITIAL_RECONNECT_DELAY = 1000
 const MAX_RECONNECT_ATTEMPTS = 15
 const HEARTBEAT_INTERVAL = 15_000
+// 失败路径自动恢复退避：1s → 3s → 8s（共 3 次）
+const FAILURE_RECOVERY_BACKOFF_MS = [1000, 3000, 8000]
 const RESIZE_DEBOUNCE_MS = 100
 // 发给服务端 PTY 的 resize 需要稳定窗口：cols/rows 连续 200ms 不变才发。
 // 防止切 tab / 折叠展开时的中间态 cols 值被发给后端（Claude 据此折行，污染 scrollback）。
@@ -154,6 +157,7 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
   const sessionStatusRef = useRef<TodoStatus>(status)
   const [wsConnected, setWsConnected] = useState(false)
   const [sessionExpired, setSessionExpired] = useState(false)
+  const [sessionFailed, setSessionFailed] = useState(false)
   const sessionExpiredRef = useRef(false)
   // 后端在 claude/codex 二进制缺失时返回 HTTP 424 + code:'tool_missing'，
   // 这里保存修复指引（agentquad install-tools --xxx），用一张卡片代替难懂的 ENOENT toast
@@ -273,6 +277,42 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
     }
   }, [])
 
+  const startFailureAutoRecover = useCallback(async (exitCode: number) => {
+    const term = termRef.current
+    // 没有可 resume 的目标 → 直接显示最终失败 UI
+    if (!resumeTargetRef.current?.nativeSessionId) {
+      setSessionFailed(true)
+      term?.writeln(`\r\n\x1b[31m=== ${t('session:terminal.writeln.aiTaskFailed')} ===\x1b[0m\r`)
+      return
+    }
+    if (recoveringRef.current) return // 已有 4004 路径在 recover，让它跑
+
+    const outcome = await runWithBackoff({
+      backoffMs: FAILURE_RECOVERY_BACKOFF_MS,
+      isCancelled: () => disposedRef.current,
+      recover: async (attempt) => {
+        if (disposedRef.current) return false
+        term?.writeln(`\r\n\x1b[33m--- ${t('session:terminal.writeln.autoRecoverAttempt', {
+          code: exitCode,
+          attempt,
+          max: FAILURE_RECOVERY_BACKOFF_MS.length,
+        })} ---\x1b[0m\r`)
+        return await tryAutoRecover()
+      },
+    })
+
+    if (disposedRef.current) return
+
+    if (outcome === 'exhausted') {
+      setSessionFailed(true)
+      term?.writeln(`\r\n\x1b[31m--- ${t('session:terminal.writeln.autoRecoverGiveUp', {
+        max: FAILURE_RECOVERY_BACKOFF_MS.length,
+      })} ---\x1b[0m\r`)
+      term?.writeln(`\r\n\x1b[31m=== ${t('session:terminal.writeln.aiTaskFailed')} ===\x1b[0m\r`)
+    }
+    // 'recovered' / 'cancelled' → 不写额外内容（recover 内部已 setSessionExpired(false) 等）
+  }, [tryAutoRecover, t])
+
   /** 去抖发送 resize 到服务端：cols/rows 必须稳定 RESIZE_STABILITY_MS 才真正发，
    *  防止切 tab / 展开瞬间的中间态被后端 PTY 吃掉，进而让 Claude 按窄 cols 折行污染 scrollback。 */
   const scheduleResizeSend = useCallback((cols: number, rows: number) => {
@@ -384,6 +424,7 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
     isHiddenRef.current = typeof document !== 'undefined' ? document.hidden : false
     lastPongRef.current = Date.now()
     setSessionExpired(false)
+    setSessionFailed(false)
     setWsConnected(false)
     // session 切换时重置 viewport 揭开状态，给新 xterm 一次"等首次 fit 完成再显示"的机会
     viewportReadyRef.current = false
@@ -702,9 +743,21 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
                 break
               }
               case 'done':
-                setSessionStatus(msg.status === 'done' ? 'ai_done' : 'todo')
-                term.writeln(`\r\n\x1b[${msg.exitCode === 0 ? '32' : '31'}m=== ${msg.status === 'done' ? t('session:terminal.writeln.aiTaskDone') : t('session:terminal.writeln.aiTaskFailed')} ===\x1b[0m\r`)
-                onDone?.({ status: msg.status, exitCode: msg.exitCode })
+                if (msg.status === 'done') {
+                  setSessionStatus('ai_done')
+                  term.writeln(`\r\n\x1b[32m=== ${t('session:terminal.writeln.aiTaskDone')} ===\x1b[0m\r`)
+                  onDone?.({ status: msg.status, exitCode: msg.exitCode })
+                } else if (msg.status === 'stopped') {
+                  // 用户主动 stop：route 已经 broadcast 过 type:'stopped' 黄色"已中止"横幅，
+                  // 这里只更状态、回调，不再追加红色"任务失败"，也不触发自动恢复。
+                  setSessionStatus('todo')
+                  onDone?.({ status: msg.status, exitCode: msg.exitCode })
+                } else {
+                  // 'failed'：先把 status 切到 todo + 回调（保持现状），然后进入自动恢复循环
+                  setSessionStatus('todo')
+                  onDone?.({ status: msg.status, exitCode: msg.exitCode })
+                  void startFailureAutoRecover(msg.exitCode ?? 1)
+                }
                 break
               case 'stopped':
                 setSessionStatus('todo')
