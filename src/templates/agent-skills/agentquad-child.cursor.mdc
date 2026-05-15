@@ -1,0 +1,26 @@
+---
+description: Use when the user mentions quadtodo / agentquad / 四象限 todo or wants to split a task into sub-tasks delegated to AI agents.
+alwaysApply: false
+---
+
+# AgentQuad 子任务委派
+
+## 你身处的环境
+- 你正在通过 Cursor 操作一个 AgentQuad（本地四象限 AI 任务调度器）项目
+- AgentQuad 的 MCP 服务在 `http://127.0.0.1:<port>/mcp`（已通过 mcp 连接）
+- 当前 Cursor 会话本身不是 AgentQuad 启动的，所以没有 `QUADTODO_*` 环境变量
+
+## 何时触发本 rule
+- 用户说"在 AgentQuad 加一条 todo / 拆出去给另一个 agent / 看下我的四象限"
+- 用户提到 quadtodo / agentquad / 四象限 todo
+
+## 操作流程
+1. `list_quadrants` → 决定象限（默认 Q2）
+2. `create_todo(title, quadrant, description, parentId?)` → 拿到 todo id
+3. （可选）`start_ai_session(todoId, tool="claude"|"codex", prompt)` → 把任务交给一个本地 PTY agent
+4. 告诉用户 ticket / id，及它在 AgentQuad web UI（http://127.0.0.1:5677 或 user 配置端口）里可见
+
+## 重要约束
+- 创建前先与用户对齐范围与象限
+- `start_ai_session` 默认 `permissionMode=bypass`，子 agent 有写权限，慎重
+- Cursor 无法被 `start_ai_session` 拉起 —— 拉子 agent 只能选 claude / codex
