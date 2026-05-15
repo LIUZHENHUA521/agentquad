@@ -411,6 +411,8 @@ const zh = {
         sessionExpired: '会话已过期',
         aiTaskDone: 'AI 任务已结束',
         aiTaskFailed: '任务失败',
+        autoRecoverAttempt: '检测到会话异常退出 (exit {{code}})，正在自动恢复 ({{attempt}}/{{max}})...',
+        autoRecoverGiveUp: '自动恢复 {{max}} 次均失败，请手动操作',
         aborted: '已中止',
         reconnectExhausted: '重连失败次数过多，已停止重连',
         reconnectAttempt: '连接断开 (code {{code}})，正在重连 ({{attempt}}/{{max}})',

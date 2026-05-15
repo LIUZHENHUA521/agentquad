@@ -413,6 +413,8 @@ const en = {
         sessionExpired: 'Session expired',
         aiTaskDone: 'AI task finished',
         aiTaskFailed: 'Task failed',
+        autoRecoverAttempt: 'AI session exited unexpectedly (exit {{code}}). Auto-recovering ({{attempt}}/{{max}})...',
+        autoRecoverGiveUp: 'Auto-recover failed after {{max}} attempts. Please recover manually.',
         aborted: 'Aborted',
         reconnectExhausted: 'Too many reconnect attempts, stopped reconnecting',
         reconnectAttempt: 'Connection lost (code {{code}}), reconnecting ({{attempt}}/{{max}})',
