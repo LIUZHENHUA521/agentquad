@@ -1096,6 +1096,42 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
             const justEntered = !wasIntersecting
             wasIntersecting = true
             if (!justEntered) continue
+            // 隐藏挂载补完：term 还没 open（首次从 hidden-mount 路径过来），补一波
+            // open + addons + IME + Link + fit + flush，然后必要时给后端补一条 resize 校准
+            if (!termOpenedRef.current) {
+              const openFn = openTermFnRef.current
+              if (!openFn) continue
+              try {
+                openFn()  // 走主 effect 里定义的 openTermInVisibleContainer：term.open + addons + fit
+              } catch (e) {
+                console.warn('[AiTerminalMini] open-on-visible failed:', e)
+                continue
+              }
+              // term 现已 open + 实测 fit 跑过一次。先把暂存的 output/replay chunks 写下去
+              flushPendingChunks()
+              // 实测 cols/rows 与 proposed init 上报的若不同，补一条 resize 给后端校准
+              const proposedInit = pendingProposedInitRef.current
+              const liveTerm = termRef.current
+              const ws = wsRef.current
+              if (
+                proposedInit
+                && liveTerm
+                && (liveTerm.cols !== proposedInit.cols || liveTerm.rows !== proposedInit.rows)
+                && ws
+                && ws.readyState === WebSocket.OPEN
+                && liveTerm.cols >= MIN_VALID_COLS
+              ) {
+                ws.send(JSON.stringify({
+                  type: 'resize',
+                  cols: liveTerm.cols,
+                  rows: liveTerm.rows,
+                  role: viewerRoleRef.current,
+                }))
+                lastSentSizeRef.current = { cols: liveTerm.cols, rows: liveTerm.rows }
+              }
+              pendingProposedInitRef.current = null
+            }
+
             // 切回 Live 时先用 proposeDimensions 试算一下：如果 cols/rows 跟 term 当前
             // 完全一致（窗口没缩、上次 fit 已经算对），整条 hide → fit → reveal 都跳过，
             // 仅 scrollToBottom 让用户看到最新输出。这是消除"切回 Live 闪一下"的关键路径。
