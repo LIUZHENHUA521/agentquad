@@ -1587,7 +1587,7 @@ describe('routes/ai-terminal', () => {
     expect(sent.some(m => m.type === 'pending_cleared')).toBe(true)
   })
 
-  it('5s spawn fallback cleans up the timer field after firing', async () => {
+  it('30s spawn fallback cleans up the timer field after firing', async () => {
     vi.useFakeTimers()
     try {
       const todo = ctx.db.createTodo({ title: 'T', quadrant: 1 })
@@ -1595,8 +1595,8 @@ describe('routes/ai-terminal', () => {
         todoId: todo.id, prompt: 'hello', tool: 'claude',
       })
       const sessionId = r.body.sessionId
-      // Fast-forward past the 5s fallback window.
-      await vi.advanceTimersByTimeAsync(5001)
+      // Fast-forward past the 30s fallback window.
+      await vi.advanceTimersByTimeAsync(30001)
       // Indirect check: the timer fired and called startWithSize(80,24).
       expect(ctx.pty.startedWithSize).toEqual([{ sessionId, cols: 80, rows: 24 }])
       // And the route-side pointer is cleared (no stale Timeout reference).
@@ -1663,7 +1663,7 @@ describe('routes/ai-terminal', () => {
       expect(ctx.pty.resizes).toContainEqual({ id: sessionId, cols: 100, rows: 25 })
     })
 
-    it('5s spawn fallback fires when no init arrives', async () => {
+    it('30s spawn fallback fires when no init arrives', async () => {
       vi.useFakeTimers()
       try {
         const todo = ctx.db.createTodo({ title: 'T', quadrant: 1 })
@@ -1672,7 +1672,7 @@ describe('routes/ai-terminal', () => {
         })
         const sessionId = r.body.sessionId
         expect(ctx.pty.startedWithSize).toHaveLength(0)
-        await vi.advanceTimersByTimeAsync(5001)
+        await vi.advanceTimersByTimeAsync(30001)
         expect(ctx.pty.startedWithSize).toHaveLength(1)
         expect(ctx.pty.startedWithSize[0]).toEqual({ sessionId, cols: 80, rows: 24 })
       } finally {
@@ -1688,7 +1688,7 @@ describe('routes/ai-terminal', () => {
           todoId: todo.id, prompt: 'hello', tool: 'claude',
         })
         const sessionId = r.body.sessionId
-        await vi.advanceTimersByTimeAsync(5001) // fallback fires → startWithSize(80, 24)
+        await vi.advanceTimersByTimeAsync(30001) // fallback fires → startWithSize(80, 24)
         expect(ctx.pty.startedWithSize).toHaveLength(1)
 
         const ws = makeWs()
