@@ -83,17 +83,16 @@ export function FocusSubbar({
 
   const [resuming, setResuming] = useState(false)
   const canShowResume = Boolean(liveMissing)
-  // 仅 claude 支持原生 --resume；codex/cursor 没有 nativeSessionId 概念
+  // pty.js 对 claude / codex / cursor 三家都已实现 resume CLI 调用；前端只看是否有 nativeSessionId。
+  // tool === 'ai' 是 fallback 缺省（live session 不应出现），也走"无原生 id"分支保底。
   const resumeDisabledReason: string | null = !canShowResume
     ? null
-    : tool !== 'claude'
-      ? t('session:focusSubbar.resumeDisabledTool')
-      : !fallbackNativeSessionId
-        ? t('session:focusSubbar.resumeDisabledNoNative')
-        : null
+    : tool === 'ai' || !fallbackNativeSessionId
+      ? t('session:focusSubbar.resumeDisabledNoNative')
+      : null
   const resumeEnabled = canShowResume && !resumeDisabledReason && !resuming
   const handleResume = async () => {
-    if (!resumeEnabled || !fallbackNativeSessionId || tool !== 'claude') return
+    if (!resumeEnabled || !fallbackNativeSessionId || tool === 'ai') return
     setResuming(true)
     try {
       // 与 TodoManage.handleAiExec 对齐：localStorage 浏览器覆盖 > 设置全局默认。
@@ -104,7 +103,7 @@ export function FocusSubbar({
       const { sessionId: nextSessionId } = await startAiExec({
         todoId,
         prompt: '',
-        tool: 'claude',
+        tool,
         cwd: fallbackCwd || undefined,
         resumeNativeId: fallbackNativeSessionId,
         permissionMode: permissionMode || undefined,
@@ -116,7 +115,7 @@ export function FocusSubbar({
         todoId,
         todoTitle: fallbackTitle ?? title,
         quadrant: (session?.quadrant ?? 0) as SessionMeta['quadrant'],
-        tool: 'claude',
+        tool,
         status: 'running',
         autoMode: null,
         nativeSessionId: fallbackNativeSessionId,

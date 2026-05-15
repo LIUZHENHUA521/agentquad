@@ -548,6 +548,12 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
         wsRef.current = ws
 
         let heartbeatTimer: ReturnType<typeof setInterval> | null = null
+        let injectingHintTimer: ReturnType<typeof setTimeout> | null = null
+        let firstDataArrived = false
+        const cancelInjectingHint = () => {
+          firstDataArrived = true
+          if (injectingHintTimer) { clearTimeout(injectingHintTimer); injectingHintTimer = null }
+        }
 
         ws.onopen = () => {
           // 如果已被更新的连接取代，关掉自己
@@ -562,8 +568,15 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
           // 之类的兜底默认值也能正常送给后端，不被去重判成"无需重发"。
           lastSentSizeRef.current = null
 
+          // 只有"接入后 800ms 仍未收到任何 PTY 字节（replay/output）"才显示提示。
+          // 这样 fresh session 仍能看到"已开始/注入中"反馈；reopen 已运行 session 会立刻
+          // 收到 replay，直接跳过这条灰字，避免出现"卡在一行字 + 大片黑"的观感。
           if (!resumeTargetRef.current?.nativeSessionId && status === 'ai_running') {
-            term.writeln(`\x1b[90m--- ${t('session:terminal.writeln.injectingContext')} ---\x1b[0m\r`)
+            injectingHintTimer = setTimeout(() => {
+              injectingHintTimer = null
+              if (firstDataArrived || disposedRef.current || wsRef.current !== ws) return
+              term.writeln(`\x1b[90m--- ${t('session:terminal.writeln.injectingContext')} ---\x1b[0m\r`)
+            }, 800)
           }
 
           // ─── Size-first 握手 ───
@@ -619,10 +632,12 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
             }
             switch (msg.type) {
               case 'output':
+                if (typeof msg.data === 'string' && msg.data.length > 0) cancelInjectingHint()
                 term.write(stripCursorVisibility(msg.data))
                 break
               case 'replay':
                 if (Array.isArray(msg.chunks)) {
+                  if (msg.chunks.length > 0) cancelInjectingHint()
                   for (const chunk of msg.chunks) term.write(stripCursorVisibility(chunk))
                   // 回放结束后强制 SGR reset，避免 TUI 在切片边界遗留 underline/颜色
                   term.write('\x1b[0m')
@@ -690,6 +705,7 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
 
         ws.onclose = (ev) => {
           if (heartbeatTimer) { clearInterval(heartbeatTimer); heartbeatTimer = null }
+          if (injectingHintTimer) { clearTimeout(injectingHintTimer); injectingHintTimer = null }
 
           // 核心：如果这个 WS 已被新连接取代，不做任何状态更新
           if (wsRef.current !== ws) return

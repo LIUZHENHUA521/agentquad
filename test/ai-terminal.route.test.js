@@ -917,6 +917,22 @@ describe('routes/ai-terminal', () => {
     expect(replay.chunks).toEqual(['chunk1', 'chunk2'])
   })
 
+  it('addBrowser as primary still replays outputHistory (no longer clears)', async () => {
+    const todo = ctx.db.createTodo({ title: 'T', quadrant: 1 })
+    const { body } = await request(ctx.app).post('/api/ai-terminal/exec')
+      .send({ todoId: todo.id, prompt: 'hi', tool: 'claude' })
+    ctx.pty.emit('output', { sessionId: body.sessionId, data: 'chunk1' })
+    ctx.pty.emit('output', { sessionId: body.sessionId, data: 'chunk2' })
+    const sent = []
+    const ws = { readyState: 1, OPEN: 1, send: (d) => sent.push(JSON.parse(d)) }
+    ctx.ait.addBrowser(body.sessionId, ws, { role: 'primary' })
+    const replay = sent.find(m => m.type === 'replay')
+    expect(replay).toBeTruthy()
+    expect(replay.chunks).toEqual(['chunk1', 'chunk2'])
+    // session 缓存依然保留，给后续 viewer 复用
+    expect(ctx.ait.sessions.get(body.sessionId).outputHistory).toEqual(['chunk1', 'chunk2'])
+  })
+
   it('addBrowser on unknown session sends error', () => {
     const sent = []
     const ws = { readyState: 1, OPEN: 1, send: (d) => sent.push(JSON.parse(d)), close: vi.fn() }

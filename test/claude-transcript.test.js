@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { readLatestAssistantTurn, readLatestAssistantTurnFresh, readLatestUserTimestamp, buildFullTranscript, __test__ } from '../src/claude-transcript.js'
+import { findLatestPendingToolUse, readLatestAssistantTurn, readLatestAssistantTurnFresh, readLatestUserTimestamp, buildFullTranscript, __test__ } from '../src/claude-transcript.js'
 
 function jsonl(...lines) { return lines.map((l) => JSON.stringify(l)).join('\n') }
 
@@ -225,5 +225,74 @@ describe('buildFullTranscript', () => {
     const r = buildFullTranscript(file, { toolResultMaxChars: 100 })
     expect(r.markdown).toContain('more chars')
     expect(r.markdown).not.toContain(big)
+  })
+})
+
+describe('findLatestPendingToolUse', () => {
+  let tmp, file
+
+  beforeEach(() => {
+    tmp = mkdtempSync(join(tmpdir(), 'pend-tu-'))
+    file = join(tmp, 's.jsonl')
+  })
+  afterEach(() => { try { rmSync(tmp, { recursive: true, force: true }) } catch {} })
+
+  it('返回最近一个没匹配 tool_result 的 tool_use', () => {
+    writeFileSync(file, jsonl(
+      { type: 'user', message: { role: 'user', content: 'do it' } },
+      { type: 'assistant', message: { role: 'assistant', content: [
+        { type: 'tool_use', id: 't1', name: 'Bash', input: { command: 'ls' } },
+      ] } },
+      { type: 'user', message: { role: 'user', content: [
+        { type: 'tool_result', tool_use_id: 't1', content: 'ok' },
+      ] } },
+      { type: 'assistant', message: { role: 'assistant', content: [
+        { type: 'tool_use', id: 't2', name: 'Bash', input: { command: 'echo hi' } },
+      ] } },
+    ))
+    const r = findLatestPendingToolUse(file)
+    expect(r).toEqual(expect.objectContaining({
+      id: 't2', name: 'Bash', input: { command: 'echo hi' },
+    }))
+  })
+
+  it('所有 tool_use 都已 resolve → null', () => {
+    writeFileSync(file, jsonl(
+      { type: 'assistant', message: { role: 'assistant', content: [
+        { type: 'tool_use', id: 't1', name: 'Bash', input: { command: 'ls' } },
+      ] } },
+      { type: 'user', message: { role: 'user', content: [
+        { type: 'tool_result', tool_use_id: 't1', content: 'ok' },
+      ] } },
+    ))
+    expect(findLatestPendingToolUse(file)).toBeNull()
+  })
+
+  it('文件不存在 → null（不抛）', () => {
+    expect(findLatestPendingToolUse('/nope.jsonl')).toBeNull()
+  })
+
+  it('跳过 isMeta / isSidechain 块', () => {
+    writeFileSync(file, jsonl(
+      { type: 'assistant', isMeta: true, message: { role: 'assistant', content: [
+        { type: 'tool_use', id: 'meta1', name: 'Bash', input: { command: 'fake' } },
+      ] } },
+      { type: 'assistant', message: { role: 'assistant', content: [
+        { type: 'tool_use', id: 'real1', name: 'Edit', input: { file_path: '/x.js' } },
+      ] } },
+    ))
+    const r = findLatestPendingToolUse(file)
+    expect(r.id).toBe('real1')
+  })
+
+  it('同一 assistant turn 多个 tool_use，返回末尾那个未 resolve 的', () => {
+    writeFileSync(file, jsonl(
+      { type: 'assistant', message: { role: 'assistant', content: [
+        { type: 'tool_use', id: 'a', name: 'Read', input: { file_path: '/a' } },
+        { type: 'tool_use', id: 'b', name: 'Bash', input: { command: 'go' } },
+      ] } },
+    ))
+    const r = findLatestPendingToolUse(file)
+    expect(r.id).toBe('b')
   })
 })

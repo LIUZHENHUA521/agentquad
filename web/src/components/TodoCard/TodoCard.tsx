@@ -299,38 +299,54 @@ export function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo =
                         )}
                       </div>
                     </div>
-                    {(nativeSessionId || (!session.label && editingLabelSessionId !== session.sessionId)) && (
-                      <div className="todo-history-actions">
-                        {!session.label && editingLabelSessionId !== session.sessionId && (
-                          <button
-                            type="button"
-                            className="todo-history-link"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              setEditingLabelSessionId(session.sessionId)
-                              setEditingLabelText('')
-                            }}
-                            title={t('todo:card.editLabelTooltip')}
-                            style={{ display: 'inline-flex', alignItems: 'center', flexShrink: 0 }}
-                          >
-                            <Pencil size={10} />
-                          </button>
-                        )}
-                        {nativeSessionId && (
-                          <button
-                            type="button"
-                            className="todo-history-link"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              onOpenNativeResume(todo, session)
-                            }}
-                            title={t('todo:card.localResumeTooltip')}
-                          >
-                            {t('todo:card.localResume')}
-                          </button>
-                        )}
-                      </div>
-                    )}
+                    <div className="todo-history-actions">
+                      {!session.label && editingLabelSessionId !== session.sessionId && (
+                        <button
+                          type="button"
+                          className="todo-history-link"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setEditingLabelSessionId(session.sessionId)
+                            setEditingLabelText('')
+                          }}
+                          title={t('todo:card.editLabelTooltip')}
+                          style={{ display: 'inline-flex', alignItems: 'center', flexShrink: 0 }}
+                        >
+                          <Pencil size={10} />
+                        </button>
+                      )}
+                      {nativeSessionId && (
+                        <button
+                          type="button"
+                          className="todo-history-link"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            onOpenNativeResume(todo, session)
+                          }}
+                          title={t('todo:card.localResumeTooltip')}
+                        >
+                          {t('todo:card.localResume')}
+                        </button>
+                      )}
+                      <Popconfirm
+                        title={t('todo:card.deleteSessionConfirmTitle')}
+                        description={t('todo:card.deleteSessionConfirmDesc')}
+                        okText={t('todo:card.deleteSessionConfirmOk')}
+                        cancelText={t('todo:card.deleteSessionConfirmCancel')}
+                        okButtonProps={{ danger: true }}
+                        onConfirm={() => onDeleteAiSession(todo, session, todo.aiSession?.sessionId ?? null)}
+                      >
+                        <button
+                          type="button"
+                          className="todo-history-delete"
+                          onClick={(e) => e.stopPropagation()}
+                          title={t('todo:card.deleteSessionTooltip')}
+                          aria-label={t('todo:card.deleteSession')}
+                        >
+                          <Trash2 size={11} />
+                        </button>
+                      </Popconfirm>
+                    </div>
                   </button>
                 )
               })}

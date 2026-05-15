@@ -599,8 +599,8 @@ export async function openNativeAiResume(input: {
 }
 
 /** 浏览器 WS 地址：开发时走 vite proxy，生产同源
- *  role='primary' 时后端会清掉旧 scrollback 并跳过首次 replay，避免 SessionFocus
- *  全屏视图收到窄 cols 时代硬刻的历史输出，呈现"宽度错乱"的乱码。
+ *  role 区分 SessionFocus 全屏视图（primary，独占 PTY 尺寸）与 Dock 小卡片（secondary，
+ *  尺寸参与聚合但不主导）。两者都会收到完整 replay；TUI 在 init 之后会按当前尺寸自重绘。
  */
 export function getTerminalWsUrl(sessionId: string, role?: 'primary' | 'secondary'): string {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'

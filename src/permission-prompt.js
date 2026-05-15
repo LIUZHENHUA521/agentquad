@@ -160,6 +160,50 @@ function takeWindow(lines, maxLines) {
  *
  * 返回 { text, options }；text 不超过 maxChars，options 默认 maxLines=30。
  */
+/**
+ * 把 jsonl 里的 pending tool_use 块渲染成 PermissionCard 要显示的 prompt 文本。
+ *
+ * Claude Code 的工具有十几种，这里只把"用户最关心的字段"挑出来：
+ *   Bash       → input.command（完整命令，最多 1200 字）
+ *   Edit/Write → input.file_path
+ *   Read       → input.file_path
+ *   Glob/Grep  → input.pattern / input.glob_pattern
+ *   WebFetch   → input.url
+ *   其它       → JSON.stringify(input)
+ * + 如果 input.description 存在，补一行说明。
+ */
+export function formatToolUseAsPrompt(toolUse, { maxChars = 1200 } = {}) {
+  if (!toolUse || typeof toolUse !== 'object') return ''
+  const name = String(toolUse.name || 'tool')
+  const input = toolUse.input || {}
+  let body = ''
+  if (typeof input.command === 'string') body = input.command
+  else if (typeof input.cmd === 'string') body = input.cmd
+  else if (typeof input.file_path === 'string') body = input.file_path
+  else if (typeof input.path === 'string') body = input.path
+  else if (typeof input.url === 'string') body = input.url
+  else if (typeof input.pattern === 'string') body = input.pattern
+  else if (typeof input.glob_pattern === 'string') body = input.glob_pattern
+  else if (typeof input.query === 'string') body = input.query
+  else {
+    try { body = JSON.stringify(input, null, 2) } catch { body = String(input) }
+  }
+  if (body.length > maxChars) body = body.slice(0, maxChars) + ' …(truncated)'
+  const desc = typeof input.description === 'string' && input.description.trim()
+    ? `\n\n${input.description.trim()}`
+    : ''
+  return `${name}:\n${body}${desc}`
+}
+
+// Claude Code 标准 3 选项授权弹窗。当我们从 jsonl 拿到 pending tool_use 时，
+// 选项是固定的——不必再去 PTY 里猜。前端按这三项渲染。
+// 文案保持英文原样，与 TUI 一致，方便用户对照终端确认。
+export const CLAUDE_DEFAULT_PERMISSION_OPTIONS = [
+  { index: 1, label: 'Yes' },
+  { index: 2, label: "Yes, and don't ask again this session" },
+  { index: 3, label: 'No, and tell Claude what to do differently' },
+]
+
 export function extractPermissionPrompt(
   raw,
   { historicalRaw = null, maxLines = 30, maxChars = 1200 } = {},

@@ -200,4 +200,54 @@ export function buildFullTranscript(jsonlPath, opts = {}) {
   }
 }
 
+/**
+ * 找最近一个"还没拿到 tool_result 的 tool_use"。
+ *
+ * 用途：Claude Code Notification fire 时，jsonl 末尾通常已经写了 assistant 的
+ * `tool_use` 块（比如 Bash 命令），但还没拿到 `tool_result`（用户没批准之前
+ * Claude Code 不会 invoke 工具）。把这一块直接读出来，比从 PTY redraw 噪声
+ * 里抽要干净一万倍——前端 PermissionCard 直接拿来展示要授权的是哪个命令。
+ *
+ * 返回 { id, name, input, timestamp } 或 null。
+ * 算法：从 jsonl 末尾向前扫，先收集所有已经回收的 tool_use_id；遇到第一个
+ * "id 不在已回收集合里"的 tool_use 即返回。
+ */
+export function findLatestPendingToolUse(jsonlPath) {
+  const lines = readJsonlLines(jsonlPath)
+  if (lines.length === 0) return null
+  const resolvedIds = new Set()
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const obj = parseJsonlLine(lines[i])
+    if (!obj) continue
+    if (obj.isMeta || obj.isSidechain) continue
+    const content = normalizeContent(obj.message?.content)
+    if (content.length === 0) continue
+
+    if (obj.type === 'user') {
+      for (const block of content) {
+        if (block?.type === 'tool_result' && block.tool_use_id) {
+          resolvedIds.add(block.tool_use_id)
+        }
+      }
+      continue
+    }
+    if (obj.type !== 'assistant') continue
+
+    // assistant 块里可能多个 tool_use（并发工具）—— 取末尾（最新）那一个是
+    // pending 的就返回。
+    for (let j = content.length - 1; j >= 0; j--) {
+      const block = content[j]
+      if (block?.type !== 'tool_use' || !block.id) continue
+      if (resolvedIds.has(block.id)) continue
+      return {
+        id: block.id,
+        name: block.name || 'tool',
+        input: block.input || {},
+        timestamp: obj.timestamp || null,
+      }
+    }
+  }
+  return null
+}
+
 export const __test__ = { normalizeContent, blockToText, parseJsonlLine }

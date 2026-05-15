@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { cleanPtyTail, parsePermissionOptions, extractPermissionPrompt } from '../src/permission-prompt.js'
+import { cleanPtyTail, parsePermissionOptions, extractPermissionPrompt, formatToolUseAsPrompt, CLAUDE_DEFAULT_PERMISSION_OPTIONS } from '../src/permission-prompt.js'
 
 describe('permission-prompt', () => {
   describe('cleanPtyTail', () => {
@@ -138,6 +138,32 @@ describe('permission-prompt', () => {
       expect(text).toContain('curl https://example.com/foo')
       expect(text).toContain('Do you want to proceed?')
       expect(options.map(o => o.label)).toEqual(['Yes', 'No'])
+    })
+
+    it('formatToolUseAsPrompt: Bash 命令直出', () => {
+      const out = formatToolUseAsPrompt({
+        name: 'Bash',
+        input: { command: 'echo "test-$(uname -s)" && find /tmp -maxdepth 1 -type f | head -3', description: 'Demo command' },
+      })
+      expect(out).toContain('Bash:')
+      expect(out).toContain('echo "test-$(uname -s)"')
+      expect(out).toContain('Demo command')
+    })
+
+    it('formatToolUseAsPrompt: Edit/Write 用 file_path', () => {
+      const out = formatToolUseAsPrompt({ name: 'Edit', input: { file_path: '/repo/src/foo.js' } })
+      expect(out).toBe('Edit:\n/repo/src/foo.js')
+    })
+
+    it('formatToolUseAsPrompt: 未知工具回退到 JSON', () => {
+      const out = formatToolUseAsPrompt({ name: 'Weird', input: { weird_field: 'x', other: 42 } })
+      expect(out).toContain('Weird:')
+      expect(out).toContain('weird_field')
+    })
+
+    it('CLAUDE_DEFAULT_PERMISSION_OPTIONS 包含 3 个标准选项', () => {
+      expect(CLAUDE_DEFAULT_PERMISSION_OPTIONS).toHaveLength(3)
+      expect(CLAUDE_DEFAULT_PERMISSION_OPTIONS[0]).toEqual({ index: 1, label: 'Yes' })
     })
 
     it('过滤 spinner / status verb / auto mode / TUI 前缀单独行', () => {

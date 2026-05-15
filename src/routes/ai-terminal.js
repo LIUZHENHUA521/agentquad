@@ -7,7 +7,8 @@ import { homedir } from 'node:os'
 import pidusage from 'pidusage'
 import { loadConfig, resolveToolsConfig, SUPPORTED_TOOLS, DEFAULT_ROOT_DIR } from '../config.js'
 import { writeRuntimeMcpConfig } from '../agent-installer-shared.js'
-import { extractPermissionPrompt } from '../permission-prompt.js'
+import { CLAUDE_DEFAULT_PERMISSION_OPTIONS, extractPermissionPrompt, formatToolUseAsPrompt } from '../permission-prompt.js'
+import { findLatestPendingToolUse } from '../claude-transcript.js'
 
 const MAX_OUTPUT_BUFFER = 5 * 1024 * 1024
 const CLEANUP_MS = 30 * 60_000
@@ -199,15 +200,38 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
     const wasPending = session.status === 'pending_confirm'
     if (!wasPending && session.status !== 'running') return false
 
-    const extractSource = promptText || session.recentOutput || ''
-    // 主源 recentOutput 是 4KB 滑窗，TUI redraw 抖动会冲掉真实 prompt 文本；
-    // 兜底用 outputHistory（最大 5MB）的尾部 ~64KB，让 extractor 能找到锚点。
-    let historicalRaw = null
-    if (!promptText && Array.isArray(session.outputHistory) && session.outputHistory.length > 0) {
-      const joined = session.outputHistory.join('')
-      historicalRaw = joined.length > 65536 ? joined.slice(-65536) : joined
+    let text = ''
+    let options = []
+
+    // Claude 优先走 jsonl 路径：Notification fire 时 jsonl 末尾通常已经写好了
+    // pending 的 tool_use 块（Bash 命令、Edit 文件 path 等），结构化、无 ANSI 噪声。
+    if (!promptText && session.tool === 'claude' && session.nativeSessionId && pty?.findClaudeSession) {
+      try {
+        const loc = pty.findClaudeSession(session.nativeSessionId)
+        if (loc?.filePath) {
+          const toolUse = findLatestPendingToolUse(loc.filePath)
+          if (toolUse) {
+            text = formatToolUseAsPrompt(toolUse)
+            options = CLAUDE_DEFAULT_PERMISSION_OPTIONS
+          }
+        }
+      } catch { /* ignore — 走 PTY 兜底 */ }
     }
-    const { text, options } = extractPermissionPrompt(extractSource, { historicalRaw })
+
+    // 兜底：从 PTY 提取（Codex 主路径 / Claude jsonl 拿不到时的 backup）。
+    // recentOutput 是 4KB 滑窗，TUI redraw 抖动会冲掉真实 prompt 文本；
+    // 再兜底用 outputHistory（最大 5MB）的尾部 ~64KB，让 extractor 能找到锚点。
+    if (!text) {
+      const extractSource = promptText || session.recentOutput || ''
+      let historicalRaw = null
+      if (!promptText && Array.isArray(session.outputHistory) && session.outputHistory.length > 0) {
+        const joined = session.outputHistory.join('')
+        historicalRaw = joined.length > 65536 ? joined.slice(-65536) : joined
+      }
+      const r = extractPermissionPrompt(extractSource, { historicalRaw })
+      text = r.text
+      options = r.options
+    }
     const hasContent = !!(text || options.length)
     const prevPrompt = session.permissionPrompt || null
 
@@ -864,14 +888,10 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
     const effectiveRole = role === 'primary' ? 'primary' : 'secondary'
     if (ws) ws.__quadtodoRole = effectiveRole
     session.browsers.add(ws)
-    // primary viewer 进入时：清掉历史 scrollback 并跳过 replay。
-    // 旧 scrollback 多半是窄 cols（如默认 80、Dock 卡片宽度）状态下 PTY 写下的硬换行，
-    // replay 到全屏视图就是"行间短文字 + 右侧大片空白"的乱码观感。
-    // 真正的对话历史在 Conversation tab 由 jsonl 还原，不依赖这里的 PTY scrollback。
-    if (effectiveRole === 'primary') {
-      session.outputHistory = []
-      session.outputSize = 0
-    } else if (session.outputHistory.length > 0) {
+    // 不分 primary / secondary，都回放——否则 reopen SessionFocus 会看到一片空白。
+    // 旧顾虑是"窄 cols 时代 scrollback 在宽 viewer 里重排乱码"；现在交给 init/resize 后
+    // TUI 的 SIGWINCH 自重绘兜底，replay 内容沉到 scrollback 上面、用户可滚回去看。
+    if (session.outputHistory.length > 0) {
       ws.send(JSON.stringify({ type: 'replay', chunks: session.outputHistory }))
     }
     ws.send(JSON.stringify({ type: 'auto_mode', autoMode: session.autoMode || null }))
