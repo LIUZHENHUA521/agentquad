@@ -354,8 +354,8 @@ const zh = {
       noActiveSession: '该待办暂无活跃会话。',
     },
     tabs: {
-      conversation: 'Conversation',
-      live: 'Live 终端',
+      conversation: '对话',
+      live: '实时终端',
     },
     terminal: {
       toolbar: {

@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import type { FocusTab } from '../../store/focusStore'
 
 interface Props {
@@ -5,21 +6,21 @@ interface Props {
   onChange: (tab: FocusTab) => void
 }
 
-const TABS: { key: FocusTab; label: string }[] = [
-  { key: 'conversation', label: 'Conversation' },
-  { key: 'live', label: 'Live 终端' },
-]
-
 export function FocusTabs({ value, onChange }: Props) {
+  const { t } = useTranslation(['session'])
+  const tabs: { key: FocusTab; label: string }[] = [
+    { key: 'conversation', label: t('session:tabs.conversation') },
+    { key: 'live', label: t('session:tabs.live') },
+  ]
   return (
     <div className="focus-tabs">
-      {TABS.map((t) => (
+      {tabs.map((tab) => (
         <button
-          key={t.key}
-          className={`focus-tab${value === t.key ? ' active' : ''}`}
-          onClick={() => onChange(t.key)}
+          key={tab.key}
+          className={`focus-tab${value === tab.key ? ' active' : ''}`}
+          onClick={() => onChange(tab.key)}
         >
-          {t.label}
+          {tab.label}
         </button>
       ))}
     </div>
