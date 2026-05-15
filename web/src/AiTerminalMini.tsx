@@ -728,11 +728,13 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
           }
 
           // ─── Size-first 握手 ───
-          // term.cols / term.rows 已经在 Task 5 的 waitTerminalReady 完成后由
-          // FitAddon 算好。直接以这两个值作为 init 上报，后端会按真实尺寸 spawn
-          // PTY（而不是默认 80×24 再 resize）。
-          const cols = term.cols
-          const rows = term.rows
+          // 走两条路：
+          // 1) visible 路径：term.cols/rows 已被 fit 算好 —— 像旧逻辑那样直接 init
+          // 2) hidden-mount 路径：term 还没 open，cols/rows 来自 pendingProposedInitRef
+          const proposed = pendingProposedInitRef.current
+          const cols = proposed ? proposed.cols : term.cols
+          const rows = proposed ? proposed.rows : term.rows
+
           if (isHiddenRef.current) {
             // 后台 tab 也要发 init —— 否则后端 5 秒兜底兜不到 / 等到 init 这个 tab
             // 再切回前台已经太晚（首屏 80 列 banner 已经画完了）。发完立刻补一条
@@ -746,9 +748,9 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
             // 给 ResizeObserver 一个 baseline，避免它立刻又发一条 cols/rows 完全相同的 resize
             lastSentSizeRef.current = { cols, rows }
           } else {
-            // 极端 edge case：FitAddon 还没测出尺寸（不应该走到这里——StrictMode 双挂载
-            // 时可能发生）。退回老 doFit 路径，5 秒后端兜底会兜到。
-            requestAnimationFrame(() => doFit())
+            // 极端 edge case：proposed 也没算出来（祖先链没有 layout 节点）—— 留给后端 30s fallback。
+            // 不调 doFit（term 可能还没 open），避免触发未 open 的 fit.fit()。
+            console.warn('[AiTerminalMini] no valid init cols at WS onopen; deferring to backend fallback')
           }
 
           heartbeatTimer = setInterval(() => {
