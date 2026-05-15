@@ -661,18 +661,20 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
           ...(label ? { label } : {}),
         }),
       })
-      // 4. 5s 兜底：前端如果一直没发合法 init（极少见 — /exec 返回后 WS 还没连上），
+      // 4. 30s 兜底：前端如果一直没发合法 init（极少见 — 旧版本前端 / 网络真的挂了），
       // 用老的 80×24 兜底 spawn，避免 session 永远卡在 create 状态。
+      // 30s（不是 5s）的理由：新前端在隐藏挂载时会延迟到 IO 可见才发 init，主人停留在
+      // conversation tab 默认体验里也不应该撞兜底；30s 既给足切换窗口、又保留挂掉时的退路。
       session.spawnFallbackTimer = setTimeout(() => {
         session.spawnFallbackTimer = null
         if (session.spawned) return
-        console.warn(`[ai-terminal] spawn fallback fired session=${sessionId} (no init within 5s)`)
+        console.warn(`[ai-terminal] spawn fallback fired session=${sessionId} (no init within 30s)`)
         session.spawned = true
         pty.startWithSize(sessionId, 80, 24).catch((e) => {
           console.warn(`[ai-terminal] spawn fallback failed: ${e.message}`)
           session.spawned = false
         })
-      }, 5000)
+      }, 30000)
       session.spawnFallbackTimer.unref?.()
     } catch (error) {
       sessions.delete(sessionId)
