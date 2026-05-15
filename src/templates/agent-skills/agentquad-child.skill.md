@@ -20,7 +20,7 @@ description: |
 ## 操作流程
 1. `list_quadrants` → 决定子任务放哪个象限（默认 Q2 重要不紧急）
 2. `create_todo(title, quadrant, parentId=<父 TODO_ID>, description)` → 拿到子 todo id
-3. （可选）`start_ai_session(todoId=<子 id>, tool="claude"|"codex", prompt=<明确任务说明>)`
+3. （可选）`start_ai_session(todoId=<子 id>, parentTodoId=<env QUADTODO_TODO_ID 的值>, tool="claude"|"codex", prompt=<明确任务说明>)`
 4. 把 ticket / 子 id 告诉用户
 
 ## 重要约束

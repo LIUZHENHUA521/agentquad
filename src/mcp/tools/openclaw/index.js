@@ -164,6 +164,11 @@ export function registerOpenClawTools(server, deps) {
         routeUserId: z.string().optional().describe('OpenClaw 微信对端 user_id，用于回推'),
         routeAccount: z.string().optional(),
         routeChannel: z.string().optional(),
+        parentTodoId: z.string().optional().describe(
+          '调用方（父 PTY 的 AI）从 env QUADTODO_TODO_ID 读取后透传过来，' +
+          '用于子 PTY 注入 QUADTODO_PARENT_TODO_ID。' +
+          'AgentQuad 主进程的 process.env 不含父 todo 信息，所以必须显式传。'
+        ),
       },
     },
     async (args) => {
@@ -223,6 +228,7 @@ export function registerOpenClawTools(server, deps) {
         const result = aiTerminal.spawnSession({
           sessionId,
           todoId: args.todoId,
+          parentTodoId: args.parentTodoId || null,  // ← new
           prompt,
           tool,
           cwd,
