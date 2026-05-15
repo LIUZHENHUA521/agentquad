@@ -1041,3 +1041,39 @@ describe('telegram-bot callback_query dispatch', () => {
     expect(answer.body.text).toBe('处理失败')
   })
 })
+
+describe('callApi surfaces underlying fetch cause', () => {
+  let tmp, offsetFile
+  beforeEach(() => {
+    tmp = mkdtempSync(join(tmpdir(), 'qt-tg-'))
+    offsetFile = join(tmp, 'offset.json')
+  })
+
+  it('wraps "fetch failed" with cause chain (so logs show the real reason)', async () => {
+    const fetchFn = async () => {
+      const top = new Error('fetch failed')
+      const cause = new Error('Client network socket disconnected before secure TLS connection was established')
+      cause.code = 'ECONNRESET'
+      top.cause = cause
+      throw top
+    }
+    const bot = createTelegramBot({
+      getConfig: () => ({ telegram: { botToken: 'TKN', allowedChatIds: ['-100123'] } }),
+      wizard: makeWizard(async () => ({})),
+      fetchFn, offsetFile,
+      logger: { warn() {}, info() {} },
+    })
+    await expect(bot.pollOnce()).rejects.toThrow(/fetch failed.*ECONNRESET.*secure TLS connection/)
+  })
+
+  it('passes through plain "fetch failed" without cause unchanged (back-compat)', async () => {
+    const fetchFn = async () => { throw new Error('fetch failed') }
+    const bot = createTelegramBot({
+      getConfig: () => ({ telegram: { botToken: 'TKN', allowedChatIds: ['-100123'] } }),
+      wizard: makeWizard(async () => ({})),
+      fetchFn, offsetFile,
+      logger: { warn() {}, info() {} },
+    })
+    await expect(bot.pollOnce()).rejects.toThrow(/^fetch failed$/)
+  })
+})

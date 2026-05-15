@@ -77,19 +77,63 @@ function tcpProbe(host, port, timeoutMs = 500) {
   })
 }
 
-async function diagnoseProxyReachability() {
+/**
+ * 把 fetch failed 的 cause 链铺平成可读字符串。
+ * undici 的 Error('fetch failed') 把真实原因藏在 e.cause（可能再嵌套 e.cause.cause），
+ * 直接 log e.message 只会看到 "fetch failed"，没办法判断是 ECONNRESET（TLS 被 reset，
+ * 通常是 Clash 把 api.telegram.org 走 DIRECT 触发的 GFW 阻断）、ETIMEDOUT、还是 DNS。
+ */
+function describeFetchError(e) {
+  if (!e) return 'unknown_error'
+  const parts = [e.message || String(e)]
+  let cur = e.cause
+  const seen = new Set([e])
+  let depth = 0
+  while (cur && !seen.has(cur) && depth < 4) {
+    seen.add(cur)
+    const code = cur.code ? `${cur.code}: ` : ''
+    parts.push(`${code}${cur.message || String(cur)}`)
+    cur = cur.cause
+    depth++
+  }
+  return parts.join(' ← ')
+}
+
+async function probeTelegramThroughProxy(timeoutMs = 4000) {
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs)
+  timer.unref?.()
+  try {
+    const f = await getProxyFetch()
+    const res = await f(`${TELEGRAM_API}/`, { method: 'GET', signal: ctrl.signal })
+    return res.status < 500
+  } catch {
+    return false
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+async function diagnoseProxyReachability({ probeTelegram = false } = {}) {
   const proxyUrl = readProxyUrl()
-  if (!proxyUrl) return { proxyUrl: '', reachable: null }
+  if (!proxyUrl) {
+    const tgr = probeTelegram ? await probeTelegramThroughProxy() : null
+    return { proxyUrl: '', reachable: null, telegramReachable: tgr }
+  }
   let host, port
   try {
     const u = new URL(proxyUrl)
     host = u.hostname
     port = parseInt(u.port, 10) || (u.protocol === 'https:' ? 443 : 80)
   } catch {
-    return { proxyUrl, reachable: null }
+    return { proxyUrl, reachable: null, telegramReachable: null }
   }
   const reachable = await tcpProbe(host, port, 500)
-  return { proxyUrl, reachable }
+  let telegramReachable = null
+  if (probeTelegram && reachable) {
+    telegramReachable = await probeTelegramThroughProxy()
+  }
+  return { proxyUrl, reachable, telegramReachable }
 }
 
 function readJsonFile(path, fallback) {
@@ -146,12 +190,20 @@ export function createTelegramBot({
     const timer = setTimeout(() => ctrl.abort(), timeoutMs)
     timer.unref?.()
     try {
-      const res = await f(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(params),
-        signal: ctrl.signal,
-      })
+      let res
+      try {
+        res = await f(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(params),
+          signal: ctrl.signal,
+        })
+      } catch (e) {
+        const wrapped = new Error(describeFetchError(e))
+        wrapped.cause = e
+        wrapped.isFetchError = true
+        throw wrapped
+      }
       const data = await res.json().catch(() => null)
       if (!res.ok || !data?.ok) {
         const desc = data?.description || `HTTP ${res.status}`
@@ -185,7 +237,15 @@ export function createTelegramBot({
       form.append(fileField, blob, fileName || 'file.txt')
     }
 
-    const res = await f(url, { method: 'POST', body: form })
+    let res
+    try {
+      res = await f(url, { method: 'POST', body: form })
+    } catch (e) {
+      const wrapped = new Error(describeFetchError(e))
+      wrapped.cause = e
+      wrapped.isFetchError = true
+      throw wrapped
+    }
     const data = await res.json().catch(() => null)
     if (!res.ok || !data?.ok) {
       throw new Error(`telegram_${method}_failed: ${data?.description || res.status}`)
@@ -783,10 +843,17 @@ export function createTelegramBot({
         const shouldLog = currentErrorStreak <= ERROR_VERBOSE_THRESHOLD
           || (now - lastErrorLoggedAt >= ERROR_QUIET_INTERVAL_MS)
         if (shouldLog) {
-          const diag = await diagnoseProxyReachability().catch(() => null)
-          const diagStr = diag && diag.proxyUrl
-            ? ` proxyUrl=${diag.proxyUrl} proxyReachable=${diag.reachable ? 'yes' : 'no'}`
-            : ''
+          // 仅在 fetch 失败时探 api.telegram.org（贵一点，但能区分"代理挂了"
+          // vs "代理在但 Telegram 被规则走 DIRECT/被墙 reset"）。
+          const probeTelegram = !!e.isFetchError
+          const diag = await diagnoseProxyReachability({ probeTelegram }).catch(() => null)
+          let diagStr = ''
+          if (diag && diag.proxyUrl) {
+            diagStr = ` proxyUrl=${diag.proxyUrl} proxyReachable=${diag.reachable ? 'yes' : 'no'}`
+            if (diag.telegramReachable !== null) {
+              diagStr += ` telegramReachable=${diag.telegramReachable ? 'yes' : 'no'}`
+            }
+          }
           const suffix = suppressedErrorCount > 0 ? ` (suppressed ${suppressedErrorCount} similar)` : ''
           logger.warn?.(`[telegram-bot] poll error (${consecutiveErrors}): ${msg}; retry in ${backoff}ms${diagStr}${suffix}`)
           lastErrorMsg = msg
