@@ -1273,6 +1273,16 @@ export function createOpenClawWizard({
     const routeKey = makeRouteKey(channel, chatId, threadId)
     const isLarkThreadReply = channel === 'lark' && (threadId || rootMessageId)
 
+    // 飞书无前缀建任务守门：channel + 配置 + 文本 + slash 守门
+    // 调用方需自行加 newTaskGateOpen + targetSid 缺失等额外条件。
+    function shouldLarkAutoCreate() {
+      if (channel !== 'lark') return false
+      if (getConfig?.()?.lark?.autoCreateTodo === false) return false
+      if (!trimmed) return false
+      if (/^\/[a-z][a-z0-9_]*\b/i.test(trimmed)) return false
+      return true
+    }
+
     // Lark 任务话题/root 回复必须严格隔离到原始路由：不允许被全局 ask_user、新任务触发词、
     // lastPush 或单活跃 session 等模糊 fallback 消费，避免把群内任务线程回复送到不相关会话。
     //
@@ -1716,6 +1726,38 @@ export function createOpenClawWizard({
           replyMarkup: { inline_keyboard: buttons },
           action: 'stdin_proxy_ambiguous',
         }
+      }
+    }
+
+    // 5.5 飞书无前缀建任务兜底：lark + autoCreateTodo + step 5 没匹配任何 PTY target →
+    // 把消息原文当 title 起 wizard。Telegram/微信/openclaw 不受影响（channel 守门）。
+    if (newTaskGateOpen && shouldLarkAutoCreate()) {
+      logger.info?.(`[wizard] lark auto-create from non-prefix text: chatId=${chatId} thread=${threadId || '-'} title="${trimmed.slice(0, 80)}"`)
+      const w = startWizard({ channel, chatId, threadId, text: trimmed, messageId, rootMessageId, imagePaths, userId: fromUserId })
+      if (w.step === STEP_DONE) return await finalizeWizard(w)
+      if (w.step === STEP_QUADRANT) {
+        const p = buildQuadrantPrompt()
+        return {
+          reply: `任务: ${w.title}\n（目录已识别为 ${w.chosenWorkdir}）\n\n${p.text}`,
+          replyMarkup: p.replyMarkup,
+          action: 'wizard_started',
+        }
+      }
+      if (w.step === STEP_TEMPLATE) {
+        const tpls = db.listTemplates()
+        w.cachedTemplates = tpls
+        const p = buildTemplatePrompt(tpls)
+        return {
+          reply: `任务: ${w.title}\n（目录+象限已识别）\n\n${p.text}`,
+          replyMarkup: p.replyMarkup,
+          action: 'wizard_started',
+        }
+      }
+      const p = buildWorkdirPrompt(w.workdirOptions)
+      return {
+        reply: `任务: ${w.title}\n\n${p.text}`,
+        replyMarkup: p.replyMarkup,
+        action: 'wizard_started',
       }
     }
 
