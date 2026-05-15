@@ -669,6 +669,11 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
                   stopReconnectRef.current = true  // 旧 WS 关闭后不再自动重连
                   setSwitchingMode(false)
                   onSessionSwitchRef.current?.(msg.newSessionId)
+                  // 与 tryAutoRecover / FocusSubbar.handleResume / TranscriptView.resumeSession 对齐：
+                  // 后端已把 todo.aiSessions 的老 session 换成新的 bypass session，但前端 todo 快照仍是旧的。
+                  // 不 refresh 的话，关掉 focus 再从 todo card 点回来会沿用旧 sessionId，进的是已被
+                  // pty.stop 杀掉的历史会话，刷新浏览器才能恢复。
+                  useDispatchStore.getState().signal('refreshTodos')
                 }
                 break
               case 'auto_mode_notice':
