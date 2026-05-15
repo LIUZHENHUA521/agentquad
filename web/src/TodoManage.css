@@ -746,13 +746,14 @@ body {
   display: inline-flex;
   align-items: center;
   font-size: 11px;
+  line-height: 1;
   color: var(--text-tertiary);
   flex-shrink: 0;
   font-variant-numeric: tabular-nums;
 }
 
 .todo-history-tokens-tag {
-  padding: 0 6px;
+  padding: 3px 6px;
   border-radius: 4px;
   background: color-mix(in srgb, var(--text-tertiary) 14%, transparent);
 }
