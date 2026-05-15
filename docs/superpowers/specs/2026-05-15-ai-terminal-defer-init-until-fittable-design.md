@@ -68,12 +68,12 @@ function proposeColsFromAncestor(
   while (el) {
     if (el.offsetParent !== null && el.clientWidth >= MIN_CONTAINER_WIDTH) {
       // 找到了 —— 减去 wrapper 的 1px×2 border 和 xterm 内部 padding (~14px)
-      const availableW = el.clientWidth - 2 - 14
+      const availableW = Math.max(el.clientWidth - 2 - 14, MIN_PROPOSED_WIDTH /* ~280px */)
+      // height 不准没关系（rows 算错对 PTY 影响小），IO 触发后 fit 会校准
       const availableH = (el.clientHeight || window.innerHeight * 0.6) - 60 /* toolbar+padding */
-      const cols = Math.floor(availableW / charWidth)
-      const rows = Math.floor(availableH / 18 /* lineHeight 经验值 */)
-      if (cols >= MIN_VALID_COLS && rows > 0) return { cols, rows }
-      return null
+      const cols = Math.max(Math.floor(availableW / charWidth), MIN_VALID_COLS)
+      const rows = Math.max(Math.floor(availableH / 18 /* lineHeight 经验值 */), 10)
+      return { cols, rows }
     }
     el = el.parentElement
   }
@@ -82,6 +82,13 @@ function proposeColsFromAncestor(
 ```
 
 减去的常数（2, 14, 60, 18）取自当前 CSS 实际值，作为模块级常量。
+
+**极窄视口策略**：用 `Math.max(..., MIN_VALID_COLS)` 把 proposed cols 钳到 `MIN_VALID_COLS` 下限（30 cols，对齐后端 `isValidResizeSize`），保证：
+
+- 哪怕用户把窗口拉到 600px 分屏，proposed 也会发出去，PTY 按 30~40 cols spawn（窄但合理）；
+- 不会因为算出 < `MIN_VALID_COLS` 直接 return null → 30s fallback → 80 cols（等于 bug 复发）。
+
+`MIN_PROPOSED_WIDTH` 保证除法不出负值。
 
 #### A3. 改写 `waitTerminalReady` 的退出路径
 
@@ -165,9 +172,34 @@ if (justEntered) {
 
 #### A6. `term` 未 open 期间的 WS 消息处理
 
-- `output` / `replay` chunks → 暂存到 `pendingChunksRef` 数组。term.open 后 flush。
+- `output` / `replay` chunks → 暂存到 `pendingChunksRef`（结构：`{ chunks: string[], totalBytes: number }`）。term.open 后 flush。
 - `pending_confirm` / `turn_done` / `auto_mode` / `done` 等 → 与 term 无关，正常处理。
-- `session_restarted` → 正常处理（换 sessionId），但 pending chunks 丢弃（新 session 会重新 replay）。
+- `session_restarted` → 见 A7。
+
+**xterm.js 写入约束**：xterm.js 的 `Terminal` 实例在 `open()` 之前调用 `write()` 会写入内部 buffer，open 时一次性渲染——这是 xterm.js 文档允许的用法（见 xterm.js v5 `_innerWrite` 行为），但本 spec 不依赖这一点。我们走"显式暂存 + flush"路径更可控：
+
+- 实现前先写一个 jsdom 探针测试，断言：
+  - `new Terminal({...})` 后立刻 `term.write('foo')` 不抛
+  - 之后 `term.open(div)` 后 `term.buffer.active.getLine(0)` 能读到 `foo`
+- 如果探针失败 → 走纯 `pendingChunksRef` 路径（不动 term，直到 open 完后 flush）。
+
+**内存上限**：
+
+- `pendingChunksRef.totalBytes` 累加每个 chunk 的字节数；上限 **5 MB**（足够覆盖 `outputHistory` 默认 cap，正常 codex/claude 长任务也很少超）。
+- 溢出时**保留尾部、丢弃头部**（拼接后从末尾留 5MB）+ console.warn 一次。
+- 用户从来不切 Live 的极端场景下不会爆内存。
+
+#### A7. `session_restarted` 在 term 未 open 时的处理
+
+收到 `session_restarted`（auto_recover / 手动 recover）时，无论 term 是否已 open：
+
+1. `pendingChunksRef = { chunks: [], totalBytes: 0 }`（清空旧 session 残留）
+2. `pendingProposedInit = null`（旧 proposed 作废）
+3. `onSessionSwitch(newSessionId)` 触发主 effect 重跑（依赖 sessionId）
+4. 主 effect 重跑时：若 container 仍处于隐藏挂载状态，**重新走 proposed init 路径**；可见则走实测路径
+5. 新 WS 连入后端的 replay 按上面规则继续暂存或直写
+
+`term.dispose()` 在 term 从未 open 的情况下也是安全的（xterm.js 的 dispose 仅清 listeners + buffer，不依赖 DOM）。同样在实现前写 1 行探针确认。
 
 ### 二、后端：`src/routes/ai-terminal.js`
 
@@ -202,7 +234,7 @@ session.spawnFallbackTimer = setTimeout(() => {
 
 ### 四、不做
 
-- 不改 `focusStore.focusedTab` 默认值（保留 conversation 默认体验）。
+- 不改 `focusStore.focusedTab` 默认值。理由：(a) 一行改回 `'live'` 最简单，但 conversation 落地是已对齐的产品决策（`focusStore.ts:22` "Default landing tab matches mockup"）；(b) 即便改了默认 tab，用户切回 conversation 再切 Live 仍能复现 bug——根因是"隐藏挂载时 fit 拿 0 宽"，改默认 tab 只是压低概率，不治本。
 - 不改 `SessionViewer` 的 `display:none` ↔ `display:flex` 切换（保留所有现有 tab 切换/scroll 状态优化）。
 - 不引入 "absolute overlay both panes" 的布局重构（侵入太多组件）。
 - 不处理已经在窄 cols 跑的 stale session（用户手动重启）。
@@ -214,7 +246,7 @@ session.spawnFallbackTimer = setTimeout(() => {
 
 1. **冷启动新 todo + 默认 conversation tab**：点 todo 卡片"AI 执行" → SessionFocus 默认 conversation → claude/codex 启动 → 切到 Live tab → xterm 内容从头到尾全宽，无窄列。
 2. **resume 已 running 的 todo**：进 SessionFocus 默认 conversation → 切到 Live tab → xterm 显示的 replay 内容全宽。
-3. **proposed cols 与实测 cols 误差**：在 1920×1080 视口下，proposed cols 与 IO 触发后实测 cols 差 ≤ 2。
+3. **proposed cols 与实测 cols 误差**（手测）：在 1920×1080 视口下，proposed cols 与 IO 触发后实测 cols 差 ≤ 2（看浏览器 console 日志）。
 4. **30s fallback 不触发**：正常 dev 环境跑一次新建 session，30s 兜底定时器不应该 fire（看后端日志无 `spawn fallback fired`）。
 5. **现有测试全绿**：`test/ai-terminal*.test.*` 全部通过。
 
