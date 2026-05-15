@@ -230,7 +230,6 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
     const latestResumeTarget = resumeTargetRef.current
     if (!latestResumeTarget?.nativeSessionId || recoveringRef.current || recoveryAttemptedRef.current) return false
     recoveringRef.current = true
-    recoveryAttemptedRef.current = true
     try {
       termRef.current?.writeln(`\r\n\x1b[33m--- ${t('session:terminal.writeln.autoRecovering')} ---\x1b[0m\r`)
       // 与 TodoManage.handleAiExec 对齐：localStorage 浏览器覆盖 > 设置里的全局默认；
@@ -258,6 +257,7 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
       onSessionSwitchRef.current?.(nextSessionId)
       // 刷新 todo 列表，新 recover 出来的 session 才会出现在 todo.aiSessions / todo.aiSession 中。
       useDispatchStore.getState().signal('refreshTodos')
+      recoveryAttemptedRef.current = true
       return true
     } catch (error: any) {
       // 后端在 CLI 二进制缺失时回 424 tool_missing → 弹出修复卡片，不再用 ENOENT toast 把人吓跑
