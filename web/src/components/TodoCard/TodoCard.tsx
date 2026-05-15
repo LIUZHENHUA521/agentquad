@@ -13,6 +13,7 @@ import { deriveAiState, AI_STATE_LABEL_KEY, AI_STATE_ICON } from '../../design/a
 import { useAiSessionStore } from '../../store/aiSessionStore'
 import { useUnreadStore, isSessionUnread } from '../../store/unreadStore'
 import { useDispatchStore } from '../../store/dispatchStore'
+import { useFocusStore } from '../../store/focusStore'
 import { todoDndId } from '../../TodoManage'
 
 function formatDate(ts: number | null) {
@@ -334,7 +335,7 @@ export function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo =
                         okText={t('todo:card.deleteSessionConfirmOk')}
                         cancelText={t('todo:card.deleteSessionConfirmCancel')}
                         okButtonProps={{ danger: true }}
-                        onConfirm={() => onDeleteAiSession(todo, session, todo.aiSession?.sessionId ?? null)}
+                        onConfirm={() => onDeleteAiSession(todo, session, useFocusStore.getState().focusedSessionId)}
                       >
                         <button
                           type="button"
