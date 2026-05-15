@@ -430,7 +430,7 @@ function LiveInfoBadge({
   if (state === 'running') {
     const lastOutputAt = liveSession.lastOutputAt
     return (
-      <span className="todo-history-live todo-history-live--running" onClick={(e) => e.stopPropagation()}>
+      <span className="todo-history-live todo-history-live--running">
         <span className="todo-history-pulse-dot" aria-hidden />
         {lastOutputAt ? (
           <span className="todo-history-live-text">
@@ -465,7 +465,7 @@ function LiveInfoBadge({
   const refTs = liveSession.lastTurnDoneAt || liveSession.startedAt
   if (!refTs) return null
   return (
-    <span className="todo-history-live todo-history-live--idle" onClick={(e) => e.stopPropagation()}>
+    <span className="todo-history-live todo-history-live--idle">
       <span className="todo-history-live-text">
         {t('todo:card.liveLastActive', { ago: formatRelativeShort(Date.now() - refTs) })}
       </span>
