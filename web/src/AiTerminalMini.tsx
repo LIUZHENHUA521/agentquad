@@ -124,35 +124,35 @@ function stripCursorVisibility(data: string): string {
 }
 
 // Wait until (a) the container has settled layout and is visible, AND
-// (b) the bundled JetBrains Mono font is loaded, before letting xterm measure
-// glyph width. Capped at 3 seconds; if it times out, proceed with whatever the
-// browser has — at worst we fall back to system monospace and the user sees a
-// brief font-swap reflow on first paint, which is strictly better than the old
-// "fit at 0 width / cached metrics" failure modes.
-async function waitTerminalReady(container: HTMLDivElement): Promise<void> {
+// (b) the bundled JetBrains Mono font is loaded.
+// Returns visibleAndReady=true when the container met (a) before timeout;
+// false means we timed out — caller must take the hidden-mount path
+// (proposeColsFromAncestor + defer term.open).
+async function waitTerminalReady(container: HTMLDivElement): Promise<{ visibleAndReady: boolean }> {
   const start = Date.now()
   const TIMEOUT_MS = 3000
 
-  // (a) container layout
+  let visibleAndReady = false
   while (Date.now() - start < TIMEOUT_MS) {
-    if (container.offsetParent !== null && container.clientWidth >= MIN_CONTAINER_WIDTH) break
+    if (container.offsetParent !== null && container.clientWidth >= MIN_CONTAINER_WIDTH) {
+      visibleAndReady = true
+      break
+    }
     await new Promise(r => setTimeout(r, 50))
   }
 
-  // (b) fonts
   try {
     await Promise.race([
       Promise.all([
         document.fonts.ready,
-        // Trigger the font face if it hasn't been used yet
         (document.fonts as any).load?.('13px "JetBrains Mono"') ?? Promise.resolve(),
       ]),
       new Promise(r => setTimeout(r, Math.max(0, TIMEOUT_MS - (Date.now() - start)))),
     ])
   } catch { /* font API can throw on older Safari; ignore */ }
 
-  // One frame to let layout + font swap apply
   await new Promise<void>(r => requestAnimationFrame(() => r()))
+  return { visibleAndReady }
 }
 
 export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeTarget, onSessionRecovered, onSessionSwitch, onClose, onDone, onStatusChange, fillHeight, viewerRole = 'secondary', onAutoModeReady }: Props) {
@@ -469,7 +469,9 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
     void (async () => {
       const container = containerRef.current
       if (!container) return
-      await waitTerminalReady(container)
+      const { visibleAndReady } = await waitTerminalReady(container)
+      // 标志位先存到一个 const，Task 6 才会真正用到走分支
+      void visibleAndReady  // 暂时不分支，下一个任务会用
       if (disposedRef.current || myGen !== effectGenRef.current) return
 
       const term = new Terminal({
