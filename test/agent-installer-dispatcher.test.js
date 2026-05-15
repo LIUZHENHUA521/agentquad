@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { mkdtempSync, rmSync, existsSync, readFileSync } from 'node:fs'
+import { mkdtempSync, rmSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -59,6 +59,28 @@ describe('agent-installer-dispatcher', () => {
     expect(r.results.claude.drift).toBe(true)
     expect(r.results.codex.drift).toBe(true)
     expect(r.results.cursor.drift).toBe(true)
+  })
+
+  it('uninstallAllAgents round-trip cleans up all three', () => {
+    const t = makeTargets(dir)
+    installAllAgents({ port: 5677, version: '0.4.0', overrides: t })
+    expect(existsSync(t.claude.claudeJsonPath)).toBe(true)
+    expect(existsSync(t.codex.configTomlPath)).toBe(true)
+    expect(existsSync(t.cursor.mcpJsonPath)).toBe(true)
+
+    const r = uninstallAllAgents({ overrides: t })
+    expect(r.results.claude.ok).toBe(true)
+    expect(r.results.codex.ok).toBe(true)
+    expect(r.results.cursor.ok).toBe(true)
+    expect(r.summary.failed).toEqual([])
+  })
+
+  it('inspectAllAgents --target filter respects only', () => {
+    const t = makeTargets(dir)
+    installAllAgents({ port: 5677, version: '0.4.0', overrides: t })
+    const r = inspectAllAgents({ overrides: t, only: ['claude'] })
+    expect(Object.keys(r.results)).toEqual(['claude'])
+    expect(r.results.claude.mcpRegistered).toBe(true)
   })
 
   it('continues installing other targets when one throws', () => {
