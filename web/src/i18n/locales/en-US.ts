@@ -173,6 +173,7 @@ const en = {
       workDirLabel: 'Dir · {{name}}',
       sessionCount: '{{count}} sessions',
       openEditorTooltip: 'Open in editor',
+      openEditorLabel: 'Open editor',
       aiTerminal: 'AI Terminal',
       startClaude: '▶ Start Claude',
       startCodex: '▶ Start Codex',

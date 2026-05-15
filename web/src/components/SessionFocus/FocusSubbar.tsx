@@ -168,7 +168,9 @@ export function FocusSubbar({
           trigger={['click']}
         >
           <Tooltip title={t('todo:card.openEditorTooltip')}>
-            <Button size="small" icon={<Code size={13} />} style={{ height: 28 }} />
+            <Button size="small" icon={<Code size={13} />} style={{ height: 28 }}>
+              {t('todo:card.openEditorLabel')}
+            </Button>
           </Tooltip>
         </Dropdown>
         {autoModeController?.available && (
