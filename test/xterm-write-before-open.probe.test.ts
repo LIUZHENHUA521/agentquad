@@ -14,7 +14,12 @@ describe('xterm.js v5 — pre-open API behavior', () => {
     expect(() => term.dispose()).not.toThrow()
   })
 
-  it('writes buffered before open are visible after open', async () => {
+  // KNOWN FAILURE in jsdom: xterm's `open()` calls `matchMedia`, which jsdom
+  // doesn't implement. We mark this `it.fails` so the suite stays green —
+  // the failure documents that we cannot verify pre-open buffer behavior in
+  // our test environment, which is exactly why Task 7 uses Path B (pure
+  // pendingChunksRef) instead of relying on xterm's pre-open buffer.
+  it.fails('writes buffered before open are visible after open', async () => {
     const term = new Terminal({ cols: 80, rows: 24 })
     term.write('foo\r\n')
     const div = document.createElement('div')
