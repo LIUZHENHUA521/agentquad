@@ -2,7 +2,7 @@ import { EventEmitter } from 'node:events'
 import { createRequire } from 'node:module'
 import { randomUUID } from 'node:crypto'
 import { spawnSync, execFile as execFileCb } from 'node:child_process'
-import { readdirSync, statSync, existsSync, watch as fsWatch, mkdirSync, openSync, readSync, closeSync, readFileSync } from 'node:fs'
+import { readdirSync, statSync, existsSync, unlinkSync, watch as fsWatch, mkdirSync, openSync, readSync, closeSync, readFileSync } from 'node:fs'
 import { delimiter, dirname, isAbsolute, join } from 'node:path'
 import { homedir } from 'node:os'
 import { createCodexPromptDetector } from './codex-prompt-detector.js'
@@ -419,7 +419,7 @@ export class PtyManager extends EventEmitter {
    * 会话建立时调 create()、收到前端真实 cols/rows 后再调 startWithSize()，
    * 这样 PTY 永远不会在默认 80×24 上 spawn 一次再 resize。
    */
-  create({ sessionId, tool, prompt, cwd, resumeNativeId, permissionMode, extraEnv }) {
+  create({ sessionId, tool, prompt, cwd, resumeNativeId, permissionMode, extraEnv, mcpConfigPath = null }) {
     const toolCfg = this.tools[tool]
     if (!toolCfg) throw new Error(`unknown tool: ${tool}`)
     const baseArgs = toolCfg.args || []
@@ -433,6 +433,10 @@ export class PtyManager extends EventEmitter {
     // Claude 支持 --session-id <uuid>：新会话时由我们预生成，避免事后靠 FS/输出扫描。
     const presetClaudeId = tool === 'claude' && !resumeNativeId ? randomUUID() : null
     const claudeSessionArgs = presetClaudeId ? ['--session-id', presetClaudeId] : []
+    // AgentQuad runtime MCP config injection (claude only here; codex deferred to Task 11)
+    const mcpConfigArgs = (tool === 'claude' && mcpConfigPath)
+      ? ['--mcp-config', mcpConfigPath]
+      : []
 
     // cursor-agent 没有 --session-id 预置，但有 `cursor-agent create-chat` 异步建会话拿 chatId。
     // 新会话先异步跑 create-chat，拿到 chatId 后在 startWithSize() 里用 --resume 进交互模式。
@@ -447,15 +451,15 @@ export class PtyManager extends EventEmitter {
     if (resumeNativeId) {
       if (tool === 'codex') args = [...baseArgs, ...permissionArgs, 'resume', resumeNativeId]
       else if (tool === 'cursor') args = [...baseArgs, ...permissionArgs, '--resume', resumeNativeId]
-      else args = [...baseArgs, ...permissionArgs, ...disallowedToolsArgs, '--resume', resumeNativeId]
+      else args = [...baseArgs, ...permissionArgs, ...disallowedToolsArgs, ...mcpConfigArgs, '--resume', resumeNativeId]
     } else if (tool === 'cursor' && cursorResumeId) {
       args = useCliPrompt
         ? [...baseArgs, ...permissionArgs, '--resume', cursorResumeId, prompt]
         : [...baseArgs, ...permissionArgs, '--resume', cursorResumeId]
     } else {
       args = useCliPrompt
-        ? [...baseArgs, ...permissionArgs, ...disallowedToolsArgs, ...claudeSessionArgs, prompt]
-        : [...baseArgs, ...permissionArgs, ...disallowedToolsArgs, ...claudeSessionArgs]
+        ? [...baseArgs, ...permissionArgs, ...disallowedToolsArgs, ...claudeSessionArgs, ...mcpConfigArgs, prompt]
+        : [...baseArgs, ...permissionArgs, ...disallowedToolsArgs, ...claudeSessionArgs, ...mcpConfigArgs]
     }
     let effectiveCwd = cwd || process.env.HOME || process.cwd()
 
@@ -510,6 +514,7 @@ export class PtyManager extends EventEmitter {
       detector: null,
       lastTuiAlertAt: 0,
       cursorChatPromise,
+      mcpConfigPath: mcpConfigPath || null,
       spawnSpec: {
         args,
         env,
@@ -846,6 +851,10 @@ export class PtyManager extends EventEmitter {
       if (this.sidecar && session.tool === 'codex' && session.nativeId) {
         try { this.sidecar.clear(session.nativeId) } catch { /* ignore */ }
       }
+      // Cleanup runtime MCP config file (Task 10)
+      if (session.mcpConfigPath) {
+        try { if (existsSync(session.mcpConfigPath)) unlinkSync(session.mcpConfigPath) } catch { /* ignore */ }
+      }
       const fullLog = session.fullLog.join('')
       this.sessions.delete(sessionId)
       this.emit('done', {
@@ -979,6 +988,10 @@ export class PtyManager extends EventEmitter {
       if (s.detectTimer) { try { clearInterval(s.detectTimer) } catch { /* ignore */ } s.detectTimer = null }
       if (s.cursorWatchTimer) { try { clearInterval(s.cursorWatchTimer) } catch { /* ignore */ } s.cursorWatchTimer = null }
       if (s.fsWatcher) { try { s.fsWatcher.close() } catch { /* ignore */ } s.fsWatcher = null }
+      // Cleanup runtime MCP config file (Task 10)
+      if (s.mcpConfigPath) {
+        try { if (existsSync(s.mcpConfigPath)) unlinkSync(s.mcpConfigPath) } catch { /* ignore */ }
+      }
       this.sessions.delete(sessionId)
       this.emit('done', {
         sessionId,

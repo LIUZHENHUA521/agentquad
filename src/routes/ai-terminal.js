@@ -3,8 +3,10 @@ import { spawnSync } from 'node:child_process'
 import { Router } from 'express'
 import { writeFile, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
+import { homedir } from 'node:os'
 import pidusage from 'pidusage'
 import { loadConfig, resolveToolsConfig, SUPPORTED_TOOLS, DEFAULT_ROOT_DIR } from '../config.js'
+import { writeRuntimeMcpConfig } from '../agent-installer-shared.js'
 
 const MAX_OUTPUT_BUFFER = 5 * 1024 * 1024
 const CLEANUP_MS = 30 * 60_000
@@ -439,7 +441,7 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
   })
 
   // ─── 程序化 session 启动入口（供 orchestrator 等模块直接调用，跳过 HTTP） ───
-  function spawnSession({ todoId, prompt, tool, cwd, resumeNativeId, permissionMode, label, extraEnv, sessionId: externalSessionId, skipTelegram = false, ignoreExistingNativeSessionId = false }) {
+  function spawnSession({ todoId, prompt, tool, cwd, resumeNativeId, permissionMode, label, extraEnv, sessionId: externalSessionId, skipTelegram = false, ignoreExistingNativeSessionId = false, parentTodoId = null }) {
     if (!todoId || typeof prompt !== 'string' || !tool) {
       const err = new Error('missing todoId, prompt, or tool'); err.code = 'bad_request'
       throw err
@@ -522,6 +524,30 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
         QUADTODO_TODO_ID: String(todoId),
         QUADTODO_TODO_TITLE: String(todo.title || ''),
       }
+      // Task 10: 嵌套深度 + 父 todo id 注入
+      const parentDepthRaw = process.env.QUADTODO_DEPTH
+      const parentDepth = parentDepthRaw !== undefined && parentDepthRaw !== '' ? Number(parentDepthRaw) : -1
+      autoEnv.QUADTODO_DEPTH = String(parentDepth + 1)
+      // parentTodoId 优先来自 MCP 工具显式传入；否则 fallback 到 process.env（适合 PTY 嵌套场景，但 AgentQuad 主进程通常没设）
+      autoEnv.QUADTODO_PARENT_TODO_ID = String(parentTodoId || process.env.QUADTODO_TODO_ID || '')
+      // 添加 QUADTODO_URL 让 hook/child agent 知道访问哪个端口
+      const cfgPort = cfg?.port || 5677
+      autoEnv.QUADTODO_URL = `http://127.0.0.1:${cfgPort}`
+
+      // Task 10: 运行时 MCP 配置注入（C 方案）— claude 走 --mcp-config <file>
+      let runtimeMcpPath = null
+      if (tool === 'claude') {
+        try {
+          const runtimeDir = cfg?.agents?.runtimeDir
+            ? cfg.agents.runtimeDir.replace(/^~/, homedir())
+            : join(homedir(), '.agentquad', 'run')
+          const out = writeRuntimeMcpConfig({ runtimeDir, sessionId, port: cfgPort, tool: 'claude' })
+          runtimeMcpPath = out.path
+        } catch (e) {
+          console.warn(`[ai-terminal] runtime mcp config write failed: ${e.message}`)
+        }
+      }
+
       // 1. 先 pty.create 让 PtyManager 把 presetClaudeId / resumeNativeId 落进 session 记录。
       pty.create({
         sessionId,
@@ -532,6 +558,7 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
         resumeNativeId: resumeNativeId || undefined,
         permissionMode: permissionMode || null,
         extraEnv: { ...(extraEnv || {}), ...autoEnv },
+        mcpConfigPath: runtimeMcpPath,
       })
       // 2. 读出 preset nativeId（claude 新会话 = randomUUID, resume = resumeNativeId, codex 新 = null）。
       //    这是让"首屏即正确"成立的核心：先于 db.updateTodo 拿到值。
