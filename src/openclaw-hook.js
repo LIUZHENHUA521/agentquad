@@ -642,6 +642,41 @@ export function createOpenClawHookHandler(deps = {}) {
       logger.warn?.(`[openclaw-hook] hook fired with no registered route: event=${evt} sid=${sessionId} todoId=${todoId || 'null'}`)
     }
 
+    // 0) user-prompt-submit → echo user's prompt to all IM channels (minus origin)
+    if (evt === 'user-prompt-submit') {
+      if (!sessionId) return { ok: true, action: 'skipped', reason: 'no_session' }
+      const promptRaw =
+        (hookPayload && typeof hookPayload === 'object' && (
+          hookPayload.user_prompt ||
+          hookPayload.prompt ||
+          hookPayload.user_message ||
+          hookPayload.message
+        )) || ''
+      const prompt = String(promptRaw).trim()
+      if (!prompt) return { ok: true, action: 'skipped', reason: 'empty_prompt' }
+
+      // 截断：>2000 字符 → 取前 2000 + 末尾标注总字数
+      const MAX = 2000
+      const truncated = prompt.length > MAX
+        ? `${prompt.slice(0, MAX)}\n… [共 ${prompt.length} 字]`
+        : prompt
+      const message = `👤 ${truncated}`
+
+      let originChannel = null
+      try {
+        originChannel = sessionInputDispatcher?.consumeOrigin?.(sessionId, prompt) || null
+      } catch (e) {
+        logger.warn?.(`[openclaw-hook] consumeOrigin threw: ${e.message}`)
+      }
+
+      try {
+        await openclaw?.broadcastEcho?.({ sessionId, message, excludeChannel: originChannel })
+      } catch (e) {
+        logger.warn?.(`[openclaw-hook] broadcastEcho threw: ${e.message}`)
+      }
+      return { ok: true, action: 'echoed', origin: originChannel, length: prompt.length }
+    }
+
     // 1) ask_user pending 时 Stop 静默
     if (evt === 'stop' && hasPendingAskUser(sessionId)) {
       return { ok: true, action: 'skipped', reason: 'ask_user_pending' }

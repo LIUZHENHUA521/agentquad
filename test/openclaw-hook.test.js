@@ -1212,3 +1212,104 @@ describe('openclaw-hook handler — reactionTracker integration', () => {
     await expect(handler.handle({ event: 'stop', sessionId: 'sid-tg3', cleanContent: 'x' })).resolves.not.toThrow()
   })
 })
+
+describe('handle: user-prompt-submit event', () => {
+  function makeHandler({ consumeOrigin = () => null, broadcastEcho = vi.fn().mockResolvedValue({ telegram: { ok: true }, lark: { ok: true } }) } = {}) {
+    const dispatcher = { consumeOrigin: vi.fn(consumeOrigin) }
+    const openclaw = {
+      broadcastEcho,
+      hasExplicitRoute: () => true,
+      resolveRoute: () => null,
+    }
+    const aiTerminal = { sessions: new Map() }
+    const handler = createOpenClawHookHandler({
+      db: { getTodo: () => null, listTodos: () => [] },
+      aiTerminal,
+      openclaw,
+      sessionInputDispatcher: dispatcher,
+      logger: { warn() {}, info() {} },
+    })
+    return { handler, dispatcher, openclaw, broadcastEcho }
+  }
+
+  it('PC origin (consumeOrigin null) → broadcastEcho 不带 excludeChannel', async () => {
+    const { handler, broadcastEcho } = makeHandler()
+    await handler.handle({
+      source: 'claude',
+      event: 'user-prompt-submit',
+      sessionId: 'sid-1',
+      hookPayload: { user_prompt: 'hello from PC' },
+    })
+    expect(broadcastEcho).toHaveBeenCalledWith({
+      sessionId: 'sid-1',
+      message: '👤 hello from PC',
+      excludeChannel: null,
+    })
+  })
+
+  it('Telegram origin (consumeOrigin returns telegram) → excludeChannel=telegram', async () => {
+    const { handler, broadcastEcho } = makeHandler({ consumeOrigin: () => 'telegram' })
+    await handler.handle({
+      source: 'claude',
+      event: 'user-prompt-submit',
+      sessionId: 'sid-1',
+      hookPayload: { user_prompt: 'from tg' },
+    })
+    expect(broadcastEcho).toHaveBeenCalledWith({
+      sessionId: 'sid-1',
+      message: '👤 from tg',
+      excludeChannel: 'telegram',
+    })
+  })
+
+  it('长 prompt > 2000 字符 → 截断 + 末尾标注总字数', async () => {
+    const { handler, broadcastEcho } = makeHandler()
+    const long = 'x'.repeat(2500)
+    await handler.handle({
+      source: 'claude',
+      event: 'user-prompt-submit',
+      sessionId: 'sid-1',
+      hookPayload: { user_prompt: long },
+    })
+    const sent = broadcastEcho.mock.calls[0][0].message
+    expect(sent.startsWith('👤 ')).toBe(true)
+    expect(sent.length).toBeLessThanOrEqual(2 + 2000 + 32) // emoji + truncated body + suffix
+    expect(sent).toContain('[共 2500 字]')
+  })
+
+  it('空 prompt → 不调用 broadcastEcho', async () => {
+    const { handler, broadcastEcho } = makeHandler()
+    await handler.handle({
+      source: 'claude',
+      event: 'user-prompt-submit',
+      sessionId: 'sid-1',
+      hookPayload: { user_prompt: '   ' },
+    })
+    expect(broadcastEcho).not.toHaveBeenCalled()
+  })
+
+  it('hookPayload 用 fallback 字段 prompt（Codex 风格）', async () => {
+    const { handler, broadcastEcho } = makeHandler()
+    await handler.handle({
+      source: 'claude',
+      event: 'user-prompt-submit',
+      sessionId: 'sid-1',
+      hookPayload: { prompt: 'from codex' },
+    })
+    expect(broadcastEcho).toHaveBeenCalledWith(
+      expect.objectContaining({ message: '👤 from codex' }),
+    )
+  })
+
+  it('没 sessionId → 静默 skip', async () => {
+    const { handler, broadcastEcho } = makeHandler()
+    const r = await handler.handle({
+      source: 'claude',
+      event: 'user-prompt-submit',
+      sessionId: null,
+      hookPayload: { user_prompt: 'x' },
+    })
+    expect(broadcastEcho).not.toHaveBeenCalled()
+    expect(r?.ok).toBe(true) // 不报错
+  })
+})
