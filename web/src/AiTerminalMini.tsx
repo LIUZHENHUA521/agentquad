@@ -1172,8 +1172,13 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
   }, [sessionId])
 
   const handleManualRecover = useCallback(async () => {
+    // 自动恢复失败 / 上一次手动恢复失败后，recoveryAttemptedRef 仍是 false（只在成功路径置位），
+    // 但 4004 路径触发过一次成功 recover 后再失效时，需要让用户能再点一次：reset 它。
+    recoveryAttemptedRef.current = false
     const recovered = await tryAutoRecover()
-    if (!recovered) {
+    if (recovered) {
+      setSessionFailed(false)
+    } else {
       termRef.current?.writeln(`\r\n\x1b[31m--- ${t('session:terminal.writeln.noNativeSessionId')} ---\x1b[0m\r`)
     }
   }, [tryAutoRecover])
@@ -1337,12 +1342,12 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
         {sessionStatus === 'ai_done' && (
           <Tag color="warning" style={{ fontSize: 10, lineHeight: '16px', margin: 0 }}>{t('session:terminal.toolbar.pendingAccept')}</Tag>
         )}
-        {sessionExpired && (
+        {(sessionExpired || sessionFailed) && (
           <Tag color="error" style={{ fontSize: 10, lineHeight: '16px', margin: 0 }}>
             {t('session:terminal.toolbar.sessionExpired')}
           </Tag>
         )}
-        {sessionExpired && resumeTargetRef.current?.nativeSessionId && (
+        {(sessionExpired || sessionFailed) && resumeTargetRef.current?.nativeSessionId && (
           <Button
             size="small"
             onClick={handleManualRecover}
@@ -1351,7 +1356,7 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
             {t('session:terminal.toolbar.recoverSession')}
           </Button>
         )}
-        {sessionExpired && (
+        {(sessionExpired || sessionFailed) && (
           <Button
             size="small"
             onClick={onClose}
