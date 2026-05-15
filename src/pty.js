@@ -419,7 +419,7 @@ export class PtyManager extends EventEmitter {
    * 会话建立时调 create()、收到前端真实 cols/rows 后再调 startWithSize()，
    * 这样 PTY 永远不会在默认 80×24 上 spawn 一次再 resize。
    */
-  create({ sessionId, tool, prompt, cwd, resumeNativeId, permissionMode, extraEnv, mcpConfigPath = null }) {
+  create({ sessionId, tool, prompt, cwd, resumeNativeId, permissionMode, extraEnv, mcpConfigPath = null, codexMcpUrl = null }) {
     const toolCfg = this.tools[tool]
     if (!toolCfg) throw new Error(`unknown tool: ${tool}`)
     const baseArgs = toolCfg.args || []
@@ -433,9 +433,17 @@ export class PtyManager extends EventEmitter {
     // Claude 支持 --session-id <uuid>：新会话时由我们预生成，避免事后靠 FS/输出扫描。
     const presetClaudeId = tool === 'claude' && !resumeNativeId ? randomUUID() : null
     const claudeSessionArgs = presetClaudeId ? ['--session-id', presetClaudeId] : []
-    // AgentQuad runtime MCP config injection (claude only here; codex deferred to Task 11)
+    // AgentQuad runtime MCP config injection
     const mcpConfigArgs = (tool === 'claude' && mcpConfigPath)
       ? ['--mcp-config', mcpConfigPath]
+      : []
+    // Codex 用 --config key=value 直接覆写（不需要文件）
+    // 注意 codex 把 value 当 TOML 表达式解析，URL 字符串要带双引号
+    const codexMcpArgs = (tool === 'codex' && codexMcpUrl)
+      ? [
+          '-c', `mcp_servers.agentquad.url="${codexMcpUrl}"`,
+          '-c', 'mcp_servers.agentquad.transport="http"',
+        ]
       : []
 
     // cursor-agent 没有 --session-id 预置，但有 `cursor-agent create-chat` 异步建会话拿 chatId。
@@ -449,7 +457,7 @@ export class PtyManager extends EventEmitter {
 
     let args
     if (resumeNativeId) {
-      if (tool === 'codex') args = [...baseArgs, ...permissionArgs, 'resume', resumeNativeId]
+      if (tool === 'codex') args = [...baseArgs, ...permissionArgs, ...codexMcpArgs, 'resume', resumeNativeId]
       else if (tool === 'cursor') args = [...baseArgs, ...permissionArgs, '--resume', resumeNativeId]
       else args = [...baseArgs, ...permissionArgs, ...disallowedToolsArgs, ...mcpConfigArgs, '--resume', resumeNativeId]
     } else if (tool === 'cursor' && cursorResumeId) {
@@ -458,8 +466,8 @@ export class PtyManager extends EventEmitter {
         : [...baseArgs, ...permissionArgs, '--resume', cursorResumeId]
     } else {
       args = useCliPrompt
-        ? [...baseArgs, ...permissionArgs, ...disallowedToolsArgs, ...claudeSessionArgs, ...mcpConfigArgs, prompt]
-        : [...baseArgs, ...permissionArgs, ...disallowedToolsArgs, ...claudeSessionArgs, ...mcpConfigArgs]
+        ? [...baseArgs, ...permissionArgs, ...disallowedToolsArgs, ...claudeSessionArgs, ...mcpConfigArgs, ...codexMcpArgs, prompt]
+        : [...baseArgs, ...permissionArgs, ...disallowedToolsArgs, ...claudeSessionArgs, ...mcpConfigArgs, ...codexMcpArgs]
     }
     let effectiveCwd = cwd || process.env.HOME || process.cwd()
 

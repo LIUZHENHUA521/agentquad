@@ -550,6 +550,12 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
         }
       }
 
+      // Task 11: Codex 走 --config <key=value>，不需要文件，只需要构造 URL
+      let codexMcpUrl = null
+      if (tool === 'codex') {
+        codexMcpUrl = `http://127.0.0.1:${cfgPort}/mcp`
+      }
+
       // 1. 先 pty.create 让 PtyManager 把 presetClaudeId / resumeNativeId 落进 session 记录。
       pty.create({
         sessionId,
@@ -561,6 +567,7 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
         permissionMode: permissionMode || null,
         extraEnv: { ...(extraEnv || {}), ...autoEnv },
         mcpConfigPath: runtimeMcpPath,
+        codexMcpUrl,
       })
       // 2. 读出 preset nativeId（claude 新会话 = randomUUID, resume = resumeNativeId, codex 新 = null）。
       //    这是让"首屏即正确"成立的核心：先于 db.updateTodo 拿到值。
