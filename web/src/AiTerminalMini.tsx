@@ -826,6 +826,14 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
                 break
               case 'session_restarted':
                 if (typeof msg.newSessionId === 'string' && msg.newSessionId) {
+                  // 新 session 的 effect 会重跑：清掉旧 session 的 pending 状态，避免
+                  // 旧 chunks/proposed init 跨 session 污染
+                  pendingChunksRef.current = { chunks: [], totalBytes: 0 }
+                  pendingProposedInitRef.current = null
+                  // termOpenedRef 不重置 —— termRef.current 还是同一个 term 实例（dispose+重建发生在 effect cleanup），
+                  // 这里只是状态信号。effect 重跑时 Task 6 的"重置每次 effect 启动时的 hidden-mount 相关状态"
+                  // 会再次置 false。
+
                   message.info(msg.message || t('session:terminal.message.switchedToManaged'))
                   stopReconnectRef.current = true  // 旧 WS 关闭后不再自动重连
                   setSwitchingMode(false)
