@@ -465,9 +465,13 @@ export class PtyManager extends EventEmitter {
         ? [...baseArgs, ...permissionArgs, '--resume', cursorResumeId, prompt]
         : [...baseArgs, ...permissionArgs, '--resume', cursorResumeId]
     } else {
+      // 关键：mcpConfigArgs（--mcp-config <FILE>）必须放在某个 --<flag> 之前，
+      // 否则 Claude 的变长 --mcp-config 会贪婪吃后面的 prompt 当成 "另一个配置文件"
+      // （Claude Code GitHub issue #5593 同一类问题）。
+      // 因此把 mcpConfigArgs 放在 claudeSessionArgs (--session-id) 之前。
       args = useCliPrompt
-        ? [...baseArgs, ...permissionArgs, ...disallowedToolsArgs, ...claudeSessionArgs, ...mcpConfigArgs, ...codexMcpArgs, prompt]
-        : [...baseArgs, ...permissionArgs, ...disallowedToolsArgs, ...claudeSessionArgs, ...mcpConfigArgs, ...codexMcpArgs]
+        ? [...baseArgs, ...permissionArgs, ...disallowedToolsArgs, ...mcpConfigArgs, ...claudeSessionArgs, ...codexMcpArgs, prompt]
+        : [...baseArgs, ...permissionArgs, ...disallowedToolsArgs, ...mcpConfigArgs, ...claudeSessionArgs, ...codexMcpArgs]
     }
     let effectiveCwd = cwd || process.env.HOME || process.cwd()
 
