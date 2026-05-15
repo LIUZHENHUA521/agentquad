@@ -27,9 +27,9 @@ export function isAgentquadManaged(entry) {
 }
 
 /**
- * 私有原子写入助手：tmp 中转 + rename，保证不出现部分写入。
+ * Atomic generic file write via tmp + rename. Used by writeJsonAtomic and TOML callers.
  */
-function writeFileAtomic(targetPath, content) {
+export function writeFileAtomic(targetPath, content) {
   mkdirSync(dirname(targetPath), { recursive: true })
   const tmp = `${targetPath}.tmp.${randomBytes(4).toString('hex')}`
   writeFileSync(tmp, content, { encoding: 'utf8' })

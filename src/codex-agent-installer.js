@@ -6,10 +6,11 @@
  * marker 实现：TOML 文件支持注释，用 `# <<< agentquad managed start ... # >>> end` 注释行
  * 包裹一段以 newline 分隔的 toml block；卸载时按注释边界精确删。
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync, copyFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, copyFileSync, rmSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { homedir } from 'node:os'
 import { fileURLToPath } from 'node:url'
+import { writeFileAtomic } from './agent-installer-shared.js'
 
 const SKILL_NAME = 'agentquad-child'
 const MARKER_START = '# <<< agentquad managed start — do not edit by hand >>>'
@@ -47,7 +48,9 @@ function stripExistingBlock(raw) {
   const endIdx = raw.indexOf(MARKER_END, startIdx)
   if (endIdx === -1) return { raw, found: false }
   const afterEnd = raw.indexOf('\n', endIdx)
-  const head = raw.slice(0, startIdx).replace(/\n*$/, '\n')
+  const head = startIdx === 0
+    ? ''
+    : raw.slice(0, startIdx).replace(/\n+$/, '\n')
   const tail = afterEnd === -1 ? '' : raw.slice(afterEnd + 1)
   return { raw: head + tail, found: true }
 }
@@ -60,11 +63,9 @@ function parseExistingBlock(raw) {
   const block = raw.slice(startIdx, endIdx + MARKER_END.length)
   const versionM = block.match(/# agentquad-version:\s*(\S+)/)
   const portM = block.match(/# agentquad-port:\s*(\d+)/)
-  const urlM = block.match(/url\s*=\s*"http:\/\/[^"]*:(\d+)\//)
   return {
     version: versionM ? versionM[1] : null,
     port: portM ? Number(portM[1]) : null,
-    urlPort: urlM ? Number(urlM[1]) : null,
   }
 }
 
@@ -96,8 +97,7 @@ export function installAgent({
   }
 
   if (next !== cur) {
-    mkdirSync(dirname(configTomlPath), { recursive: true })
-    writeFileSync(configTomlPath, next, 'utf8')
+    writeFileAtomic(configTomlPath, next)
   }
 
   // skill
@@ -121,7 +121,7 @@ export function uninstallAgent({
     const cur = readFileSync(configTomlPath, 'utf8')
     const { raw, found } = stripExistingBlock(cur)
     if (found) {
-      writeFileSync(configTomlPath, raw, 'utf8')
+      writeFileAtomic(configTomlPath, raw)
       removed.push('mcp_block')
     }
   }
@@ -149,13 +149,15 @@ export function inspectAgent({
     version: null,
   }
   if (existsSync(configTomlPath)) {
-    const cur = readFileSync(configTomlPath, 'utf8')
-    const parsed = parseExistingBlock(cur)
-    if (parsed) {
-      out.mcpRegistered = true
-      out.actualPort = parsed.port
-      out.version = parsed.version
-    }
+    try {
+      const cur = readFileSync(configTomlPath, 'utf8')
+      const parsed = parseExistingBlock(cur)
+      if (parsed) {
+        out.mcpRegistered = true
+        out.actualPort = parsed.port
+        out.version = parsed.version
+      }
+    } catch { /* malformed/unreadable, treat as not registered */ }
   }
   if (existsSync(join(skillsDir, SKILL_NAME, 'SKILL.md'))) out.skillPresent = true
   if (out.mcpRegistered && expectedPort && out.actualPort !== expectedPort) out.drift = true

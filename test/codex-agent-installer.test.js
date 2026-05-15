@@ -80,4 +80,15 @@ describe('codex-agent-installer', () => {
     expect(r.mcpRegistered).toBe(true)
     expect(r.drift).toBe(true)
   })
+
+  it('block-only file stays minimal across reinstall (no leading newline accumulation)', () => {
+    // 第一次装：文件本来不存在
+    installAgent({ configTomlPath, skillsDir, skillTemplatePath, port: 5677, version: '0.4.0' })
+    const a = readFileSync(configTomlPath, 'utf8')
+    // 第二次装：换端口
+    installAgent({ configTomlPath, skillsDir, skillTemplatePath, port: 5678, version: '0.4.0' })
+    const b = readFileSync(configTomlPath, 'utf8')
+    expect(b.startsWith('\n')).toBe(false)
+    expect(b.startsWith('# <<< agentquad managed')).toBe(true)
+  })
 })
