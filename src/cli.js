@@ -361,6 +361,71 @@ export async function doctorReport({ rootDir = DEFAULT_ROOT_DIR } = {}) {
     // 注：hook check 已经在 openclaw 段做过；不重复
   }
 
+  // ─── agents（claude/codex/cursor 的 AgentQuad MCP + skill 装机状态）──────
+  try {
+    const { inspectAllAgents } = await import('./agent-installer-dispatcher.js')
+    const { listStaleRuntimeConfigs } = await import('./agent-installer-shared.js')
+    const expectedPort = cfg?.port || 5677
+    const r = inspectAllAgents({ expectedPort })
+
+    for (const [t, ins] of Object.entries(r.results)) {
+      if (ins.error) {
+        checks.push({ name: `agents.${t}`, ok: false, detail: `error reading config: ${ins.error}` })
+        continue
+      }
+      const mcpOk = ins.mcpRegistered
+      const skillOk = ins.skillPresent
+      const both = mcpOk && skillOk
+      const fixHint = `跑 \`agentquad agents install --target ${t}\``
+      const parts = []
+      parts.push(mcpOk ? 'MCP ✓' : 'MCP ✗')
+      parts.push(skillOk ? 'skill ✓' : 'skill ✗')
+      if (ins.drift) parts.push(`⚠ drift (actual:${ins.actualPort} expected:${ins.expectedPort})`)
+      checks.push({
+        name: `agents.${t}`,
+        ok: both && !ins.drift,
+        detail: both && !ins.drift
+          ? parts.join('  ')
+          : `${parts.join('  ')} — 修复: ${fixHint}`,
+      })
+    }
+
+    // orphan runtime configs
+    const runtimeDir = cfg?.agents?.runtimeDir
+      ? cfg.agents.runtimeDir.replace(/^~/, homedir())
+      : join(homedir(), '.agentquad', 'run')
+    const stale = listStaleRuntimeConfigs({ runtimeDir })
+    if (stale.length > 0) {
+      checks.push({
+        name: 'agents runtime orphans',
+        ok: true, // 仅 warning，不影响整体 ok
+        detail: `${stale.length} 个 24h+ 未刷新的运行时 MCP 配置在 ${runtimeDir}（可手动删除）`,
+      })
+    }
+
+    // active PTY soft warning — 查 running server's /api/status
+    try {
+      const pidInfo = readPidFile(DEFAULT_ROOT_DIR)
+      if (pidInfo?.pid && isAlive(pidInfo.pid)) {
+        const port = pidInfo.port ?? expectedPort
+        const resp = await fetch(`http://127.0.0.1:${port}/api/status`, { signal: AbortSignal.timeout(1500) })
+        const body = await resp.json()
+        const active = body.activeSessions ?? 0
+        const warnAt = cfg?.agents?.warnPtyCount || 8
+        if (active >= warnAt) {
+          checks.push({
+            name: 'agents pty count',
+            ok: true, // 仅 warning
+            detail: `⚠ 活跃 AgentQuad PTY 数 = ${active}（≥ 阈值 ${warnAt}，请留意是否失控）`,
+          })
+        }
+      }
+    } catch { /* server 没在跑 / 网络抖动，忽略 */ }
+
+  } catch (e) {
+    checks.push({ name: 'agents check', ok: false, detail: `agents inspect failed: ${e?.message || e}` })
+  }
+
   return { ok: checks.every(c => c.ok), checks }
 }
 
