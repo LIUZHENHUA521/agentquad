@@ -278,11 +278,10 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
   }, [])
 
   const startFailureAutoRecover = useCallback(async (exitCode: number) => {
-    const term = termRef.current
     // 没有可 resume 的目标 → 直接显示最终失败 UI
     if (!resumeTargetRef.current?.nativeSessionId) {
       setSessionFailed(true)
-      term?.writeln(`\r\n\x1b[31m=== ${t('session:terminal.writeln.aiTaskFailed')} ===\x1b[0m\r`)
+      termRef.current?.writeln(`\r\n\x1b[31m=== ${t('session:terminal.writeln.aiTaskFailed')} ===\x1b[0m\r`)
       return
     }
     if (recoveringRef.current) return // 已有 4004 路径在 recover，让它跑
@@ -292,7 +291,7 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
       isCancelled: () => disposedRef.current,
       recover: async (attempt) => {
         if (disposedRef.current) return false
-        term?.writeln(`\r\n\x1b[33m--- ${t('session:terminal.writeln.autoRecoverAttempt', {
+        termRef.current?.writeln(`\r\n\x1b[33m--- ${t('session:terminal.writeln.autoRecoverAttempt', {
           code: exitCode,
           attempt,
           max: FAILURE_RECOVERY_BACKOFF_MS.length,
@@ -305,10 +304,10 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
 
     if (outcome === 'exhausted') {
       setSessionFailed(true)
-      term?.writeln(`\r\n\x1b[31m--- ${t('session:terminal.writeln.autoRecoverGiveUp', {
+      termRef.current?.writeln(`\r\n\x1b[31m--- ${t('session:terminal.writeln.autoRecoverGiveUp', {
         max: FAILURE_RECOVERY_BACKOFF_MS.length,
       })} ---\x1b[0m\r`)
-      term?.writeln(`\r\n\x1b[31m=== ${t('session:terminal.writeln.aiTaskFailed')} ===\x1b[0m\r`)
+      termRef.current?.writeln(`\r\n\x1b[31m=== ${t('session:terminal.writeln.aiTaskFailed')} ===\x1b[0m\r`)
     }
     // 'recovered' / 'cancelled' → 不写额外内容（recover 内部已 setSessionExpired(false) 等）
   }, [tryAutoRecover, t])
