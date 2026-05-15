@@ -1688,6 +1688,11 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
           height: (fullscreen || fillHeight) ? undefined : height,
           width: '100%',
           position: 'relative',
+          // 关键：把容器底色设成 xterm 主题背景。xterm 的 .xterm-screen 渲染宽度严格等于
+          // cols × charWidth，floor 截断 + scrollbar 预留必然留出几像素余量。如果容器
+          // 继承外层 chrome.outer 底色，余量就会以另一种深色条形式露出（截图右侧那条缝）。
+          // 让容器跟 xterm 同色，余量视觉上消失。
+          background: theme.background,
           pointerEvents: switchingMode ? 'none' : undefined,
           // viewportReady=false: 隐藏 xterm 直到首次 fit + 多帧绘制完成，避免"小→大"闪动
           // switchingMode 进一步压暗到 0.6 表示正在切换 auto 模式
