@@ -300,7 +300,10 @@ export function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo =
                         )}
                       </div>
                     </div>
-                    <div className="todo-history-actions">
+                    <div
+                      className="todo-history-actions"
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       {!session.label && editingLabelSessionId !== session.sessionId && (
                         <button
                           type="button"
@@ -343,6 +346,7 @@ export function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo =
                           onClick={(e) => e.stopPropagation()}
                           title={t('todo:card.deleteSessionTooltip')}
                           aria-label={t('todo:card.deleteSession')}
+                          style={{ display: 'inline-flex', alignItems: 'center' }}
                         >
                           <Trash2 size={11} />
                         </button>
