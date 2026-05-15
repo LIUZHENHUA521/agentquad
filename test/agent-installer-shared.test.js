@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync } from 'node:fs'
+import { mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync, readdirSync, utimesSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -8,6 +8,7 @@ import {
   writeJsonAtomic,
   writeRuntimeMcpConfig,
   cleanupRuntimeMcpConfig,
+  listStaleRuntimeConfigs,
 } from '../src/agent-installer-shared.js'
 
 describe('agent-installer-shared', () => {
@@ -44,7 +45,8 @@ describe('agent-installer-shared', () => {
     it('does not leave .tmp behind on success', () => {
       const p = join(dir, 'y.json')
       writeJsonAtomic(p, { a: 1 })
-      expect(existsSync(p + '.tmp')).toBe(false)
+      const leftovers = readdirSync(dir).filter(n => n.startsWith('y.json.tmp'))
+      expect(leftovers).toHaveLength(0)
     })
   })
 
@@ -70,6 +72,23 @@ describe('agent-installer-shared', () => {
       const out = writeRuntimeMcpConfig({ runtimeDir: dir, sessionId: 'sid3', port: 5678, tool: 'claude' })
       cleanupRuntimeMcpConfig({ runtimeDir: dir, sessionId: 'sid3' })
       expect(existsSync(out.path)).toBe(false)
+    })
+  })
+
+  describe('listStaleRuntimeConfigs', () => {
+    it('returns files older than maxAgeMs, ignores fresh ones', () => {
+      writeRuntimeMcpConfig({ runtimeDir: dir, sessionId: 'fresh', port: 5678, tool: 'claude' })
+      const out2 = writeRuntimeMcpConfig({ runtimeDir: dir, sessionId: 'old', port: 5678, tool: 'claude' })
+      // Force out2 mtime into the past
+      const pastSec = (Date.now() - 48 * 3600 * 1000) / 1000
+      utimesSync(out2.path, pastSec, pastSec)
+
+      const stale = listStaleRuntimeConfigs({ runtimeDir: dir, maxAgeMs: 24 * 3600 * 1000 })
+      expect(stale.map(s => s.name)).toEqual(['mcp-old.json'])
+    })
+
+    it('returns empty array when runtimeDir does not exist', () => {
+      expect(listStaleRuntimeConfigs({ runtimeDir: join(dir, 'nope') })).toEqual([])
     })
   })
 })

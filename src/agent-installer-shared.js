@@ -8,7 +8,7 @@
  *   { _agentquadManaged: { version, port, generatedAt } }
  * 不引入独立 lockfile，跟现有 hook installer 风格保持一致。
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync, renameSync, unlinkSync, openSync, closeSync, fstatSync, readdirSync, statSync } from 'node:fs'
+import { existsSync, mkdirSync, writeFileSync, renameSync, unlinkSync, readdirSync, statSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { randomBytes } from 'node:crypto'
 
@@ -27,14 +27,21 @@ export function isAgentquadManaged(entry) {
 }
 
 /**
+ * 私有原子写入助手：tmp 中转 + rename，保证不出现部分写入。
+ */
+function writeFileAtomic(targetPath, content) {
+  mkdirSync(dirname(targetPath), { recursive: true })
+  const tmp = `${targetPath}.tmp.${randomBytes(4).toString('hex')}`
+  writeFileSync(tmp, content, { encoding: 'utf8' })
+  renameSync(tmp, targetPath)
+}
+
+/**
  * Atomic JSON 写入。
  * 通过 `<target>.tmp.<rand>` 中转 + rename，保证不出现部分写入。
  */
 export function writeJsonAtomic(targetPath, value) {
-  mkdirSync(dirname(targetPath), { recursive: true })
-  const tmp = `${targetPath}.tmp.${randomBytes(4).toString('hex')}`
-  writeFileSync(tmp, JSON.stringify(value, null, 2) + '\n', { encoding: 'utf8' })
-  renameSync(tmp, targetPath)
+  writeFileAtomic(targetPath, JSON.stringify(value, null, 2) + '\n')
 }
 
 /**
@@ -52,7 +59,7 @@ export function writeRuntimeMcpConfig({ runtimeDir, sessionId, port, tool }) {
       `[mcp_servers.agentquad]\n` +
       `url = "${url}"\n` +
       `transport = "http"\n`
-    writeFileSync(path, toml, 'utf8')
+    writeFileAtomic(path, toml)
     return { path, format: 'toml' }
   }
   // default: claude json format
@@ -83,6 +90,12 @@ export function listStaleRuntimeConfigs({ runtimeDir, maxAgeMs = 24 * 3600 * 100
   const now = Date.now()
   return readdirSync(runtimeDir)
     .filter(n => /^mcp-.*\.(json|toml)$/.test(n))
-    .map(n => ({ name: n, path: join(runtimeDir, n), age: now - statSync(join(runtimeDir, n)).mtimeMs }))
-    .filter(x => x.age > maxAgeMs)
+    .map(n => {
+      try {
+        return { name: n, path: join(runtimeDir, n), age: now - statSync(join(runtimeDir, n)).mtimeMs }
+      } catch {
+        return null
+      }
+    })
+    .filter(x => x && x.age > maxAgeMs)
 }
