@@ -419,12 +419,13 @@ describe('routes/ai-terminal', () => {
     const logDir = mkdtempSync(join(tmpdir(), 'quadtodo-log-'))
     const ait = createAiTerminal({ db, pty, logDir })
 
-    // 两条都从 pending_confirm 翻回 idle;todo.status 'ai_pending' → 'ai_running'。
-    // 后续 recover 因为没有 nativeSessionId 把 todo 退回 'todo',不影响 sweep 的核心保证:
-    // aiSession.status 不再卡 pending_confirm,前端 deriveAiState 不再渲染"待确认"。
+    // 两条都从 pending_confirm 翻回 idle,recover 因 nativeSessionId=null 跳过;
+    // 之后 markOrphanedSessionsAsFailed 把这俩孤儿 idle 改成 'failed'。
+    // 核心保证不变:aiSession.status 不再卡 pending_confirm,前端 deriveAiState
+    // 不再渲染"待确认";同时也不会再渲染"运行中"——PTY 已死的事实在 DB 里落实了。
     for (const todoId of [bypassTodo.id, defaultTodo.id]) {
       const updated = db.getTodo(todoId)
-      expect(updated.aiSession.status).toBe('idle')
+      expect(updated.aiSession.status).toBe('failed')
     }
 
     ait.close()

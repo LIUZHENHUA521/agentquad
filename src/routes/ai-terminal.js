@@ -1231,6 +1231,27 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
     nativeSessionMap.clear()
   }
 
+  // recoverPendingTodosOnStartup 的 spawn 失败 catch 路径用：把 mergeTodoAiSessions
+  // 之前刚写进 DB 的 status='running' 那条改回 'failed'，其它 aiSessions 原样保留。
+  function markRecoveryFailed(todoId, sessionId) {
+    try {
+      const todoNow = db.getTodo(todoId)
+      if (!todoNow) return
+      const aiSessions = Array.isArray(todoNow.aiSessions) ? todoNow.aiSessions : []
+      let mutated = false
+      const next = aiSessions.map((s) => {
+        if (s?.sessionId === sessionId) {
+          mutated = true
+          return { ...s, status: 'failed', completedAt: Date.now() }
+        }
+        return s
+      })
+      if (mutated) db.updateTodo(todoId, { aiSessions: next })
+    } catch (e) {
+      console.warn('[ai-terminal] markRecoveryFailed failed:', e.message)
+    }
+  }
+
   function recoverPendingTodosOnStartup() {
     // 启动期一次性读 config：恢复一条没记 permissionMode 的老 session 时回退到全局默认。
     // 用户在设置里选了"完全托管"但 DB 里没存 → 这里把意图重新接上，否则 claude --resume
@@ -1329,6 +1350,10 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
           todoSessionMap.delete(todo.id)
           const nativeKey = `${recoverable.tool}:${recoverable.nativeSessionId}`
           if (nativeSessionMap.get(nativeKey) === sessionId) nativeSessionMap.delete(nativeKey)
+          // recoverPendingTodosOnStartup 此前已 mergeTodoAiSessions 把该 session 写成
+          // status='running'；spawn 失败必须把那条改回 'failed'，否则前端读到 running
+          // 会渲染"运行中"且没有对应 PTY。与 markOrphanedSessionsAsFailed 互为冗余。
+          markRecoveryFailed(todo.id, sessionId)
           db.updateTodo(todo.id, { status: 'todo' })
         })
       } catch (e) {
@@ -1337,6 +1362,7 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
         todoSessionMap.delete(todo.id)
         const nativeKey = `${recoverable.tool}:${recoverable.nativeSessionId}`
         if (nativeSessionMap.get(nativeKey) === sessionId) nativeSessionMap.delete(nativeKey)
+        markRecoveryFailed(todo.id, sessionId)
         db.updateTodo(todo.id, { status: 'todo' })
       }
     }
@@ -1372,8 +1398,40 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
     }
   }
 
+  // 服务硬重启 / crash 时 PTY 进程没机会触发 onExit，DB 里 aiSession.status='running'
+  // (或 idle / pending_confirm) 会留作"僵尸"，前端读到后渲染成「运行中」却没有对应 PTY。
+  // 启动期一次性把所有"看起来还活着但无对应 live PTY"的 aiSession 改成 'failed'。
+  // 必须在 recoverPendingTodosOnStartup 之后调用：成功 recover 的 session 此时已在
+  // nativeSessionMap 里，扫描会跳过它们；只有真正的孤儿会被改写。
+  function markOrphanedSessionsAsFailed() {
+    const ALIVE_LOOKING = new Set(['running', 'idle', 'pending_confirm'])
+    let swept = 0
+    try {
+      for (const todo of db.listTodos()) {
+        const aiSessions = Array.isArray(todo.aiSessions) ? todo.aiSessions : []
+        let changed = false
+        const nextSessions = aiSessions.map((s) => {
+          if (!s || !ALIVE_LOOKING.has(s.status)) return s
+          const key = s.tool && s.nativeSessionId ? `${s.tool}:${s.nativeSessionId}` : null
+          if (key && nativeSessionMap.has(key)) return s
+          changed = true
+          return { ...s, status: 'failed', completedAt: Date.now() }
+        })
+        if (!changed) continue
+        db.updateTodo(todo.id, { aiSessions: nextSessions })
+        swept += 1
+      }
+      if (swept > 0) {
+        console.log(`[ai-terminal] orphan sweep: marked ${swept} sessions as failed`)
+      }
+    } catch (e) {
+      console.warn('[ai-terminal] markOrphanedSessionsAsFailed failed:', e.message)
+    }
+  }
+
   sweepStuckPendingConfirm()
   recoverPendingTodosOnStartup()
+  markOrphanedSessionsAsFailed()
 
   return {
     router,
