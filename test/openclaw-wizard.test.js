@@ -891,6 +891,11 @@ describe('openclaw-wizard state machine', () => {
   })
 
   it('Lark: thread/root reply without exact route does not fallback to unrelated session', async () => {
+    // 安全不变量：未绑定 lark thread 的回复不能模糊路由到任意其他 session
+    // （不调 getLastPushedSession、不写任何 PTY）。
+    // 注：默认 autoCreateTodo=true 时 → 起 wizard 而非 session_not_found；
+    //     autoCreateTodo=false 时 → 保留原 session_not_found 行为。
+    // 两种情况都不写 PTY、都不调 lastPush。
     const writes = []
     const ai2 = {
       sessions: new Map([
@@ -911,7 +916,7 @@ describe('openclaw-wizard state machine', () => {
     const w2 = createOpenClawWizard({
       db, aiTerminal: ai2, openclaw: fakeBridge, pending,
       pty: fakePty,
-      getConfig: () => ({ defaultCwd: '/tmp', port: 5677 }),
+      getConfig: () => ({ defaultCwd: '/tmp', port: 5677, lark: { autoCreateTodo: false } }),
     })
     const r = await w2.handleInbound({
       channel: 'lark',

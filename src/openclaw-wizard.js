@@ -1576,6 +1576,36 @@ export function createOpenClawWizard({
         }
       }
       if (targetSid && typeof targetSid === 'object' && targetSid.notFound) {
+        // 未绑定 lark thread 的首条消息：默认起新建任务向导（受 autoCreateTodo 控制）
+        if (newTaskGateOpen && shouldLarkAutoCreate()) {
+          logger.info?.(`[wizard] lark auto-create from non-prefix text (unbound thread): chatId=${chatId} thread=${threadId || '-'} title="${trimmed.slice(0, 80)}"`)
+          const w = startWizard({ channel, chatId, threadId, text: trimmed, messageId, rootMessageId, imagePaths, userId: fromUserId })
+          if (w.step === STEP_DONE) return await finalizeWizard(w)
+          if (w.step === STEP_QUADRANT) {
+            const p = buildQuadrantPrompt()
+            return {
+              reply: `任务: ${w.title}\n（目录已识别为 ${w.chosenWorkdir}）\n\n${p.text}`,
+              replyMarkup: p.replyMarkup,
+              action: 'wizard_started',
+            }
+          }
+          if (w.step === STEP_TEMPLATE) {
+            const tpls = db.listTemplates()
+            w.cachedTemplates = tpls
+            const p = buildTemplatePrompt(tpls)
+            return {
+              reply: `任务: ${w.title}\n（目录+象限已识别）\n\n${p.text}`,
+              replyMarkup: p.replyMarkup,
+              action: 'wizard_started',
+            }
+          }
+          const p = buildWorkdirPrompt(w.workdirOptions)
+          return {
+            reply: `任务: ${w.title}\n\n${p.text}`,
+            replyMarkup: p.replyMarkup,
+            action: 'wizard_started',
+          }
+        }
         return {
           reply: '没有找到对应运行中的任务',
           action: 'session_not_found',

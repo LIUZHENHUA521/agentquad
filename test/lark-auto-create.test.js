@@ -138,3 +138,25 @@ describe('lark no-prefix auto-create — fallback boundary', () => {
     expect(r.action).toBe('fallback')
   })
 })
+
+describe('lark no-prefix auto-create — unbound thread (notFound branch)', () => {
+  it('#2a lark 群里未绑 session 的 thread 首条消息 → 起 wizard', async () => {
+    const { wizard } = makeWizard()
+    const r = await wizard.handleInbound({
+      channel: 'lark', chatId: 'oc_grp', threadId: 'omt_new', rootMessageId: null,
+      messageId: 'm1', text: '登录功能不对劲',  // 非 NEW_TASK_TRIGGERS
+    })
+    expect(r.action).toBe('wizard_started')
+    expect(r.reply).toContain('登录功能不对劲')
+  })
+
+  it('#2b 同上但 autoCreateTodo=false → 保留原 "没有找到对应运行中的任务"', async () => {
+    const { wizard } = makeWizard({ autoCreateTodo: false })
+    const r = await wizard.handleInbound({
+      channel: 'lark', chatId: 'oc_grp', threadId: 'omt_new', rootMessageId: null,
+      messageId: 'm1', text: '没有匹配的普通文本',  // 非 NEW_TASK_TRIGGERS
+    })
+    expect(r.action).toBe('session_not_found')
+    expect(r.reply).toContain('没有找到对应运行中的任务')
+  })
+})
