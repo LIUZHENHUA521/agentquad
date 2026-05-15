@@ -682,6 +682,46 @@ body {
   cursor: pointer;
 }
 
+/* Live info badge — running / pending / idle 三态在 headline 中显示活动信号、
+   权限预览、上次活跃时间。终态卡片不渲染此元素，保持视觉一致。 */
+.todo-history-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-tertiary);
+  min-width: 0;
+  max-width: 320px;
+  white-space: nowrap;
+  overflow: hidden;
+  flex-shrink: 1;
+}
+
+.todo-history-live--running { color: var(--ai-running); }
+
+.todo-history-live--pending {
+  color: var(--ai-pending-confirm);
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
+  font: inherit;
+}
+.todo-history-live--pending:hover .todo-history-live-text {
+  text-decoration: underline;
+}
+
+.todo-history-live-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.todo-history-live-meta {
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+
 .todo-history-link:hover {
   color: color-mix(in srgb, var(--accent-electric) 80%, var(--text-primary));
 }

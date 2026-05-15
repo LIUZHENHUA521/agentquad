@@ -1,11 +1,11 @@
 import { useState } from 'react'
 import { Button, Tooltip, Dropdown, Popconfirm, Tag, Input } from 'antd'
-import { Plus, Trash2, Clock, Play, Code, Pencil, ChevronDown, ChevronRight, CornerDownLeft } from 'lucide-react'
+import { Plus, Trash2, Clock, Play, Code, Pencil, ChevronDown, ChevronRight, CornerDownLeft, AlertTriangle } from 'lucide-react'
 import { useSortable, SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import dayjs from 'dayjs'
 import { useTranslation } from 'react-i18next'
-import { updateTodo, type Todo, type AiTool, type StageTag } from '../../api'
+import { updateTodo, type Todo, type AiTool, type StageTag, type LiveSession } from '../../api'
 import { StageTagChip } from '../StageTagChip'
 import { AgentIcon } from '../AgentIcon'
 import { useAppMessages } from '../../design/useAppMessages'
@@ -15,6 +15,8 @@ import { useUnreadStore, isSessionUnread } from '../../store/unreadStore'
 import { useDispatchStore } from '../../store/dispatchStore'
 import { useFocusStore } from '../../store/focusStore'
 import { todoDndId } from '../../TodoManage'
+import { ActivitySparkline } from '../ActivitySparkline'
+import { formatRelativeShort } from '../../utils/time'
 
 function formatDate(ts: number | null) {
   if (!ts) return ''
@@ -285,6 +287,14 @@ export function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo =
                         {(sessionState !== 'idle' || liveSession) && (
                           <span className={`todo-ai-state todo-ai-state-${sessionState}`}>{AI_STATE_ICON[sessionState]()}{' '}{t(AI_STATE_LABEL_KEY[sessionState])}</span>
                         )}
+                        {liveSession && (sessionState === 'running' || sessionState === 'pending' || sessionState === 'idle') && (
+                          <LiveInfoBadge
+                            state={sessionState}
+                            sessionId={session.sessionId}
+                            liveSession={liveSession}
+                            onOpenFocus={() => useDispatchStore.getState().openFocus(todo.id, session.sessionId)}
+                          />
+                        )}
                         {session.localResume?.openedAt && (
                           <span
                             className="todo-history-resumed"
@@ -391,5 +401,71 @@ export function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo =
         )}
       </div>
     </div>
+  )
+}
+
+function truncatePromptText(text: string): string {
+  const firstLine = (text.split('\n')[0] || '').trim()
+  if (!firstLine) return ''
+  const chars = Array.from(firstLine)
+  if (chars.length <= 40) return firstLine
+  return chars.slice(0, 40).join('') + '…'
+}
+
+function LiveInfoBadge({
+  state,
+  sessionId,
+  liveSession,
+  onOpenFocus,
+}: {
+  state: 'running' | 'pending' | 'idle'
+  sessionId: string
+  liveSession: LiveSession
+  onOpenFocus: () => void
+}) {
+  const { t } = useTranslation(['todo'])
+  if (state === 'running') {
+    const lastOutputAt = liveSession.lastOutputAt
+    return (
+      <span className="todo-history-live todo-history-live--running" onClick={(e) => e.stopPropagation()}>
+        <ActivitySparkline sessionId={sessionId} width={56} height={14} />
+        {lastOutputAt ? (
+          <span className="todo-history-live-text">
+            {t('todo:card.liveActive', { ago: formatRelativeShort(Date.now() - lastOutputAt) })}
+          </span>
+        ) : null}
+      </span>
+    )
+  }
+  if (state === 'pending') {
+    const prompt = liveSession.permissionPrompt
+    const promptText = prompt?.text ? truncatePromptText(prompt.text) : ''
+    const waitingAgo = prompt?.createdAt
+      ? formatRelativeShort(Date.now() - prompt.createdAt)
+      : null
+    return (
+      <button
+        type="button"
+        className="todo-history-live todo-history-live--pending"
+        onClick={(e) => {
+          e.stopPropagation()
+          onOpenFocus()
+        }}
+        title={prompt?.text || ''}
+      >
+        <AlertTriangle size={12} aria-hidden />
+        {promptText ? <span className="todo-history-live-text">{promptText}</span> : null}
+        {waitingAgo ? <span className="todo-history-live-meta">{t('todo:card.liveWaiting', { ago: waitingAgo })}</span> : null}
+      </button>
+    )
+  }
+  const refTs = liveSession.lastTurnDoneAt || liveSession.startedAt
+  if (!refTs) return null
+  return (
+    <span className="todo-history-live todo-history-live--idle" onClick={(e) => e.stopPropagation()}>
+      <span className="todo-history-live-text">
+        {t('todo:card.liveLastActive', { ago: formatRelativeShort(Date.now() - refTs) })}
+      </span>
+    </span>
   )
 }
