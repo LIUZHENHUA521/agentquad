@@ -5,7 +5,8 @@
   background: var(--surface-2);
   border-radius: 8px;
   overflow: hidden;
-  min-height: calc(100vh - 220px);
+  /* 自动填满 TopbarDispatch 之下的剩余视口高度，待办少时也撑满屏幕 */
+  min-height: calc(100vh - var(--topbar-dispatch-h, 52px));
 }
 
 .todo-board-row {

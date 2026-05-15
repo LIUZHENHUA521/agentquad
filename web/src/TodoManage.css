@@ -197,7 +197,8 @@ body {
   background: var(--surface-2);
   border-radius: 8px;
   padding: 12px;
-  min-height: calc(100vh - 220px);
+  /* 与四象限视图保持一致：填满 TopbarDispatch 之下的剩余视口高度 */
+  min-height: calc(100vh - var(--topbar-dispatch-h, 52px));
 }
 
 .todo-priority-list {
