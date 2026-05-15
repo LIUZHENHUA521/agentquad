@@ -141,7 +141,8 @@ export function createOpenClawBridge({
 
   // 出站限流环形缓冲：每分钟 ≤ rateLimitPerMin 条
   const sendTimestamps = []
-  // sessionId → { targetUserId, account, channel }
+  // sessionId → Map<channel, route> —— 一个 session 可同时绑 telegram + lark + weixin
+  // Map 保留插入顺序，"最新注册的那条"可以靠遍历最后一个值拿到，用于无 channel hint 的 fallback。
   const sessionRoutes = new Map()
   // peerUserId → { sessionId, sentAt } — 最近一次推到该 peer 的 session
   // 用于 PTY stdin proxy：用户在微信回话时知道往哪个 PTY 写
@@ -169,18 +170,38 @@ export function createOpenClawBridge({
     sendTimestamps.push(nowMs())
   }
 
+  function getRoutesInner(sessionId) {
+    return sessionRoutes.get(sessionId) || null
+  }
+
+  function ensureRoutesInner(sessionId) {
+    let inner = sessionRoutes.get(sessionId)
+    if (!inner) {
+      inner = new Map()
+      sessionRoutes.set(sessionId, inner)
+    }
+    return inner
+  }
+
+  function allRoutesForSession(sessionId) {
+    const inner = getRoutesInner(sessionId)
+    return inner ? Array.from(inner.values()) : []
+  }
+
   function registerSessionRoute(sessionId, { targetUserId, account, channel, threadId, rootMessageId, topicName, triggerMessageId, messageAppLink } = {}) {
     if (!sessionId || !targetUserId) return
-    sessionRoutes.set(sessionId, {
+    const effectiveChannel = channel || getOpenClawConfig().channel || 'openclaw-weixin'
+    const route = {
       targetUserId,
       account: account || null,
-      channel: channel || getOpenClawConfig().channel || 'openclaw-weixin',
-      threadId: threadId != null ? threadId : null,    // ← Telegram Topic 路由用
+      channel: effectiveChannel,
+      threadId: threadId != null ? threadId : null,
       rootMessageId: rootMessageId || null,
-      topicName: topicName || null,                     // ← SessionEnd 改名 ✅ 用
-      triggerMessageId: triggerMessageId != null ? triggerMessageId : null,  // D 方案：reaction 加在用户触发消息上
+      topicName: topicName || null,
+      triggerMessageId: triggerMessageId != null ? triggerMessageId : null,
       messageAppLink: messageAppLink || null,
-    })
+    }
+    ensureRoutesInner(sessionId).set(effectiveChannel, route)
   }
 
   function clearSessionRoute(sessionId, reason = 'unknown') {
@@ -191,12 +212,20 @@ export function createOpenClawBridge({
   }
 
   function hasExplicitRoute(sessionId) {
-    return Boolean(sessionId && sessionRoutes.has(sessionId))
+    if (!sessionId) return false
+    const inner = sessionRoutes.get(sessionId)
+    return Boolean(inner && inner.size > 0)
   }
 
-  function resolveRoute(sessionId) {
-    const explicit = sessionRoutes.get(sessionId)
-    if (explicit) return explicit
+  function resolveRoute(sessionId, channel = null) {
+    const inner = getRoutesInner(sessionId)
+    if (inner && inner.size > 0) {
+      if (channel) return inner.get(channel) || null
+      // 无 channel hint：返回最新注册的（Map 保留插入顺序，最后一个 value 是 latest）
+      let last = null
+      for (const r of inner.values()) last = r
+      return last
+    }
     const oc = getOpenClawConfig()
     if (!oc.targetUserId) return null
     return {
@@ -220,7 +249,7 @@ export function createOpenClawBridge({
     if (!rateLimitOk()) return { ok: false, reason: 'rate_limited' }
 
     const oc = getOpenClawConfig()
-    const route = sessionId ? resolveRoute(sessionId) : null
+    const route = sessionId ? resolveRoute(sessionId, channel || null) : null
     const effectiveChannel = channel || route?.channel || oc.channel || 'openclaw-weixin'
     const rawTarget = target || route?.targetUserId || oc.targetUserId
     const effectiveTarget = normalizeTarget(rawTarget, effectiveChannel)
@@ -270,8 +299,8 @@ export function createOpenClawBridge({
         const threadIdForSend = route?.threadId || null
         // 防御兜底：sessionId-routed 但没拿到 thread → fallback 路径，不能静默落 General。
         // 仅当 caller 传了 sessionId 时启用（无 sessionId 是显式 broadcast，允许直发默认 chat）。
-        if (!threadIdForSend && sessionId && !sessionRoutes.has(sessionId)) {
-          logger.warn?.(`[openclaw-bridge] refuse send to telegram general: sid=${sessionId} has no registered route (routesSize=${sessionRoutes.size}); would have leaked to General. msgLen=${message.length}`)
+        if (!threadIdForSend && sessionId && !hasExplicitRoute(sessionId)) {
+          logger.warn?.(`[openclaw-bridge] refuse send to telegram general: sid=${sessionId} has no registered route (routesSize=${sessionRoutes.size}); would have leaked to General. msgLen=${message.length}`)  // sessionRoutes.size = outer Map size (number of sessions)
           return { ok: false, reason: 'no_thread_id_route_missing' }
         }
         logger.info?.(`[openclaw-bridge] telegram send sessionId=${sessionId} chatId=${effectiveTarget} threadId=${threadIdForSend} (route=${route ? JSON.stringify({tid: route.threadId, tn: route.topicName}) : 'null'}) attachment=${attachment ? 'yes' : 'no'} msgLen=${message.length}`)
@@ -446,12 +475,16 @@ export function createOpenClawBridge({
   function findSessionsByTarget(peer) {
     if (!peer) return []
     const out = []
-    for (const [sid, info] of sessionRoutes) {
-      // 同一个 peer 可能有多个 session；route 里 targetUserId 可能带或不带后缀
-      const tgt = info?.targetUserId || ''
-      if (tgt === peer || tgt.startsWith(peer + '@') || peer.startsWith(tgt + '@')) {
-        out.push(sid)
+    for (const [sid, inner] of sessionRoutes) {
+      let matched = false
+      for (const info of inner.values()) {
+        const tgt = info?.targetUserId || ''
+        if (tgt === peer || tgt.startsWith(peer + '@') || peer.startsWith(tgt + '@')) {
+          matched = true
+          break
+        }
       }
+      if (matched) out.push(sid)
     }
     return out
   }
@@ -480,15 +513,17 @@ export function createOpenClawBridge({
   function findSessionByRoute({ channel = null, chatId, threadId = null, rootMessageId = null } = {}) {
     if (!chatId) return null
     const targetStr = String(chatId)
-    for (const [sid, info] of sessionRoutes) {
-      if (channel && info?.channel !== channel) continue
-      if (String(info?.targetUserId || '') !== targetStr) continue
-      if (rootMessageId) {
-        if (info?.rootMessageId === rootMessageId) return sid
-        continue
+    for (const [sid, inner] of sessionRoutes) {
+      for (const info of inner.values()) {
+        if (channel && info?.channel !== channel) continue
+        if (String(info?.targetUserId || '') !== targetStr) continue
+        if (rootMessageId) {
+          if (info?.rootMessageId === rootMessageId) return sid
+          continue
+        }
+        if ((info?.threadId || null) !== (threadId || null)) continue
+        return sid
       }
-      if ((info?.threadId || null) !== (threadId || null)) continue
-      return sid
     }
     return null
   }
@@ -607,7 +642,13 @@ export function createOpenClawBridge({
   function setLarkBot(bot) { larkBot = bot || null }
   function setTopicGoneHandler(fn) { topicGoneHandler = typeof fn === 'function' ? fn : null }
   function listSessionRoutes() {
-    return Array.from(sessionRoutes.entries()).map(([sessionId, info]) => ({ sessionId, ...info }))
+    const out = []
+    for (const [sid, inner] of sessionRoutes) {
+      for (const route of inner.values()) {
+        out.push({ sessionId: sid, ...route })
+      }
+    }
+    return out
   }
 
   return {

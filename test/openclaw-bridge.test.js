@@ -929,3 +929,80 @@ describe('openclaw-bridge.broadcastEcho', () => {
     expect((await bridge.broadcastEcho({ message: 'm' })).skipped).toBe(true)
   })
 })
+
+describe('per-channel sessionRoutes', () => {
+  function makeBridge() {
+    return createOpenClawBridge({
+      getConfig: () => ({ openclaw: { channel: 'openclaw-weixin' } }),
+      spawnFn: vi.fn(),
+      logger: { warn() {}, info() {} },
+    })
+  }
+
+  it('registerSessionRoute 双 channel 同 sessionId → 不互相覆盖', () => {
+    const b = makeBridge()
+    b.registerSessionRoute('sid', { targetUserId: 'tg-user', channel: 'telegram', threadId: 7 })
+    b.registerSessionRoute('sid', { targetUserId: 'lk-user', channel: 'lark', rootMessageId: 'om_abc' })
+    const list = b.listSessionRoutes()
+    expect(list).toHaveLength(2)
+    expect(list.find(r => r.channel === 'telegram')?.threadId).toBe(7)
+    expect(list.find(r => r.channel === 'lark')?.rootMessageId).toBe('om_abc')
+  })
+
+  it('findSessionByRoute(channel=lark) 即使 telegram 后注册也能找到', () => {
+    const b = makeBridge()
+    b.registerSessionRoute('sid', { targetUserId: 'lk-user', channel: 'lark', rootMessageId: 'om_abc' })
+    b.registerSessionRoute('sid', { targetUserId: 'tg-user', channel: 'telegram', threadId: 7 })
+    const found = b.findSessionByRoute({ channel: 'lark', chatId: 'lk-user', rootMessageId: 'om_abc' })
+    expect(found).toBe('sid')
+  })
+
+  it('findSessionByRoute(channel=telegram) 对应通道独立', () => {
+    const b = makeBridge()
+    b.registerSessionRoute('sid', { targetUserId: 'lk-user', channel: 'lark', rootMessageId: 'om_abc' })
+    b.registerSessionRoute('sid', { targetUserId: 'tg-user', channel: 'telegram', threadId: 7 })
+    const found = b.findSessionByRoute({ channel: 'telegram', chatId: 'tg-user', threadId: 7 })
+    expect(found).toBe('sid')
+  })
+
+  it('resolveRoute(sid) 无 channel → 返回最后注册的那条', () => {
+    const b = makeBridge()
+    b.registerSessionRoute('sid', { targetUserId: 'lk-user', channel: 'lark', rootMessageId: 'om_abc' })
+    b.registerSessionRoute('sid', { targetUserId: 'tg-user', channel: 'telegram', threadId: 7 })
+    const r = b.resolveRoute('sid')
+    expect(r.channel).toBe('telegram')
+    expect(r.threadId).toBe(7)
+  })
+
+  it('resolveRoute(sid, channel) 取指定通道', () => {
+    const b = makeBridge()
+    b.registerSessionRoute('sid', { targetUserId: 'lk-user', channel: 'lark', rootMessageId: 'om_abc' })
+    b.registerSessionRoute('sid', { targetUserId: 'tg-user', channel: 'telegram', threadId: 7 })
+    expect(b.resolveRoute('sid', 'lark').rootMessageId).toBe('om_abc')
+    expect(b.resolveRoute('sid', 'telegram').threadId).toBe(7)
+    expect(b.resolveRoute('sid', 'weixin')).toBe(null)
+  })
+
+  it('hasExplicitRoute 任意通道存在即 true', () => {
+    const b = makeBridge()
+    expect(b.hasExplicitRoute('sid')).toBe(false)
+    b.registerSessionRoute('sid', { targetUserId: 'u', channel: 'telegram', threadId: 1 })
+    expect(b.hasExplicitRoute('sid')).toBe(true)
+  })
+
+  it('clearSessionRoute 清掉整个 session 的所有通道', () => {
+    const b = makeBridge()
+    b.registerSessionRoute('sid', { targetUserId: 'lk', channel: 'lark', rootMessageId: 'om' })
+    b.registerSessionRoute('sid', { targetUserId: 'tg', channel: 'telegram', threadId: 1 })
+    b.clearSessionRoute('sid', 'test')
+    expect(b.hasExplicitRoute('sid')).toBe(false)
+    expect(b.listSessionRoutes()).toEqual([])
+  })
+
+  it('findSessionsByTarget 同 sid 多通道只返回一次', () => {
+    const b = makeBridge()
+    b.registerSessionRoute('sid', { targetUserId: 'peer1', channel: 'telegram', threadId: 1 })
+    b.registerSessionRoute('sid', { targetUserId: 'peer1', channel: 'lark', rootMessageId: 'om' })
+    expect(b.findSessionsByTarget('peer1')).toEqual(['sid'])
+  })
+})
