@@ -62,6 +62,7 @@ import { useUnreadStore } from './store/unreadStore'
 import { useDrawerStackStore } from './store/drawerStackStore'
 import { useDrawerStack } from './hooks/useDrawerStack'
 import { useDispatchStore } from './store/dispatchStore'
+import { useDispatchTodoSets } from './design/useDispatchStats'
 import { useAppConfigStore } from './store/appConfigStore'
 import { TopbarDispatch } from './components/TopbarDispatch'
 import { QuadrantBoard, QuadrantZone, QUADRANT_CONFIG } from './components/QuadrantBoard'
@@ -176,6 +177,12 @@ export default function TodoManage() {
   const setBoardFilter = useDispatchStore((s) => s.setBoardFilter)
   const filterStatus: 'todo' | 'done' | '' = filterStatusRaw === 'all' ? '' : filterStatusRaw
   const setFilterStatus = (next: 'todo' | 'done' | '') => setBoardFilter(next === '' ? 'all' : next)
+  // AI-state filter from the topbar Running/Idle/Pending pills. Live derivation —
+  // todos drop out the moment their session leaves the matching state (e.g. user
+  // stops a running session, the card disappears from the 'running' view).
+  const aiStateFilter = useDispatchStore((s) => s.aiStateFilter)
+  const setAiStateFilter = useDispatchStore((s) => s.setAiStateFilter)
+  const aiStateTodoSets = useDispatchTodoSets()
   const [keyword, setKeyword] = useState('')
 
   // Drawer
@@ -335,6 +342,7 @@ export default function TodoManage() {
     setParentForCreate(parent)
     form.resetFields()
     const brainstormTpl = findBrainstormTemplate()
+    const defaultAutoStart = useAppConfigStore.getState().defaultAutoStartAi
     form.setFieldsValue({
       quadrant: parent?.quadrant ?? 1,
       workDir: parent?.workDir || undefined,
@@ -344,6 +352,7 @@ export default function TodoManage() {
       recurringMonthDays: [1],
       useTemplates: !!brainstormTpl,
       appliedTemplateIds: brainstormTpl ? [brainstormTpl.id] : [],
+      autoStartAi: defaultAutoStart,
     })
     setDrawerOpen(true)
   }, [findBrainstormTemplate, form])
@@ -362,13 +371,16 @@ export default function TodoManage() {
     // done todo while filter is 'todo'). Widen to 'all' and let this effect retry
     // once the refetched list renders. Bail out if we're already on 'all'/'done'
     // and still can't find it, to avoid an infinite loop.
+    // Also clear the topbar AI-state filter — a deliberate jump should always reach
+    // the target, even if the user left a Running/Idle/Pending pill active.
+    if (aiStateFilter) setAiStateFilter(null)
     if (lastFetchedFilter !== filterStatus) return
     if (filterStatus === 'todo') {
       setFilterStatus('')
       return
     }
     setJumpTo(null)
-  }, [jumpToTodoId, todos, filterStatus, lastFetchedFilter, setJumpTo])
+  }, [jumpToTodoId, todos, filterStatus, lastFetchedFilter, setJumpTo, aiStateFilter, setAiStateFilter])
 
   useEffect(() => {
     if (!newTodoSignal) return
@@ -546,16 +558,45 @@ export default function TodoManage() {
 
   const todosByQuadrant = useMemo(() => {
     const groups: Record<number, Todo[]> = { 1: [], 2: [], 3: [], 4: [] }
+    // When the topbar AI-state filter is active, a parent stays visible if itself
+    // or any of its children matches — so a running subtodo still surfaces its
+    // parent card (which is the only place the user can expand to reach it).
+    const aiSet = aiStateFilter ? aiStateTodoSets[aiStateFilter] : null
+    const matches = (t: Todo): boolean => {
+      if (!aiSet) return true
+      if (aiSet.has(t.id)) return true
+      const kids = childrenByParentId[t.id]
+      return !!kids && kids.some((c) => aiSet.has(c.id))
+    }
     for (const t of todos) {
       if (t.parentId) continue
+      if (!matches(t)) continue
       const q = t.quadrant || 4
       if (groups[q]) groups[q].push(t)
     }
+    // Sort each quadrant according to the active filter:
+    //   'done'  → most recently completed first (completedAt DESC, with updatedAt fallback for legacy rows)
+    //   'todo'  → manual sortOrder ASC
+    //   ''(all) → undone block (sortOrder ASC) on top, then done block (completedAt DESC)
+    const doneRank = (t: Todo) => t.completedAt || t.updatedAt || 0
     for (const q of Object.keys(groups)) {
-      groups[Number(q)].sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
+      const arr = groups[Number(q)]
+      if (filterStatus === 'done') {
+        arr.sort((a, b) => doneRank(b) - doneRank(a))
+      } else if (filterStatus === 'todo') {
+        arr.sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
+      } else {
+        arr.sort((a, b) => {
+          const aDone = a.status === 'done' ? 1 : 0
+          const bDone = b.status === 'done' ? 1 : 0
+          if (aDone !== bDone) return aDone - bDone
+          if (aDone === 1) return doneRank(b) - doneRank(a)
+          return (a.sortOrder || 0) - (b.sortOrder || 0)
+        })
+      }
     }
     return groups
-  }, [todos])
+  }, [todos, aiStateFilter, aiStateTodoSets, childrenByParentId, filterStatus])
 
   // ─── 按优先级扁平化（用于「优先级」视图） ───
   const priorityList = useMemo(() => {
@@ -650,12 +691,19 @@ export default function TodoManage() {
         setParentForCreate(null)
         fetchTodos()
       } else {
-        await createTodo(data)
+        const newTodo = await createTodo(data)
         message.success(parentForCreate ? t('todo:message.subtodoCreated') : t('todo:message.created'))
         setDrawerOpen(false)
         setEditingTodo(null)
         setParentForCreate(null)
-        fetchTodos()
+        if (values.autoStartAi) {
+          const tool = (useAppConfigStore.getState().defaultAiTool || 'claude') as AiTool
+          // handleAiExec 内部已处理 tool_missing 弹窗 / 错误提示 / fetchTodos —
+          // 若启动失败，todo 已创建并会被列表刷新带出来，用户可手动重启。
+          await handleAiExec(newTodo, tool)
+        } else {
+          fetchTodos()
+        }
       }
     } catch (e: any) {
       if (e?.message) message.error(e.message)
@@ -907,6 +955,13 @@ export default function TodoManage() {
     const { active, over } = event
     if (!over) return
 
+    // Done-only view is sorted by completedAt, so manual sortOrder writes would
+    // be invisible after the next render. Block the drop with a friendly hint.
+    if (filterStatus === 'done') {
+      message.info(t('todo:message.doneViewDragBlocked'))
+      return
+    }
+
     const activeParsed = parseTodoDndId(String(active.id))
     const overRawId = String(over.id)
     const overParsed = overRawId.startsWith('quadrant-') ? null : parseTodoDndId(overRawId)
@@ -1122,6 +1177,37 @@ export default function TodoManage() {
         <TelegramSyncButton />
       </div>
 
+      {aiStateFilter && (
+        <div className={`ai-state-filter-banner ai-state-filter-banner--${aiStateFilter}`}>
+          <span className="ai-state-filter-banner__dot" />
+          <span className="ai-state-filter-banner__text">
+            {t('todo:board.aiFilterActive', {
+              label: t(
+                aiStateFilter === 'pending'
+                  ? 'topbar:pendingLabel'
+                  : aiStateFilter === 'idle'
+                  ? 'topbar:statLabel.idle'
+                  : 'topbar:statLabel.running',
+              ),
+              count:
+                aiStateFilter === 'running'
+                  ? aiStateTodoSets.running.size
+                  : aiStateFilter === 'idle'
+                  ? aiStateTodoSets.idle.size
+                  : aiStateTodoSets.pending.size,
+            })}
+          </span>
+          <button
+            type="button"
+            className="ai-state-filter-banner__clear"
+            onClick={() => setAiStateFilter(null)}
+            data-testid="ai-state-filter-clear"
+          >
+            {t('todo:board.clearFilter')}
+          </button>
+        </div>
+      )}
+
       {viewMode === 'priority' ? (
         <Spin spinning={loading}>
           <DndContext
@@ -1271,6 +1357,20 @@ export default function TodoManage() {
               }}
             />
           </Form.Item>
+          {!editingTodo && (
+            <Form.Item noStyle shouldUpdate={(p, n) => p.recurring !== n.recurring}>
+              {({ getFieldValue }) => getFieldValue('recurring') ? null : (
+                <Form.Item
+                  name="autoStartAi"
+                  label={t('todo:form.autoStartAiLabel')}
+                  valuePropName="checked"
+                  extra={t('todo:form.autoStartAiExtra')}
+                >
+                  <Switch />
+                </Form.Item>
+              )}
+            </Form.Item>
+          )}
           <Form.Item name="useTemplates" label={t('todo:form.useTemplatesLabel')} valuePropName="checked" extra={t('todo:form.useTemplatesExtra')}>
             <Switch />
           </Form.Item>

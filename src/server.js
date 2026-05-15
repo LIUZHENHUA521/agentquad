@@ -369,21 +369,12 @@ function buildNativeResumeCommand(tool, nativeSessionId, tools = {}) {
 }
 
 function mergeToolConfig(currentTool = {}, nextTool = {}) {
-	const merged = {
+	// 用户字段即真理：直接合并，不再因为 command 变了就悄悄清空 bin。
+	// PTY 启动时 bin 为空会 fallback 到 command 名走 PATH 解析。
+	return {
 		...currentTool,
 		...nextTool,
 	};
-	const commandChanged =
-		nextTool.command !== undefined &&
-		nextTool.command !== (currentTool.command || "");
-	const binUnchanged =
-		nextTool.bin !== undefined && nextTool.bin === (currentTool.bin || "");
-
-	if (commandChanged && binUnchanged) {
-		merged.bin = "";
-	}
-
-	return merged;
 }
 
 function splitEditorPath(rawPath = "") {

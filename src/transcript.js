@@ -91,10 +91,23 @@ function parseClaudeJsonl(filePath) {
 }
 
 function findClaudeFile(cwd, nativeSessionId) {
-  if (!cwd || !nativeSessionId) return null
-  const projDir = join(CLAUDE_PROJECTS_DIR, claudeProjectHash(cwd))
-  const file = join(projDir, `${nativeSessionId}.jsonl`)
-  return existsSync(file) ? file : null
+  if (!nativeSessionId) return null
+  // 优先按 cwd 哈希命中预期路径（多数场景的 fast path）
+  if (cwd) {
+    const file = join(CLAUDE_PROJECTS_DIR, claudeProjectHash(cwd), `${nativeSessionId}.jsonl`)
+    if (existsSync(file)) return file
+  }
+  // 兜底：cwd 哈希漂移（symlink / 特殊字符 / Claude 内部规范化差异）时，按 UUID
+  // 全局唯一性遍历所有 project 目录。命中是确定的，不会误伤。
+  if (!existsSync(CLAUDE_PROJECTS_DIR)) return null
+  let entries
+  try { entries = readdirSync(CLAUDE_PROJECTS_DIR, { withFileTypes: true }) } catch { return null }
+  for (const dirent of entries) {
+    if (!dirent.isDirectory()) continue
+    const file = join(CLAUDE_PROJECTS_DIR, dirent.name, `${nativeSessionId}.jsonl`)
+    if (existsSync(file)) return file
+  }
+  return null
 }
 
 function findCodexFile(nativeSessionId) {

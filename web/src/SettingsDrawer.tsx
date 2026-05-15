@@ -138,7 +138,6 @@ export default function SettingsDrawer({ open, onClose }: Props) {
   const [form] = Form.useForm()
 
   const buildToolPatch = (tool: ToolKey, nextCommandValue: string, nextBinValue: string) => {
-    const meta = toolDiagnostics?.[tool]
     const parsedCommand = splitCommandLine(nextCommandValue.trim())
     const baseCommand = parsedCommand[0] || ''
     // 区分两种"args 看起来空"的语义：
@@ -149,21 +148,12 @@ export default function SettingsDrawer({ open, onClose }: Props) {
     const nextArgs = baseCommand
       ? parsedCommand.slice(1)
       : (config?.tools[tool].args || [])
-    const trimmedBin = nextBinValue.trim()
-    if (!meta) {
-      return {
-        command: baseCommand || config?.tools[tool].command || tool,
-        bin: trimmedBin,
-        args: nextArgs,
-      }
-    }
-    const nextCommand = baseCommand || tool
-    const nextBin = trimmedBin === meta.bin && meta.source !== 'config'
-      ? (meta.configuredBin || '')
-      : trimmedBin
+    // 用户输入即真理：bin 字段原样下发，空就空。
+    // 后端不再因为 command 变了而清空 bin，也不会用 `command -v` 自动补全；
+    // PTY 启动时 bin 为空会 fallback 到 command 名走 PATH 解析。
     return {
-      command: nextCommand,
-      bin: nextBin,
+      command: baseCommand || config?.tools[tool].command || tool,
+      bin: nextBinValue.trim(),
       args: nextArgs,
     }
   }
@@ -178,12 +168,16 @@ export default function SettingsDrawer({ open, onClose }: Props) {
           port: result.config.port,
           defaultCwd: result.config.defaultCwd,
           defaultPermissionMode: result.config.defaultPermissionMode || 'default',
+          defaultAutoStartAi: !!result.config.defaultAutoStartAi,
+          defaultAiTool: result.config.defaultAiTool || 'claude',
           claudeCommand: joinCommandLine(result.config.tools.claude.command, result.config.tools.claude.args),
-          claudeBin: result.config.tools.claude.bin,
+          // 表单 bin 字段绑定 configuredBin（用户字面存的值），不绑定 effectiveBin —
+          // 否则 env override（CLAUDE_BIN）展示出来的路径会被用户「按 Save」时不小心固化到 config。
+          claudeBin: result.toolDiagnostics.claude.configuredBin || '',
           codexCommand: joinCommandLine(result.config.tools.codex.command, result.config.tools.codex.args),
-          codexBin: result.config.tools.codex.bin,
+          codexBin: result.toolDiagnostics.codex.configuredBin || '',
           cursorCommand: joinCommandLine(result.config.tools.cursor.command, result.config.tools.cursor.args),
-          cursorBin: result.config.tools.cursor.bin,
+          cursorBin: result.toolDiagnostics.cursor.configuredBin || '',
           telegramEnabled: result.config.telegram?.enabled ?? false,
           telegramBotToken: result.config.telegram?.botTokenMasked || '',
           telegramSupergroupId: result.config.telegram?.supergroupId || '',
@@ -253,6 +247,8 @@ export default function SettingsDrawer({ open, onClose }: Props) {
         port: Number(values.port),
         defaultCwd: values.defaultCwd,
         defaultPermissionMode: values.defaultPermissionMode || 'default',
+        defaultAutoStartAi: !!values.defaultAutoStartAi,
+        defaultAiTool: (values.defaultAiTool as 'claude' | 'codex' | 'cursor') || 'claude',
         tools: {
           claude: buildToolPatch('claude', values.claudeCommand || '', values.claudeBin || ''),
           codex: buildToolPatch('codex', values.codexCommand || '', values.codexBin || ''),
@@ -326,16 +322,19 @@ export default function SettingsDrawer({ open, onClose }: Props) {
       setConfig(result.config)
       setToolDiagnostics(result.toolDiagnostics)
       useAppConfigStore.getState().setDefaultPermissionMode(result.config.defaultPermissionMode || null)
+      useAppConfigStore.getState().setDefaultAutoStartAi(!!result.config.defaultAutoStartAi)
+      useAppConfigStore.getState().setDefaultAiTool((result.config.defaultAiTool as 'claude' | 'codex' | 'cursor') || 'claude')
       setTokenSource((result.config.telegram?.botTokenSource as 'agentquad' | 'missing' | undefined) || 'missing')
       setTokenMasked(result.config.telegram?.botTokenMasked || '')
       setLarkSecretSource((result.config.lark?.appSecretSource as 'agentquad' | 'missing' | undefined) || 'missing')
       form.setFieldsValue({
         claudeCommand: joinCommandLine(result.config.tools.claude.command, result.config.tools.claude.args),
-        claudeBin: result.config.tools.claude.bin,
+        // 同样使用 configuredBin（用户字面值），不沾 env override 的 effectiveBin
+        claudeBin: result.toolDiagnostics.claude.configuredBin || '',
         codexCommand: joinCommandLine(result.config.tools.codex.command, result.config.tools.codex.args),
-        codexBin: result.config.tools.codex.bin,
+        codexBin: result.toolDiagnostics.codex.configuredBin || '',
         cursorCommand: joinCommandLine(result.config.tools.cursor.command, result.config.tools.cursor.args),
-        cursorBin: result.config.tools.cursor.bin,
+        cursorBin: result.toolDiagnostics.cursor.configuredBin || '',
         // normalizeConfig 会把默认 models 合回来（即使 UI 里被删也会复活），
         // 用保存后的 config 重置 pricingModels 保证和服务端一致
         pricingCnyRate: result.config.pricing.cnyRate,
@@ -376,31 +375,59 @@ export default function SettingsDrawer({ open, onClose }: Props) {
 
   const handleRedetectTool = async (tool: ToolKey) => {
     if (!config) return
+    // option C：用户输入即真理，后端不再静默 auto-fill bin。
+    // 「重新检测」作为用户的显式动作，两步：
+    //   1) 用 form 当前的 command + 空 bin 提交，让后端 inspect 跑 `command -v` 算出 effectiveBin
+    //   2) 把 effectiveBin 作为 configured bin 再保存一次落盘
+    // 找不到时只完成第 1 步（bin 留空），并提示。
     try {
-      const toolsPatch: any = {}
-      for (const t of TOOLS) {
-        if (t === tool) {
-          // 让后端按 command 重新探测 bin（清空 bin 字段）
-          toolsPatch[t] = {
-            command: config.tools[t].command || t,
-            bin: '',
-            args: config.tools[t].args || [],
+      const cmdField = `${tool}Command`
+      const binField = `${tool}Bin`
+      const rawCommand = String(form.getFieldValue(cmdField) || '').trim()
+      const parsedTokens = splitCommandLine(rawCommand)
+      const headCommand = parsedTokens[0] || config.tools[tool].command || tool
+      const headArgs = parsedTokens.length > 0
+        ? parsedTokens.slice(1)
+        : (config.tools[tool].args || [])
+
+      const buildPatchFor = (targetBin: string) => {
+        const patch: any = {}
+        for (const t of TOOLS) {
+          if (t === tool) {
+            patch[t] = { command: headCommand, bin: targetBin, args: headArgs }
+          } else {
+            patch[t] = buildToolPatch(
+              t,
+              form.getFieldValue(`${t}Command`) || config.tools[t].command || t,
+              form.getFieldValue(`${t}Bin`) || '',
+            )
           }
-        } else {
-          const cmdField = `${t}Command`
-          const binField = `${t}Bin`
-          toolsPatch[t] = buildToolPatch(
-            t,
-            form.getFieldValue(cmdField) || config.tools[t].command || t,
-            form.getFieldValue(binField) || config.tools[t].bin || '',
-          )
         }
+        return patch
       }
-      const result = await updateConfig({ tools: toolsPatch })
-      setConfig(result.config)
-      setToolDiagnostics(result.toolDiagnostics)
-      form.setFieldValue(`${tool}Command`, joinCommandLine(result.config.tools[tool].command, result.config.tools[tool].args))
-      form.setFieldValue(`${tool}Bin`, result.config.tools[tool].bin)
+
+      // Step 1: 探测
+      const probeResult = await updateConfig({ tools: buildPatchFor('') })
+      const probedMeta = probeResult.toolDiagnostics?.[tool]
+      const detected = probedMeta?.bin || ''
+      // detectBinary 找不到时返回原 command 名（非绝对路径），视作未命中
+      const found = detected && detected !== headCommand && detected.startsWith('/')
+
+      if (!found) {
+        setConfig(probeResult.config)
+        setToolDiagnostics(probeResult.toolDiagnostics)
+        form.setFieldValue(cmdField, joinCommandLine(probeResult.config.tools[tool].command, probeResult.config.tools[tool].args))
+        form.setFieldValue(binField, '')
+        message.warning(t('settings:tools.redetectOk', { tool }))
+        return
+      }
+
+      // Step 2: 把 detected 当作 configured bin 落盘
+      const finalResult = await updateConfig({ tools: buildPatchFor(detected) })
+      setConfig(finalResult.config)
+      setToolDiagnostics(finalResult.toolDiagnostics)
+      form.setFieldValue(cmdField, joinCommandLine(finalResult.config.tools[tool].command, finalResult.config.tools[tool].args))
+      form.setFieldValue(binField, finalResult.toolDiagnostics[tool].configuredBin || '')
       message.success(t('settings:tools.redetectOk', { tool }))
     } catch (e: any) {
       message.error(e?.message || t('settings:tools.redetectFailed'))
@@ -556,6 +583,32 @@ export default function SettingsDrawer({ open, onClose }: Props) {
               <Radio.Button value="default">{t('settings:general.permission.default')}</Radio.Button>
               <Radio.Button value="acceptEdits">{t('settings:general.permission.acceptEdits')}</Radio.Button>
               <Radio.Button value="bypass">{t('settings:general.permission.bypass')}</Radio.Button>
+            </Radio.Group>
+          </Form.Item>
+
+          <Form.Item
+            name="defaultAutoStartAi"
+            label={t('settings:general.autoStartAiLabel')}
+            extra={t('settings:general.autoStartAiExtra')}
+            valuePropName="checked"
+          >
+            <Switch />
+          </Form.Item>
+
+          <Form.Item
+            name="defaultAiTool"
+            label={t('settings:general.defaultAiToolLabel')}
+            extra={t('settings:general.defaultAiToolExtra')}
+          >
+            <Radio.Group>
+              {(['claude', 'codex', 'cursor'] as const).map((tool) => (
+                <Radio.Button key={tool} value={tool}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    <AgentIcon tool={tool} />
+                    {TOOL_LABEL[tool]}
+                  </span>
+                </Radio.Button>
+              ))}
             </Radio.Group>
           </Form.Item>
         </div>

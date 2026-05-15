@@ -192,7 +192,8 @@ export function FocusSubbar({
                 : 'default'
               }
               style={{
-                fontSize: 11, lineHeight: '18px', margin: 0, padding: '0 8px',
+                fontSize: 11, lineHeight: 1, margin: 0, padding: '0 9px',
+                height: 28, display: 'inline-flex', alignItems: 'center', gap: 4,
                 cursor: autoModeController.switching ? 'wait' : 'pointer',
                 userSelect: 'none',
                 opacity: autoModeController.switching ? 0.6 : 1,
@@ -200,17 +201,19 @@ export function FocusSubbar({
             >
               {autoModeController.switching ? (
                 <>
-                  <Spin size="small" style={{ marginRight: 4 }} />
+                  <Spin size="small" />
                   {t('session:terminal.toolbar.switching')}
                 </>
               ) : (
                 <>
-                  {autoModeController.autoMode === 'bypass'
-                    ? t('session:terminal.toolbar.autoMode.tagBypass')
-                    : autoModeController.autoMode === 'acceptEdits'
-                      ? t('session:terminal.toolbar.autoMode.tagAcceptEdits')
-                      : t('session:terminal.toolbar.autoMode.tagDefault')}
-                  {' '}<DownOutlined style={{ fontSize: 8 }} />
+                  <span>
+                    {autoModeController.autoMode === 'bypass'
+                      ? t('session:terminal.toolbar.autoMode.tagBypass')
+                      : autoModeController.autoMode === 'acceptEdits'
+                        ? t('session:terminal.toolbar.autoMode.tagAcceptEdits')
+                        : t('session:terminal.toolbar.autoMode.tagDefault')}
+                  </span>
+                  <DownOutlined style={{ fontSize: 8 }} />
                 </>
               )}
             </Tag>
@@ -235,7 +238,7 @@ export function FocusSubbar({
                 loading={resuming}
                 disabled={!resumeEnabled}
                 onClick={handleResume}
-                style={{ height: 22, paddingInline: 10 }}
+                style={{ height: 28, paddingInline: 10 }}
               >
                 {t('session:focusSubbar.resume')}
               </Button>

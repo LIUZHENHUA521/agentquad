@@ -217,12 +217,6 @@ function runtimeBinOverride(name) {
 	return process.env[`${name.toUpperCase()}_BIN`] || null;
 }
 
-function isStaleLegacyBin(name, configuredCommand, configuredBin, detectedBin) {
-	if (!configuredCommand || !configuredBin) return false;
-	if (configuredBin === detectedBin) return false;
-	return basename(configuredBin) === name;
-}
-
 function getToolMetadata(name, tools = {}) {
 	const normalizedTool = normalizeToolConfig(name, tools?.[name], {
 		applyDefaultCommand: false,
@@ -232,12 +226,9 @@ function getToolMetadata(name, tools = {}) {
 	const configuredBin = normalizedTool.bin || null;
 	const effectiveCommand = configuredCommand || defaultToolCommand(name);
 	const detectedBin = detectBinary(effectiveCommand);
-	const staleLegacyBin = isStaleLegacyBin(
-		name,
-		configuredCommand,
-		configuredBin,
-		detectedBin,
-	);
+	// effectiveBin 与 PTY 实际启动顺序保持一致：env override > 用户字面 bin > PATH 探测兜底。
+	// 不再用 basename 启发式自动改写用户的字面值（option C：用户输入即真理）。
+	const effectiveBin = envBin || configuredBin || detectedBin;
 	const source = envBin
 		? "env"
 		: configuredBin
@@ -253,8 +244,7 @@ function getToolMetadata(name, tools = {}) {
 		configuredCommand: configuredCommand || null,
 		effectiveCommand,
 		configuredBin,
-		effectiveBin:
-			envBin || (staleLegacyBin ? detectedBin : configuredBin) || detectedBin,
+		effectiveBin,
 		args: normalizedTool.args,
 		source,
 		installHint: TOOL_INSTALL_HINTS[name] || null,
@@ -266,12 +256,16 @@ export function resolveToolsConfig(tools = {}) {
 	const out = {};
 	for (const name of SUPPORTED_TOOLS) {
 		const normalized = normalizeToolConfig(name, tools[name]);
-		const meta = getToolMetadata(name, { ...tools, [name]: normalized });
+		// 不再用 `command -v` 自动填充 bin —— 用户输入即真理。
+		// 仍保留 env override（<TOOL>_BIN，runtime 调试用），优先级高于配置文件，
+		// 但绝不写回 config.json。
+		// PTY 启动时 bin 为空会 fallback 到 command 名走 PATH 解析。
+		const envBin = runtimeBinOverride(name);
 		out[name] = {
 			...normalized,
-			command: meta.effectiveCommand,
-			bin: meta.effectiveBin,
-			args: meta.args,
+			command: normalized.command || defaultToolCommand(name),
+			bin: envBin || normalized.bin || "",
+			args: normalized.args,
 		};
 	}
 	return out;
@@ -281,10 +275,13 @@ export function inspectToolsConfig(tools = {}) {
 	const resolved = resolveToolsConfig(tools);
 	const out = {};
 	for (const name of SUPPORTED_TOOLS) {
+		const meta = getToolMetadata(name, tools);
 		out[name] = {
-			...getToolMetadata(name, tools),
+			...meta,
 			command: resolved[name].command,
-			bin: resolved[name].bin,
+			// 诊断行"当前有效路径"显示的是 envBin / configuredBin / detectedBin 三路兜底的值，
+			// 让用户能看到 PATH 探测会落到哪里；这里跟 resolved.bin（仅用户字面值）刻意分开。
+			bin: meta.effectiveBin,
 		};
 	}
 	return out;
@@ -313,6 +310,11 @@ function defaultConfig() {
 		host: "127.0.0.1",
 		defaultCwd: homedir(),
 		defaultPermissionMode: "default",
+		// 新建待办时是否默认勾选「创建后自动启动 AI 终端」。
+		// Drawer 上的开关仍可单次覆盖；这里只是默认值。
+		defaultAutoStartAi: false,
+		// 自动启动 / dispatch / 顶栏 ⌘K 等场景下使用的默认 AI 工具。
+		defaultAiTool: "claude",
 		tools: resolveToolsConfig(),
 		webhook: { ...DEFAULT_WEBHOOK_CONFIG },
 		openclaw: {
@@ -372,10 +374,14 @@ export function normalizeConfig(cfg = {}) {
 		};
 		finalTools[name] = normalizeToolConfig(name, mergedTools[name]);
 	}
+	const rawDefaultAiTool = typeof cfg.defaultAiTool === "string" ? cfg.defaultAiTool.trim() : "";
+	const defaultAiTool = SUPPORTED_TOOLS.includes(rawDefaultAiTool) ? rawDefaultAiTool : defaults.defaultAiTool;
 	return {
 		...defaults,
 		...cfgRest,
 		defaultPermissionMode: normalizePermissionMode(cfg.defaultPermissionMode, "default"),
+		defaultAutoStartAi: !!cfg.defaultAutoStartAi,
+		defaultAiTool,
 		tools: {
 			...mergedTools,
 			...finalTools,

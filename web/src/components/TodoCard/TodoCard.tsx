@@ -231,8 +231,8 @@ export function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo =
                     }}
                   >
                     <div className="todo-history-body">
-                      {editingLabelSessionId === session.sessionId ? (
-                        <div style={{ display: 'flex', gap: 4, marginBottom: 4 }} onClick={(e) => e.stopPropagation()}>
+                      <div className="todo-history-headline">
+                        {editingLabelSessionId === session.sessionId ? (
                           <Input
                             size="small"
                             value={editingLabelText}
@@ -245,32 +245,38 @@ export function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo =
                               onUpdateSessionLabel(todo, session, editingLabelText)
                               setEditingLabelSessionId(null)
                             }}
+                            onClick={(e) => e.stopPropagation()}
                             placeholder={t('todo:card.sessionLabelPlaceholder')}
                             autoFocus
-                            style={{ flex: 1, fontSize: 11 }}
+                            style={{ width: 160, height: 22, fontSize: 11 }}
                           />
-                        </div>
-                      ) : session.label ? (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 2 }}>
-                          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={session.label}>
-                            {session.label}
-                          </span>
-                          <button
-                            type="button"
-                            className="todo-history-link"
+                        ) : session.label ? (
+                          <Tag
+                            className="todo-history-label"
                             onClick={(e) => {
                               e.stopPropagation()
                               setEditingLabelSessionId(session.sessionId)
                               setEditingLabelText(session.label || '')
                             }}
                             title={t('todo:card.editLabelTooltip')}
-                            style={{ flexShrink: 0 }}
+                            style={{ cursor: 'pointer', margin: 0, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                          >
+                            {session.label}
+                          </Tag>
+                        ) : (
+                          <Tag
+                            className="todo-history-label-empty"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setEditingLabelSessionId(session.sessionId)
+                              setEditingLabelText('')
+                            }}
+                            title={t('todo:card.editLabelTooltip')}
+                            style={{ cursor: 'pointer', margin: 0, borderStyle: 'dashed', display: 'inline-flex', alignItems: 'center' }}
                           >
                             <Pencil size={10} />
-                          </button>
-                        </div>
-                      ) : null}
-                      <div className="todo-history-headline">
+                          </Tag>
+                        )}
                         <span className="todo-history-tool">
                           <AgentIcon tool={session.tool} />
                           {toolDisplayName(session.tool)}
@@ -304,21 +310,6 @@ export function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo =
                       className="todo-history-actions"
                       onClick={(e) => e.stopPropagation()}
                     >
-                      {!session.label && editingLabelSessionId !== session.sessionId && (
-                        <button
-                          type="button"
-                          className="todo-history-link"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            setEditingLabelSessionId(session.sessionId)
-                            setEditingLabelText('')
-                          }}
-                          title={t('todo:card.editLabelTooltip')}
-                          style={{ display: 'inline-flex', alignItems: 'center', flexShrink: 0 }}
-                        >
-                          <Pencil size={10} />
-                        </button>
-                      )}
                       {nativeSessionId && (
                         <button
                           type="button"

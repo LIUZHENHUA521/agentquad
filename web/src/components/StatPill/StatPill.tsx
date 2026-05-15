@@ -17,6 +17,8 @@ export interface StatPillProps {
   tooltip?: React.ReactNode
   /** Click handler (e.g., jump to a related view) */
   onClick?: () => void
+  /** When true, render as selected (used by topbar AI-state filter). */
+  active?: boolean
   /** Test hook */
   'data-testid'?: string
 }
@@ -30,15 +32,18 @@ export function StatPill(props: StatPillProps) {
     label,
     tooltip,
     onClick,
+    active,
   } = props
 
   const isBuiltinIcon = icon === 'dot' || icon === 'pulse-dot' || icon === 'arrow'
 
   return (
     <div
-      className={`stat-pill stat-pill-${variant}${onClick ? ' stat-pill-clickable' : ''}`}
+      className={`stat-pill stat-pill-${variant}${onClick ? ' stat-pill-clickable' : ''}${active ? ' stat-pill-active' : ''}`}
+      style={active && iconColor ? ({ ['--stat-pill-active-color' as any]: iconColor } as React.CSSProperties) : undefined}
       onClick={onClick}
       data-testid={props['data-testid']}
+      aria-pressed={onClick ? !!active : undefined}
     >
       {icon === 'dot' && (
         <span className="stat-pill-dot" style={iconColor ? { background: iconColor } : undefined} />

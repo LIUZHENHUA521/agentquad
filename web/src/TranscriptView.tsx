@@ -19,6 +19,7 @@ import { useUnreadStore, isSessionUnread } from './store/unreadStore'
 import { useAiSessionStore } from './store/aiSessionStore'
 import { useDispatchStore } from './store/dispatchStore'
 import { useAppConfigStore } from './store/appConfigStore'
+import { readDraft, writeDraft, clearDraft, migrateDraft } from './composerDraft'
 
 interface Props {
   todoId: string
@@ -448,6 +449,9 @@ const TurnItem = React.memo(function TurnItem({ turn, index, keyword, canFork, c
     <div className={`tv-row ${isUser ? 'tv-row-user' : 'tv-row-assistant'} ${meta.cls}`} data-turn-index={index}>
       <span className={`tv-dot ${isUser ? 'tv-dot-user' : 'tv-dot-assistant'}`} aria-hidden />
       <div className="tv-row-content">
+        <div className={`tv-role-label ${isUser ? 'tv-role-label-user' : 'tv-role-label-assistant'}`}>
+          {meta.label}
+        </div>
         {body}
         <div className="tv-row-meta">
           {turn.timestamp && (
@@ -626,7 +630,7 @@ export default function TranscriptView({ todoId, sessionId, onFork, autoRefreshM
   const [searchIdx, setSearchIdx] = useState(0)
   const [collapsedTools, setCollapsedTools] = useState<Record<number, boolean>>({})
   const [allToolsCollapsed, setAllToolsCollapsed] = useState(true)
-  const [composer, setComposer] = useState('')
+  const [composer, setComposer] = useState(() => readDraft(todoId, sessionId)?.text ?? '')
   const [optimisticTurns, setOptimisticTurns] = useState<LocalTurn[]>([])
   // 用户点了"自定义答复"折叠卡片后，记录被折叠的那一轮 permissionPrompt.createdAt。
   // 后端再次广播同一轮（createdAt 没变）就保持折叠；新一轮（createdAt 变了）卡片重新出现。
@@ -657,6 +661,16 @@ export default function TranscriptView({ todoId, sessionId, onFork, autoRefreshM
   // —— 否则之前用户只能看到一行轻提示，文字框里没有任何反馈
   const imageCounterRef = useRef(0)
   const composerImagesRef = useRef<Map<string, string>>(new Map())
+  // 初始化时从 localStorage 恢复图片占位符映射 + 计数器（与 composer 文本同源 draft）
+  const draftInitRef = useRef(false)
+  if (!draftInitRef.current) {
+    draftInitRef.current = true
+    const draft = readDraft(todoId, sessionId)
+    if (draft) {
+      draft.images.forEach(({ placeholder, path }) => composerImagesRef.current.set(placeholder, path))
+      imageCounterRef.current = draft.counter
+    }
+  }
 
   const onDragStart = useCallback((e: React.MouseEvent | React.TouchEvent) => {
     e.preventDefault()
@@ -685,6 +699,16 @@ export default function TranscriptView({ todoId, sessionId, onFork, autoRefreshM
     // rebrand: localStorage key kept for backward compatibility
     try { localStorage.setItem('quadtodo.transcriptHeight', String(height)) } catch { /* ignore */ }
   }, [height])
+
+  // composer 草稿持久化：同步写入（不 debounce）。
+  // 为什么不 debounce：恢复会话时 migrateDraft 在 React 提交 effect 之前读 localStorage——
+  // 如果有 200ms 延迟，用户敲完字立刻点恢复就会读到空草稿，迁移失败、文本丢失。
+  // localStorage.setItem 对几 KB 文本是亚毫秒级，没必要异步。
+  // 粘贴图片会先 setComposer 触发再渲染，所以这里读取 composerImagesRef 拿到最新映射。
+  useEffect(() => {
+    const images = Array.from(composerImagesRef.current.entries()).map(([placeholder, path]) => ({ placeholder, path }))
+    writeDraft(todoId, sessionId, { text: composer, images, counter: imageCounterRef.current })
+  }, [composer, todoId, sessionId])
 
   useEffect(() => {
     dataRef.current = data
@@ -727,7 +751,16 @@ export default function TranscriptView({ todoId, sessionId, onFork, autoRefreshM
     dataRef.current = null
     setData(null)
     setError(null)
-    setComposer('')
+    // 切 session 时不直接清空 composer，而是恢复目标 session 的草稿（与首屏 lazy init 一致）
+    const nextDraft = readDraft(todoId, sessionId)
+    setComposer(nextDraft?.text ?? '')
+    composerImagesRef.current = new Map()
+    if (nextDraft) {
+      nextDraft.images.forEach(({ placeholder, path }) => composerImagesRef.current.set(placeholder, path))
+      imageCounterRef.current = nextDraft.counter
+    } else {
+      imageCounterRef.current = 0
+    }
     setOptimisticTurns([])
     setCollapsedTools({})
     setAllToolsCollapsed(true)
@@ -737,9 +770,8 @@ export default function TranscriptView({ todoId, sessionId, onFork, autoRefreshM
     setUnreadCount(0)
     prevCountRef.current = 0
     setLiveOutput(null)
-    imageCounterRef.current = 0
     void fetchData('reset')
-  }, [fetchData])
+  }, [fetchData, todoId, sessionId])
 
   // SSE 推流订阅（运行中会话），失败 5s 重连一次，仍失败则降级为轮询
   // 关键：仅在 Chat tab 激活时才开 SSE —— 否则每个运行中的 session 永远挂一条 SSE，
@@ -1053,12 +1085,16 @@ export default function TranscriptView({ todoId, sessionId, onFork, autoRefreshM
       resumeNativeId: resumeTarget.nativeSessionId,
       permissionMode: permissionMode || undefined,
     })
+    // 把当前 sessionId 下的草稿迁到新 sessionId，否则下一次 session-switch effect 会读到空 draft
+    // 把用户的输入冲掉。必须在 onSessionRecovered 之前调用——parent 一接到回调就把 sessionId
+    // prop 换掉触发我们 effect 重读。
+    migrateDraft(todoId, sessionId, nextSessionId)
     onSessionRecovered?.(nextSessionId)
     // 刷新 todo 列表，新 recover 出来的 session 才会同步进 todo.aiSessions / todo.aiSession，
     // 否则关掉 focus 再从 todo card 点回来会进到历史会话。
     useDispatchStore.getState().signal('refreshTodos')
     return nextSessionId
-  }, [onSessionRecovered, resumeTarget, t])
+  }, [onSessionRecovered, resumeTarget, t, todoId, sessionId])
 
   const sendSessionInput = useCallback(async (payload: string, optimisticText?: string) => {
     const optimisticId = optimisticText
@@ -1117,13 +1153,16 @@ export default function TranscriptView({ todoId, sessionId, onFork, autoRefreshM
     try {
       await sendSessionInput(`${payloadText}\r`, text)
       usedPlaceholders.forEach((placeholder) => composerImagesRef.current.delete(placeholder))
+      // 发送成功：立刻删 key，防 debounce 把"空 composer"的空 entry 又写回去。
+      // composerImagesRef 已被清掉本轮用过的占位符，残留的（未引用的图）也直接连同 key 清掉。
+      clearDraft(todoId, sessionId)
     } catch (e: any) {
       setComposer(text)
       message.error(e?.message || t('transcript:error.sendFailed'))
     } finally {
       setSending(false)
     }
-  }, [composer, message, sendSessionInput, t])
+  }, [composer, message, sendSessionInput, t, todoId, sessionId])
 
   /**
    * 粘贴图片：上传成本地文件，发送时把 [Image #N] 占位符替换成 Claude/Codex

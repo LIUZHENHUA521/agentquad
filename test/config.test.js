@@ -110,8 +110,9 @@ describe("config", () => {
 		const { loadConfig, getConfigValue } = await import("../src/config.js");
 		loadConfig({ rootDir: tmpRoot });
 		expect(getConfigValue("port", { rootDir: tmpRoot })).toBe(5677);
+		// 默认 config 不再 `command -v` 自动填充 bin —— 用 command 作为非空兜底字段断言
 		expect(
-			getConfigValue("tools.claude.bin", { rootDir: tmpRoot }),
+			getConfigValue("tools.claude.command", { rootDir: tmpRoot }),
 		).toBeTruthy();
 	});
 
@@ -161,7 +162,9 @@ describe("config", () => {
 		expect(result.codex.installHint).toContain("@openai/codex");
 	});
 
-	it("resolveToolsConfig ignores a stale legacy claude bin when command changed", async () => {
+	it("resolveToolsConfig preserves user-configured bin verbatim (no auto-detect)", async () => {
+		// option C 语义：用户字面 bin 即真理，不再用 `command -v` 自动改写。
+		// 即便 basename(bin) 看起来与默认 tool 名一致，也保留用户原值。
 		const { resolveToolsConfig } = await import("../src/config.js");
 		const result = resolveToolsConfig({
 			claude: {
@@ -172,7 +175,7 @@ describe("config", () => {
 		});
 
 		expect(result.claude.command).toBe("node");
-		expect(result.claude.bin).not.toBe("/tmp/claude");
+		expect(result.claude.bin).toBe("/tmp/claude");
 	});
 
 	it("loadConfig preserves legacy webhook config compatibility", async () => {

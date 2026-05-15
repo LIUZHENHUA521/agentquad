@@ -64,6 +64,7 @@ const TUI_ALERT_COOLDOWN_MS = 30_000
 const CLAUDE_SESSION_RE = /claude\s+--resume\s+([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/
 const CODEX_SESSION_RE = /codex\s+resume\s+([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/
 const CODEX_ROLLOUT_FILE_RE = /^rollout-.*-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/
+const CLAUDE_JSONL_FILE_RE = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/
 const MAX_LOG_BYTES = 512 * 1024
 const CODEX_SESSIONS_DIR = join(homedir(), '.codex', 'sessions')
 
@@ -139,6 +140,44 @@ function detectCodexSessionFromFs(afterMs) {
         }
       }
     } catch { /* ignore one bad dir, keep scanning others */ }
+  }
+  return newest
+}
+
+// Claude 把 JSONL 写到 ~/.claude/projects/<cwd-hash>/<uuid>.jsonl。我们在 spawn
+// 时通过 --session-id <presetClaudeId> 把 UUID 推下去，理想情况下 Claude 会用这个
+// UUID 写文件，session.nativeId 直接对得上。
+//
+// 但部分代理 / wrapper（mira / trae 之类）会再 spawn 一次 claude、丢掉 --session-id，
+// 或自家 fork 不识别这个 flag → Claude 用自己生成的 UUID 写 JSONL → session.nativeId
+// 与磁盘上不一致 → loadTranscript 找不到文件 → 兜底成 PTY raw → Conversation
+// 整段 banner 塌掉。
+//
+// 形态对齐 detectCodexSessionFromFs：扫所有 project 目录里 mtime > spawnTime 的
+// <uuid>.jsonl，挑最新一个的 UUID。命中后由 _setNativeId 去重 + 覆盖。
+function detectClaudeSessionFromFs(afterMs) {
+  if (!existsSync(CLAUDE_PROJECTS_DIR)) return null
+  let dirs
+  try { dirs = readdirSync(CLAUDE_PROJECTS_DIR, { withFileTypes: true }) } catch { return null }
+  let newest = null
+  let newestTime = 0
+  for (const dirent of dirs) {
+    if (!dirent.isDirectory()) continue
+    const projDir = join(CLAUDE_PROJECTS_DIR, dirent.name)
+    let files
+    try { files = readdirSync(projDir) } catch { continue }
+    for (const f of files) {
+      const m = f.match(CLAUDE_JSONL_FILE_RE)
+      if (!m) continue
+      try {
+        const st = statSync(join(projDir, f))
+        const t = st.birthtimeMs || st.ctimeMs
+        if (t > afterMs && t > newestTime) {
+          newest = m[1]
+          newestTime = t
+        }
+      } catch { /* ignore */ }
+    }
   }
   return newest
 }
@@ -449,9 +488,11 @@ export class PtyManager extends EventEmitter {
     // cursor-agent 没有 --session-id 预置，但有 `cursor-agent create-chat` 异步建会话拿 chatId。
     // 新会话先异步跑 create-chat，拿到 chatId 后在 startWithSize() 里用 --resume 进交互模式。
     // create-chat 失败就降级（无 nativeId，直接传 prompt）。
+    // bin 为空时 fallback 到 command 名，让 execFile / spawn 走 PATH 解析。
+    const spawnFile = (toolCfg.bin && String(toolCfg.bin).trim()) || toolCfg.command
     let cursorChatPromise = null
     if (tool === 'cursor' && !resumeNativeId) {
-      cursorChatPromise = createCursorChatAsync(toolCfg.bin)
+      cursorChatPromise = createCursorChatAsync(spawnFile)
     }
     const cursorResumeId = tool === 'cursor' ? resumeNativeId : null
 
@@ -533,6 +574,7 @@ export class PtyManager extends EventEmitter {
         effectiveCwd,
         toolCfg,
         tool,
+        spawnFile,
         resumeNativeId: resumeNativeId || null,
         _baseArgs: [...baseArgs],
         _permissionArgs: [...permissionArgs],
@@ -572,14 +614,14 @@ export class PtyManager extends EventEmitter {
 
     const spec = session.spawnSpec
     if (!spec) throw new Error(`session ${sessionId} has no spawnSpec (was it created?)`)
-    const { args, env, effectiveCwd, toolCfg, tool } = spec
+    const { args, env, effectiveCwd, toolCfg, tool, spawnFile } = spec
     const { resumeNativeId } = spec
 
-    console.log(`[pty] starting ${tool} bin=${toolCfg.bin} cwd=${effectiveCwd} args=${JSON.stringify(args)} cols=${cols} rows=${rows}`)
+    console.log(`[pty] starting ${tool} spawnFile=${spawnFile} (configured bin=${toolCfg.bin || '<empty>'}) cwd=${effectiveCwd} args=${JSON.stringify(args)} cols=${cols} rows=${rows}`)
 
     let proc
     try {
-      proc = this.ptyFactory(toolCfg.bin, args, {
+      proc = this.ptyFactory(spawnFile, args, {
         name: 'xterm-256color',
         cols,
         rows,
@@ -594,7 +636,7 @@ export class PtyManager extends EventEmitter {
         try { if (existsSync(session.mcpConfigPath)) unlinkSync(session.mcpConfigPath) } catch { /* ignore */ }
       }
       this.sessions.delete(sessionId)
-      error.message = `PTY spawn failed for ${tool} (bin=${toolCfg.bin}, cwd=${effectiveCwd}, args=${JSON.stringify(args)}): ${error.message}`
+      error.message = `PTY spawn failed for ${tool} (spawnFile=${spawnFile}, cwd=${effectiveCwd}, args=${JSON.stringify(args)}): ${error.message}`
       throw error
     }
     session.proc = proc
@@ -664,6 +706,39 @@ export class PtyManager extends EventEmitter {
           session.detectTimer = null
         } else if (detectAttempts === 1 || detectAttempts === 5 || detectAttempts === 15) {
           console.log(`[codex-detect] poll attempt=${detectAttempts} no match yet`)
+        }
+      }, 400)
+      session.detectTimer.unref?.()
+    }
+
+    // Claude 新会话：虽然 spawn 时已经传了 --session-id <presetClaudeId> 把 UUID
+    // 推下去（session.nativeId 也立刻设上），但代理/wrapper（mira / trae 等）会
+    // 在转发链路里丢掉 --session-id 或自家 fork claude → Claude 写 JSONL 时用自己
+    // 的 UUID → session.nativeId 对不上磁盘 → loadTranscript 兜底成 PTY raw。
+    //
+    // 这里加一道 FS 轮询治本：扫到 mtime > spawnTime 的真实 UUID，跟 session.nativeId
+    // 比一比；如果一致说明 preset 被 honor，停掉轮询即可；不一致则 _setNativeId 覆盖。
+    if (!resumeNativeId && tool === 'claude') {
+      const spawnTime = Date.now() - 1000
+      let detectAttempts = 0
+      const presetIdShort = session.nativeId?.slice(0, 8)
+      console.log(`[claude-detect] poll started session=${sessionId} preset=${presetIdShort} spawnTime=${spawnTime}`)
+      session.detectTimer = setInterval(() => {
+        detectAttempts++
+        const id = detectClaudeSessionFromFs(spawnTime)
+        if (id) {
+          if (id !== session.nativeId) {
+            console.log(`[claude-detect] poll attempt=${detectAttempts} OVERRIDE ${session.nativeId?.slice(0, 8)} → ${id.slice(0, 8)} (--session-id likely ignored by wrapper)`)
+            this._setNativeId(session, id)
+          } else {
+            console.log(`[claude-detect] poll attempt=${detectAttempts} preset honored, stop`)
+            clearInterval(session.detectTimer)
+            session.detectTimer = null
+          }
+        } else if (detectAttempts >= 30) {
+          console.warn(`[claude-detect] poll GAVE UP after 30 attempts (12s) for session=${sessionId} — no jsonl matching afterMs=${spawnTime} under ${CLAUDE_PROJECTS_DIR}`)
+          clearInterval(session.detectTimer)
+          session.detectTimer = null
         }
       }, 400)
       session.detectTimer.unref?.()

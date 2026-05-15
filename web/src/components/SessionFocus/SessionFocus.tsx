@@ -55,6 +55,9 @@ export function SessionFocus() {
   // for its previously-hidden display:none parent and render narrow with
   // empty space on the right. Defer to next-next frame so the new flex
   // layout has actually applied before we measure.
+  // 依赖里包含 focusedSessionId：session_restarted / 自动恢复换 sessionId 后，
+  // AiTerminalMini 主 effect 会重建（waitTerminalReady 可能在隐藏容器里超时硬开），
+  // 多发一次 resize 让窗口监听器再 fit 一次兜底。
   useEffect(() => {
     if (!focusedTodoId) return
     const id = requestAnimationFrame(() => {
@@ -63,7 +66,7 @@ export function SessionFocus() {
       })
     })
     return () => cancelAnimationFrame(id)
-  }, [focusedTodoId, focusedTab])
+  }, [focusedTodoId, focusedTab, focusedSessionId])
 
   const handleSessionSwitch = (nextSessionId: string) => {
     if (!focusedSessionId) return

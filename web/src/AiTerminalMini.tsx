@@ -19,6 +19,7 @@ import { useTheme } from './design/ThemeProvider'
 import { useAiSessionStore } from './store/aiSessionStore'
 import { useDispatchStore } from './store/dispatchStore'
 import { useAppConfigStore } from './store/appConfigStore'
+import { migrateDraft } from './composerDraft'
 
 // 匹配 xterm 一行中的文件路径（相对或绝对，可带 :line 或 :line:col）
 // 规避回溯：只匹配不含空格/冒号/斜杠的 path segment + 已知扩展名
@@ -203,6 +204,10 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
   const resumeTargetRef = useRef<ResumeSessionInput | null>(resumeTarget || null)
   const onSessionRecoveredRef = useRef<typeof onSessionRecovered>(onSessionRecovered)
   const onSessionSwitchRef = useRef<typeof onSessionSwitch>(onSessionSwitch)
+  // tryAutoRecover useCallback 的 deps 是 []，但恢复时要把当前 sessionId 下的草稿迁到新 sessionId，
+  // 必须读到最新的 sessionId（而不是 useCallback 闭包里的首屏值）
+  const sessionIdRef = useRef(sessionId)
+  useEffect(() => { sessionIdRef.current = sessionId }, [sessionId])
   // 上一次发往后端的 role：role 切换时需要重传 init/resize 让后端切换聚合分支。
   // 普通 resize 跑去抖路径不重发；只有"role 第一次同步"和"role 切换"才显式触发。
   const viewerRoleRef = useRef<'primary' | 'secondary'>(viewerRole)
@@ -244,6 +249,9 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
       stopReconnectRef.current = true
       setSessionExpired(false)
       setToolMissing(null)
+      // 把 Conversation tab 的草稿迁到新 sessionId，否则 TranscriptView 的 session-switch effect
+      // 会读到空 draft 把用户的输入冲掉。必须在 onSessionRecovered 之前调用，并用 ref 读最新 sessionId。
+      migrateDraft(latestResumeTarget.todoId, sessionIdRef.current, nextSessionId)
       onSessionRecoveredRef.current?.(nextSessionId)
       // 让 SessionFocus 把 focusedSessionId 切到新 session（与 session_restarted 一样的语义）；
       // 不切的话，关掉 focus 再从 todo card 点回来会沿用旧 aiSession.sessionId，进的是历史会话。
@@ -880,7 +888,41 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
       // 画的旧帧），等 doFit 完成 + 双 rAF 后再揭开。避免用户切回 Live tab 看见
       // "小框→撑满" 的闪动（容器在隐藏期间可能因为窗口缩放等原因尺寸变化，xterm
       // 内部 cols/rows 还停在上次的值）。
+      //
+      // 进一步兜底：focusStore 默认 tab 是 'conversation'，所以打开任何 todo 时 Live
+      // 容器都是 display:none 起步。waitTerminalReady 3s 超时后会在隐藏容器里 term.open，
+      // 首帧 fit 拿到的 cols 多半不准；用户首次切到 Live → IO 触发 doFit，但 doFit 内部
+      // 的 50/150/400ms 退避只重试 3 次（refitAttemptsRef ≤ 3），如果 layout settle
+      // 慢、或 xterm 渲染服务还没刷掉旧 metrics，3 次都失败就再无机会。
+      // 因此 justEntered 时除了立即 doFit 外，再追加 100/300/600ms 三次外层 refit，
+      // 每次都把 refitAttemptsRef 清零让内层再获得一组完整重试预算。
       let wasIntersecting = false
+      const justEnteredRefitTimers = new Set<ReturnType<typeof setTimeout>>()
+      // 兜底 refit：只在"实际还需要变 cols/rows"时才真去 fit，避免立即 doFit 已经把
+      // 尺寸算对的情况下又走一遍 fit() 触发可见的 canvas 重排（视觉上"闪一下"）。
+      // proposeDimensions 是只读计算，不会动 term；和 fit.fit() 用的是同一套测量逻辑，
+      // 因此 proposed === term 当前值时可以安全跳过。
+      const scheduleJustEnteredRefit = (delay: number) => {
+        const timer = setTimeout(() => {
+          justEnteredRefitTimers.delete(timer)
+          if (disposedRef.current || isHiddenRef.current) return
+          if (container.offsetParent === null) return
+          const fit = fitRef.current
+          const term = termRef.current
+          if (!fit || !term) return
+          let proposed: { cols: number; rows: number } | undefined
+          try { proposed = fit.proposeDimensions() } catch { proposed = undefined }
+          if (!proposed) return
+          if (proposed.cols < MIN_VALID_COLS) return
+          if (proposed.cols === term.cols && proposed.rows === term.rows) {
+            // 立即 doFit 已经把尺寸算对了，跳过避免视觉抖动
+            return
+          }
+          refitAttemptsRef.current = 0
+          requestAnimationFrame(() => doFit())
+        }, delay)
+        justEnteredRefitTimers.add(timer)
+      }
       const io = new IntersectionObserver((entries) => {
         if (isHiddenRef.current) return
         for (const entry of entries) {
@@ -888,8 +930,34 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
           if (nowIn) {
             const justEntered = !wasIntersecting
             wasIntersecting = true
-            // 重新进入可见态：临时隐藏 xterm 元素，让 doFit 跑完再揭开
-            if (justEntered && viewportReadyRef.current) {
+            if (!justEntered) continue
+            // 切回 Live 时先用 proposeDimensions 试算一下：如果 cols/rows 跟 term 当前
+            // 完全一致（窗口没缩、上次 fit 已经算对），整条 hide → fit → reveal 都跳过，
+            // 仅 scrollToBottom 让用户看到最新输出。这是消除"切回 Live 闪一下"的关键路径。
+            // 仅在 proposed 和当前不一致 / fit 还没成功揭开过 时，才走原本的 hide-fit-reveal。
+            const fit = fitRef.current
+            const term = termRef.current
+            let proposed: { cols: number; rows: number } | undefined
+            if (fit && term) {
+              try { proposed = fit.proposeDimensions() } catch { proposed = undefined }
+            }
+            const dimsMatch = !!proposed
+              && proposed.cols >= MIN_VALID_COLS
+              && term != null
+              && proposed.cols === term.cols
+              && proposed.rows === term.rows
+            const alreadyRevealed = viewportReadyRef.current
+
+            if (alreadyRevealed && dimsMatch) {
+              // 零闪动路径：canvas 不动，只滚到底
+              requestAnimationFrame(() => {
+                try { term?.scrollToBottom() } catch { /* ignore: term may be torn down */ }
+              })
+              continue
+            }
+
+            // 需要 refit：把可能仍可见的 canvas 先隐藏，避免出现"先按旧 cols 画一帧再撑开"
+            if (alreadyRevealed) {
               viewportReadyRef.current = false
               setViewportReady(false)
             }
@@ -904,6 +972,11 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
                 // 不会出现 xterm 边解析边 auto-scroll 的"滚动下去"动画。
               })
             })
+            // TODO(claude): debug log，验证修复生效后移除
+            console.log('[AiTerminalMini] live tab visible: refit needed (proposed vs term mismatch or first reveal)')
+            scheduleJustEnteredRefit(100)
+            scheduleJustEnteredRefit(300)
+            scheduleJustEnteredRefit(600)
           } else {
             wasIntersecting = false
           }
@@ -944,6 +1017,8 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
           refitTimerRef.current = null
         }
         refitAttemptsRef.current = 0
+        justEnteredRefitTimers.forEach((t) => clearTimeout(t))
+        justEnteredRefitTimers.clear()
         if (pendingResizeRef.current?.timer) {
           clearTimeout(pendingResizeRef.current.timer)
         }
