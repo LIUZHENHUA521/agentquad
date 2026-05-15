@@ -76,6 +76,8 @@
     "ws": "^8.18.0"
   },
   "devDependencies": {
+    "@xterm/xterm": "^6.0.0",
+    "jsdom": "^29.1.1",
     "supertest": "^7.0.0",
     "vitest": "^2.1.1"
   },
