@@ -1061,6 +1061,83 @@ addToolFlags(hookCmd.command('bootstrap'))
   .description('一键部署 hook script + 安装 hooks（强制忽略 .uninstalled marker，用于"删过又想恢复"场景）')
   .action(actBootstrapHookMulti)
 
+// ─── agents 子命令组：装/卸 AgentQuad MCP + skill 到 Claude Code / Codex / Cursor ───
+const agentsCmd = program.command('agents').description('为 Claude Code / Codex / Cursor 装 AgentQuad MCP + skill（嵌套子 agent 能力）')
+
+const VALID_AGENT_TARGETS = ['claude', 'codex', 'cursor']
+
+function addAgentTargetFlag(cmd) {
+  return cmd.option('--target <name>', '指定 claude / codex / cursor，多次传入累加', (v, acc = []) => {
+    if (!VALID_AGENT_TARGETS.includes(v)) throw new Error(`unknown agents target: ${v}`)
+    acc.push(v)
+    return acc
+  }, undefined)
+}
+
+function readAgentsCtx() {
+  const pkg = JSON.parse(readFileSync(resolvePath(__dirname, '../package.json'), 'utf8'))
+  const cfg = loadConfig()
+  return { port: cfg.port || 5677, version: pkg.version }
+}
+
+addAgentTargetFlag(agentsCmd.command('install'))
+  .description('合并写入 MCP 配置 + skill 文件；默认装三家')
+  .option('--dry-run', '只 preview 不写盘')
+  .action(async (opts) => {
+    const { installAllAgents, previewAllAgents } = await import('./agent-installer-dispatcher.js')
+    const { port, version } = readAgentsCtx()
+    const only = opts.target || null
+    if (opts.dryRun) {
+      const p = previewAllAgents({ port, version, only })
+      console.log('dry-run preview:')
+      for (const [t, r] of Object.entries(p.results)) {
+        const text = r.changes && r.changes.length ? r.changes.join(', ') : 'no changes'
+        console.log(`  ${t}: ${text}`)
+      }
+      if (p.summary?.failed?.length) {
+        for (const t of p.summary.failed) console.error(`  ${t}: error — ${p.results[t]?.error || 'unknown'}`)
+      }
+      return
+    }
+    const r = installAllAgents({ port, version, only })
+    for (const [t, res] of Object.entries(r.results)) {
+      if (res.ok) console.log(`✓ ${t}:`, res.changes?.length ? res.changes.join(', ') : 'already up to date')
+      else console.error(`✗ ${t}:`, res.error)
+    }
+    if (r.summary?.failed?.length) process.exitCode = 1
+  })
+
+addAgentTargetFlag(agentsCmd.command('uninstall'))
+  .description('删除 marker 段 + skill 文件；用户其他 mcpServers / skill 不动')
+  .action(async (opts) => {
+    const { uninstallAllAgents } = await import('./agent-installer-dispatcher.js')
+    const only = opts.target || null
+    const r = uninstallAllAgents({ only })
+    for (const [t, res] of Object.entries(r.results)) {
+      if (res.ok) console.log(`✓ ${t}: removed`, (res.removed || []).join(', ') || 'nothing')
+      else console.error(`✗ ${t}:`, res.error)
+    }
+    if (r.summary?.failed?.length) process.exitCode = 1
+  })
+
+agentsCmd.command('status')
+  .description('查看三家 agent 工具的 AgentQuad MCP / skill 安装状态 + drift')
+  .action(async () => {
+    const { inspectAllAgents } = await import('./agent-installer-dispatcher.js')
+    const { port } = readAgentsCtx()
+    const r = inspectAllAgents({ expectedPort: port })
+    for (const [t, ins] of Object.entries(r.results)) {
+      if (ins.error) {
+        console.log(`  ${t.padEnd(8)} ✗ error — ${ins.error}`)
+        continue
+      }
+      const mcp = ins.mcpRegistered ? '✓ MCP' : '✗ MCP'
+      const sk = ins.skillPresent ? '✓ skill' : '✗ skill'
+      const drift = ins.drift ? `  ⚠ drift (actual:${ins.actualPort} expected:${ins.expectedPort})` : ''
+      console.log(`  ${t.padEnd(8)} ${mcp}   ${sk}   ${ins.configPath}${drift}`)
+    }
+  })
+
 // ─── openclaw 子命令组：保留旧路径以向后兼容；hook 操作建议改用 `agentquad hook *` ───
 const openclawCmd = program.command('openclaw').description('OpenClaw bridge: install/uninstall Claude Code hooks for proactive WeChat push')
 
