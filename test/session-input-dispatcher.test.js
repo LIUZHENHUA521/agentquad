@@ -455,3 +455,45 @@ describe('origin dedup table (recordOrigin / consumeOrigin)', () => {
     expect(d.consumeOrigin('sid-end', 'bye')).toBe(null)
   })
 })
+
+describe('dispatcher integration: recordOrigin on PTY write', () => {
+  it('idle 直发 → recordOrigin(sid, text, channel) 命中', async () => {
+    vi.useFakeTimers()
+    const { pty, aiTerminal } = makeDeps({ awaitingReply: true })
+    const d = createSessionInputDispatcher({ pty, aiTerminal })
+    await d.send({ sessionId: 's1', text: 'hi from tg', channel: 'telegram' })
+    await vi.runAllTimersAsync()
+    expect(d.consumeOrigin('s1', 'hi from tg')).toBe('telegram')
+    vi.useRealTimers()
+  })
+
+  it('soft interrupt 投递新文本 → recordOrigin 命中', async () => {
+    vi.useFakeTimers()
+    const { pty, aiTerminal } = makeDeps({ awaitingReply: false })
+    const d = createSessionInputDispatcher({ pty, aiTerminal })
+    const p = d.send({ sessionId: 's1', text: '!算了', channel: 'lark' })
+    await vi.advanceTimersByTimeAsync(400)
+    await p
+    expect(d.consumeOrigin('s1', '算了')).toBe('lark')
+    vi.useRealTimers()
+  })
+
+  it('flushQueue → 合并文本 recordOrigin 命中（用 last enqueued channel）', async () => {
+    vi.useFakeTimers()
+    const { pty, aiTerminal } = makeDeps({ awaitingReply: false })
+    const d = createSessionInputDispatcher({ pty, aiTerminal })
+    await d.send({ sessionId: 's1', text: 'first', channel: 'telegram' })
+    await d.send({ sessionId: 's1', text: 'second', channel: 'lark' })
+    await d.onSessionIdle('s1')
+    await vi.runAllTimersAsync()
+    expect(d.consumeOrigin('s1', 'first\nsecond')).toBe('lark')
+    vi.useRealTimers()
+  })
+
+  it('hard_cancel 不写文本 → 不调用 recordOrigin', async () => {
+    const { pty, aiTerminal } = makeDeps({ awaitingReply: false })
+    const d = createSessionInputDispatcher({ pty, aiTerminal })
+    await d.send({ sessionId: 's1', text: '!!stop', channel: 'telegram' })
+    expect(d.consumeOrigin('s1', '')).toBe(null)
+  })
+})

@@ -107,7 +107,7 @@ export function createSessionInputDispatcher({ pty, aiTerminal, callbacks = {}, 
     if (q.items.length >= QUEUE_LIMIT) {
       return { full: true, queueSize: q.items.length }
     }
-    q.items.push({ text: stripped, imagePaths, enqueuedAt: Date.now() })
+    q.items.push({ text: stripped, imagePaths, channel, enqueuedAt: Date.now() })
     if (q.staleTimer) clearTimeout(q.staleTimer)
     q.staleTimer = setTimeout(() => {
       if (callbacks.onStale) {
@@ -157,6 +157,7 @@ export function createSessionInputDispatcher({ pty, aiTerminal, callbacks = {}, 
       const payload = buildPayload(stripped, imagePaths)
       writeToPty(pty, sessionId, payload, logger)
       markBusyAfterWrite(aiTerminal, sessionId)
+      if (channel && stripped) recordOrigin(sessionId, stripped, channel)
       return { action: 'sent', sessionId }
     }
 
@@ -181,7 +182,7 @@ export function createSessionInputDispatcher({ pty, aiTerminal, callbacks = {}, 
         if (r.full) return { action: 'queue_full', queueSize: r.queueSize, sessionId }
         return { action: 'queued', queueSize: r.queueSize, reason: 'soft_interrupt_in_progress', sessionId }
       }
-      return await performSoftInterrupt({ sessionId, stripped, imagePaths })
+      return await performSoftInterrupt({ sessionId, stripped, imagePaths, channel })
     }
 
     if (mode === 'hard_cancel') {
@@ -205,7 +206,7 @@ export function createSessionInputDispatcher({ pty, aiTerminal, callbacks = {}, 
     return { action: 'hard_cancelled', sessionId }
   }
 
-  async function performSoftInterrupt({ sessionId, stripped, imagePaths }) {
+  async function performSoftInterrupt({ sessionId, stripped, imagePaths, channel }) {
     // 丢弃旧队列
     const q = queues.get(sessionId)
     if (q) {
@@ -223,6 +224,7 @@ export function createSessionInputDispatcher({ pty, aiTerminal, callbacks = {}, 
       const payload = buildPayload(stripped, imagePaths)
       writeToPty(pty, sessionId, payload, logger)
       markBusyAfterWrite(aiTerminal, sessionId)
+      if (channel && stripped) recordOrigin(sessionId, stripped, channel)
     }
     return { action: 'soft_interrupted', sessionId }
   }
@@ -244,6 +246,9 @@ export function createSessionInputDispatcher({ pty, aiTerminal, callbacks = {}, 
     try {
       writeToPty(pty, sessionId, payload, logger)
       markBusyAfterWrite(aiTerminal, sessionId)
+      // 取队列里最新的 channel；混合 channel 场景极少见，echo 会跳过那一个 channel
+      const lastChan = q.items[q.items.length - 1]?.channel
+      if (lastChan && combinedText) recordOrigin(sessionId, combinedText, lastChan)
     } catch (e) {
       logger?.warn?.(`[dispatcher] flush write failed sid=${sessionId}: ${e.message}`)
       return { flushed: 0, error: e.message }
