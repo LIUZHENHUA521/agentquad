@@ -1205,6 +1205,30 @@ export function createServer(opts = {}) {
 	// OpenClaw 双向桥接：bridge（出站）+ pending-question 协调器（双向阻塞）
 	const openclawBridge = createOpenClawBridge({
 		getConfig: () => loadConfig({ rootDir: configRootDir }),
+		getRoutesForSession: (sessionId) => {
+			if (!sessionId) return { telegram: null, lark: null }
+			// 优先用 in-memory session 拿 todoId（O(1)），失败再 fallback listTodos 全扫
+			let todoId = null
+			try {
+				const sess = ait?.sessions?.get?.(sessionId)
+				todoId = sess?.todoId || null
+			} catch { /* ignore */ }
+			if (todoId) {
+				try {
+					const todo = db.getTodo?.(todoId)
+					const ai = (todo?.aiSessions || []).find(s => s?.sessionId === sessionId)
+					if (ai) return { telegram: ai.telegramRoute || null, lark: ai.larkRoute || null }
+				} catch { /* fallthrough */ }
+			}
+			try {
+				const todos = db.listTodos?.({ status: 'all', archived: 'all' }) || []
+				for (const t of todos) {
+					const ai = (t.aiSessions || []).find(s => s?.sessionId === sessionId)
+					if (ai) return { telegram: ai.telegramRoute || null, lark: ai.larkRoute || null }
+				}
+			} catch { /* ignore */ }
+			return { telegram: null, lark: null }
+		},
 	});
 	const pendingCoord = createPendingQuestionCoordinator({ db });
 	pendingCoord.start();
