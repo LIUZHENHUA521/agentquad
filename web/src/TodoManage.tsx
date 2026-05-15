@@ -332,16 +332,23 @@ export default function TodoManage() {
   const refreshTodosSignal = useDispatchStore((s) => s.signals.refreshTodos === true)
   const consumeSignal = useDispatchStore((s) => s.consumeSignal)
 
-  const findBrainstormTemplate = useCallback(
-    () => templates.find(t => t.builtin && t.name === 'Brainstorm（脑爆）'),
-    [templates],
-  )
+  const resolveDefaultAppliedTemplateIds = useCallback((): string[] => {
+    // 1. settings 里配的"默认套用模板"是首选来源；过滤掉已被删除的模板 id。
+    const configured = useAppConfigStore.getState().defaultAppliedTemplateIds
+    if (configured && configured.length) {
+      const valid = configured.filter(id => templates.some(t => t.id === id))
+      if (valid.length) return valid
+    }
+    // 2. 老用户没配过：沿用历史行为，默认勾选 Brainstorm。
+    const brainstorm = templates.find(t => t.builtin && t.name === 'Brainstorm（脑爆）')
+    return brainstorm ? [brainstorm.id] : []
+  }, [templates])
 
   const openCreateDrawer = useCallback((parent: Todo | null = null) => {
     setEditingTodo(null)
     setParentForCreate(parent)
     form.resetFields()
-    const brainstormTpl = findBrainstormTemplate()
+    const defaultIds = resolveDefaultAppliedTemplateIds()
     const defaultAutoStart = useAppConfigStore.getState().defaultAutoStartAi
     form.setFieldsValue({
       quadrant: parent?.quadrant ?? 1,
@@ -350,12 +357,12 @@ export default function TodoManage() {
       recurringFrequency: 'daily',
       recurringWeekdays: [1, 2, 3, 4, 5],
       recurringMonthDays: [1],
-      useTemplates: !!brainstormTpl,
-      appliedTemplateIds: brainstormTpl ? [brainstormTpl.id] : [],
+      useTemplates: defaultIds.length > 0,
+      appliedTemplateIds: defaultIds,
       autoStartAi: defaultAutoStart,
     })
     setDrawerOpen(true)
-  }, [findBrainstormTemplate, form])
+  }, [resolveDefaultAppliedTemplateIds, form])
 
   useEffect(() => {
     if (!jumpToTodoId) return

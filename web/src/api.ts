@@ -114,6 +114,7 @@ export interface AppConfig {
   defaultCwd: string
   defaultPermissionMode?: 'default' | 'acceptEdits' | 'bypass'
   defaultAutoStartAi?: boolean
+  defaultAppliedTemplateIds?: string[]
   defaultAiTool?: AiTool
   tools: {
     claude: { command: string; bin: string; args: string[] }

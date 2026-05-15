@@ -1,4 +1,4 @@
-import { Drawer, Alert, Typography, Form, Input, InputNumber, Button, Radio, Space, Tag, Switch, Collapse, Tabs, Segmented } from 'antd'
+import { Drawer, Alert, Typography, Form, Input, InputNumber, Button, Radio, Space, Tag, Switch, Collapse, Tabs, Segmented, Select } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { LANG_STORAGE_KEY } from './i18n'
 import type { SupportedLng } from './i18n/resources'
@@ -8,7 +8,7 @@ import { useEffect, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { markdownComponents } from './markdownComponents'
-import { getConfig, updateConfig, AppConfig, pickDirectory, ToolDiagnostic, testTelegram, testLark, type ProbeHit, type DispatchChannelConfig } from './api'
+import { getConfig, updateConfig, AppConfig, pickDirectory, ToolDiagnostic, testTelegram, testLark, listTemplates, type ProbeHit, type DispatchChannelConfig, type PromptTemplate } from './api'
 import { useAppConfigStore } from './store/appConfigStore'
 import { TelegramProbeModal } from './TelegramProbeModal'
 import telegramSetupMd from '../../docs/TELEGRAM-setup.md?raw'
@@ -127,6 +127,7 @@ export default function SettingsDrawer({ open, onClose }: Props) {
   const [larkTesting, setLarkTesting] = useState(false)
   const [larkTestResult, setLarkTestResult] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<'run' | 'tools' | 'telegram' | 'lark' | 'pricing'>('run')
+  const [templates, setTemplates] = useState<PromptTemplate[]>([])
   const [viewingTool, setViewingTool] = useState<ToolKey>('claude')
   const [dispatchDraft, setDispatchDraft] = useState<{
     lark: DispatchChannelConfig
@@ -160,6 +161,8 @@ export default function SettingsDrawer({ open, onClose }: Props) {
 
   useEffect(() => {
     if (!open) return
+    // Pull templates in parallel with config so the multi-select has options on first render.
+    listTemplates().then(setTemplates).catch(() => setTemplates([]))
     getConfig()
       .then((result) => {
         setConfig(result.config)
@@ -169,6 +172,9 @@ export default function SettingsDrawer({ open, onClose }: Props) {
           defaultCwd: result.config.defaultCwd,
           defaultPermissionMode: result.config.defaultPermissionMode || 'default',
           defaultAutoStartAi: !!result.config.defaultAutoStartAi,
+          defaultAppliedTemplateIds: Array.isArray(result.config.defaultAppliedTemplateIds)
+            ? result.config.defaultAppliedTemplateIds
+            : [],
           defaultAiTool: result.config.defaultAiTool || 'claude',
           claudeCommand: joinCommandLine(result.config.tools.claude.command, result.config.tools.claude.args),
           // 表单 bin 字段绑定 configuredBin（用户字面存的值），不绑定 effectiveBin —
@@ -248,6 +254,9 @@ export default function SettingsDrawer({ open, onClose }: Props) {
         defaultCwd: values.defaultCwd,
         defaultPermissionMode: values.defaultPermissionMode || 'default',
         defaultAutoStartAi: !!values.defaultAutoStartAi,
+        defaultAppliedTemplateIds: Array.isArray(values.defaultAppliedTemplateIds)
+          ? values.defaultAppliedTemplateIds.filter((x: unknown): x is string => typeof x === 'string')
+          : [],
         defaultAiTool: (values.defaultAiTool as 'claude' | 'codex' | 'cursor') || 'claude',
         tools: {
           claude: buildToolPatch('claude', values.claudeCommand || '', values.claudeBin || ''),
@@ -323,6 +332,9 @@ export default function SettingsDrawer({ open, onClose }: Props) {
       setToolDiagnostics(result.toolDiagnostics)
       useAppConfigStore.getState().setDefaultPermissionMode(result.config.defaultPermissionMode || null)
       useAppConfigStore.getState().setDefaultAutoStartAi(!!result.config.defaultAutoStartAi)
+      useAppConfigStore.getState().setDefaultAppliedTemplateIds(
+        Array.isArray(result.config.defaultAppliedTemplateIds) ? result.config.defaultAppliedTemplateIds : [],
+      )
       useAppConfigStore.getState().setDefaultAiTool((result.config.defaultAiTool as 'claude' | 'codex' | 'cursor') || 'claude')
       setTokenSource((result.config.telegram?.botTokenSource as 'agentquad' | 'missing' | undefined) || 'missing')
       setTokenMasked(result.config.telegram?.botTokenMasked || '')
@@ -593,6 +605,23 @@ export default function SettingsDrawer({ open, onClose }: Props) {
             valuePropName="checked"
           >
             <Switch />
+          </Form.Item>
+
+          <Form.Item
+            name="defaultAppliedTemplateIds"
+            label={t('settings:general.defaultTemplatesLabel')}
+            extra={t('settings:general.defaultTemplatesExtra')}
+          >
+            <Select
+              mode="multiple"
+              allowClear
+              placeholder={t('settings:general.defaultTemplatesPlaceholder')}
+              options={templates.map((tpl) => ({
+                value: tpl.id,
+                label: tpl.builtin ? t('settings:general.defaultTemplatesBuiltinLabel', { name: tpl.name }) : tpl.name,
+              }))}
+              optionFilterProp="label"
+            />
           </Form.Item>
 
           <Form.Item

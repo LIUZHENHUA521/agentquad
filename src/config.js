@@ -313,6 +313,9 @@ function defaultConfig() {
 		// 新建待办时是否默认勾选「创建后自动启动 AI 终端」。
 		// Drawer 上的开关仍可单次覆盖；这里只是默认值。
 		defaultAutoStartAi: false,
+		// 新建待办时默认套用的 Prompt 模板 ID 列表（多选）。空数组 = 不预选。
+		// 用户在 SettingsDrawer 里维护；创建任务时 TodoManage 读取此值作为表单初值。
+		defaultAppliedTemplateIds: [],
 		// 自动启动 / dispatch / 顶栏 ⌘K 等场景下使用的默认 AI 工具。
 		defaultAiTool: "claude",
 		tools: resolveToolsConfig(),
@@ -381,6 +384,9 @@ export function normalizeConfig(cfg = {}) {
 		...cfgRest,
 		defaultPermissionMode: normalizePermissionMode(cfg.defaultPermissionMode, "default"),
 		defaultAutoStartAi: !!cfg.defaultAutoStartAi,
+		defaultAppliedTemplateIds: Array.isArray(cfg.defaultAppliedTemplateIds)
+			? cfg.defaultAppliedTemplateIds.map((x) => String(x).trim()).filter(Boolean)
+			: [],
 		defaultAiTool,
 		tools: {
 			...mergedTools,
