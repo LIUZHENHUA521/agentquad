@@ -428,13 +428,16 @@ function LiveInfoBadge({
 }) {
   const { t } = useTranslation(['todo'])
   if (state === 'running') {
-    const startedAt = liveSession.startedAt
+    // 当前这一轮的起点 ≈ 上一轮 turn_done（用户提交新 prompt 才会重新 running）。
+    // 没有 lastTurnDoneAt（首轮 / 刚启动还没回答过）才退到 startedAt。
+    // 用 startedAt 会把整个会话生命周期都算上，跟 Claude TUI 自己显示的"当前思考耗时"对不上。
+    const runStartedAt = liveSession.lastTurnDoneAt || liveSession.startedAt
     return (
       <span className="todo-history-live todo-history-live--running">
         <span className="todo-history-pulse-dot" aria-hidden />
-        {startedAt ? (
+        {runStartedAt ? (
           <span className="todo-history-live-text">
-            {t('todo:card.liveRunningElapsed', { ago: formatRelativeShort(Date.now() - startedAt) })}
+            {t('todo:card.liveRunningElapsed', { ago: formatRelativeShort(Date.now() - runStartedAt) })}
           </span>
         ) : null}
       </span>
