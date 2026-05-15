@@ -1543,7 +1543,7 @@ export function createServer(opts = {}) {
 			console.log(`[server] skip auto-close: sid=${sessionId} exit=${exitCode} lifetime=${lifetimeMs}ms`)
 			return null
 		}
-		const route = openclawBridge.resolveRoute?.(sessionId)
+		const route = openclawBridge.resolveRoute?.(sessionId, 'telegram')
 		if (!route?.threadId) return null
 		return openclawWizard.handleTopicEvent({
 			type: 'closed',
@@ -1564,14 +1564,15 @@ export function createServer(opts = {}) {
 			let sweptLark = 0
 			for (const [sid, sess] of ait.sessions) {
 				if (sess.status !== 'running' && sess.status !== 'idle' && sess.status !== 'pending_confirm') continue
-				const r = openclawBridge.resolveRoute?.(sid)
-				if (tgSweep && !r?.threadId) {
+				const rTg = tgSweep ? openclawBridge.resolveRoute?.(sid, 'telegram') : null
+				if (tgSweep && !rTg?.threadId) {
 					openclawWizard.ensureTopicForSession({ sessionId: sid, todoId: sess.todoId })
 						.then((res) => res?.action === 'created' && console.log(`[server] sweep auto-bound ${sid} → telegram thread ${res.threadId}`))
 						.catch((e) => console.warn(`[server] sweep ensureTopic failed for ${sid}: ${e.message}`))
 					sweptTg++
 				}
-				if (larkSweep && !(r?.channel === 'lark' && r?.rootMessageId)) {
+				const rLark = larkSweep ? openclawBridge.resolveRoute?.(sid, 'lark') : null
+				if (larkSweep && !rLark?.rootMessageId) {
 					openclawWizard.ensureLarkThreadForSession({ sessionId: sid, todoId: sess.todoId })
 						.then((res) => res?.action === 'created' && console.log(`[server] sweep auto-bound ${sid} → lark root ${res.rootMessageId}`))
 						.catch((e) => console.warn(`[server] sweep ensureLarkThread failed for ${sid}: ${e.message}`))
@@ -1616,7 +1617,7 @@ export function createServer(opts = {}) {
 			let kicked = 0
 			for (const [sid, sess] of ait.sessions) {
 				if (sess.status !== 'running' && sess.status !== 'idle' && sess.status !== 'pending_confirm') continue
-				const r = openclawBridge.resolveRoute?.(sid)
+				const r = openclawBridge.resolveRoute?.(sid, 'telegram')
 				if (!r?.threadId) continue
 				if (tracker.has(sid)) continue
 				tracker.start({ sessionId: sid, skipTitleRename: true })

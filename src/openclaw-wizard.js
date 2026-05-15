@@ -821,9 +821,9 @@ export function createOpenClawWizard({
     if (!sessionId || !todoId) return { ok: false, reason: 'missing_args' }
     if (!telegramBot?.createForumTopic) return { ok: false, reason: 'no_telegram_bot' }
 
-    // 已有路由 → 跳过
-    const existing = openclaw?.resolveRoute?.(sessionId)
-    if (existing && existing.threadId) return { ok: true, action: 'already_bound' }
+    // 已有 telegram 路由 → 跳过（per-channel resolveRoute；避免被 lark 路由误判）
+    const existing = openclaw?.resolveRoute?.(sessionId, 'telegram')
+    if (existing?.threadId) return { ok: true, action: 'already_bound' }
 
     // DB 里已持久化（rehydrate 时常见）→ 重注路由就行
     const todo = db.getTodo(todoId)
@@ -896,8 +896,9 @@ export function createOpenClawWizard({
     if (!sessionId || !todoId) return { ok: false, reason: 'missing_args' }
     if (!larkBot?.sendMessage) return { ok: false, reason: 'no_lark_bot' }
 
-    const existing = openclaw?.resolveRoute?.(sessionId)
-    if (existing?.channel === 'lark' && existing?.rootMessageId) {
+    // 显式取 lark 路由，避免被 telegram 路由误判
+    const existing = openclaw?.resolveRoute?.(sessionId, 'lark')
+    if (existing?.rootMessageId) {
       return { ok: true, action: 'already_bound' }
     }
 
@@ -1015,7 +1016,7 @@ export function createOpenClawWizard({
           const todo = db.getTodo(sess.todoId)
           if (todo) {
             // 构造一个假 aiSession（DB 里没持久化，能跑就行）
-            const route = openclaw.resolveRoute?.(sid) || {}
+            const route = openclaw.resolveRoute?.(sid, 'telegram') || {}
             const fakeAi = {
               sessionId: sid,
               tool: sess.tool,
@@ -1168,7 +1169,7 @@ export function createOpenClawWizard({
         if (sess?.todoId) {
           const todo = db.getTodo(sess.todoId)
           if (todo) {
-            const route = openclaw.resolveRoute?.(sid) || {}
+            const route = openclaw.resolveRoute?.(sid, 'lark') || {}
             const fakeAi = {
               sessionId: sid,
               tool: sess.tool,

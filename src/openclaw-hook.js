@@ -878,7 +878,7 @@ export function createOpenClawHookHandler(deps = {}) {
 
     // 5) SessionEnd 后处理：close topic + 改名 ✅ + 清状态
     if (evt === 'session-end') {
-      const route = openclaw.resolveRoute?.(sessionId)
+      const route = openclaw.resolveRoute?.(sessionId, 'telegram')
       if (route?.threadId && telegramBot) {
         try {
           await telegramBot.closeForumTopic({ chatId: route.targetUserId, threadId: route.threadId })
@@ -939,14 +939,14 @@ export function createOpenClawHookHandler(deps = {}) {
       }
       // Stop / session-end → 清掉 lark "在思考" reaction（如果是 lark route）
       if ((evt === 'stop' || evt === 'session-end') && sessionId && larkBot?.clearReactionsForSession) {
-        const route = openclaw.resolveRoute?.(sessionId)
+        const route = openclaw.resolveRoute?.(sessionId, 'lark')
         if (route?.channel === 'lark') {
           larkBot.clearReactionsForSession(sessionId).catch((e) => logger.warn?.(`[openclaw-hook] clearReactionsForSession failed: ${e.message}`))
         }
       }
       // Stop / session-end → 清掉 telegram "✍" reaction（如果是 telegram route）
       if ((evt === 'stop' || evt === 'session-end') && sessionId && reactionTracker?.clearReactionsForSession) {
-        const route = openclaw.resolveRoute?.(sessionId)
+        const route = openclaw.resolveRoute?.(sessionId, 'telegram')
         if (route?.channel === 'telegram') {
           reactionTracker.clearReactionsForSession(sessionId).catch((e) => logger.warn?.(`[openclaw-hook] tg clearReactionsForSession failed: ${e.message}`))
         }

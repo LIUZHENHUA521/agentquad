@@ -81,7 +81,7 @@ export function createLoadingTracker({
   async function start({ sessionId, skipTitleRename = false } = {}) {
     if (!sessionId || sessions.has(sessionId)) return
     void skipTitleRename
-    const route = openclaw?.resolveRoute?.(sessionId)
+    const route = openclaw?.resolveRoute?.(sessionId, 'telegram')
     if (!route?.threadId) return
     if (!route.topicName) return
     sessions.set(sessionId, {

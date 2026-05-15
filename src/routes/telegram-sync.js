@@ -56,12 +56,14 @@ export function createTelegramSyncRouter({ db, aiTerminal, openclaw, wizard, get
       const sid = aiSess.sessionId
       if (!sid) continue
       const liveSess = aiTerminal.sessions.get(sid)
-      const bridgeRoute = openclaw.resolveRoute?.(sid) || null
+      // per-channel route lookup（dual-bound session 时避免用错渠道的路由）
+      const bridgeTgRoute = openclaw.resolveRoute?.(sid, 'telegram') || null
+      const bridgeLarkRoute = openclaw.resolveRoute?.(sid, 'lark') || null
 
       // ── Telegram 分支 ──
       if (telegramEnabled) {
         const dbHasTgRoute = !!aiSess.telegramRoute?.threadId
-        const bridgeHasTgRoute = bridgeIsTelegram(bridgeRoute)
+        const bridgeHasTgRoute = bridgeIsTelegram(bridgeTgRoute)
         if (isAlive(liveSess)) {
           if (!dbHasTgRoute && !bridgeHasTgRoute) {
             actions.push({
@@ -74,7 +76,7 @@ export function createTelegramSyncRouter({ db, aiTerminal, openclaw, wizard, get
             })
           }
         } else if ((dbHasTgRoute || bridgeHasTgRoute) && t.status !== 'done') {
-          const tgRoute = aiSess.telegramRoute || (bridgeHasTgRoute ? bridgeRoute : null)
+          const tgRoute = aiSess.telegramRoute || (bridgeHasTgRoute ? bridgeTgRoute : null)
           if (tgRoute) {
             actions.push({
               type: 'close_topic',
@@ -93,7 +95,7 @@ export function createTelegramSyncRouter({ db, aiTerminal, openclaw, wizard, get
       // ── Lark 分支 ──
       if (larkEnabled) {
         const dbHasLarkRoute = !!aiSess.larkRoute?.rootMessageId
-        const bridgeHasLarkRoute = bridgeIsLark(bridgeRoute)
+        const bridgeHasLarkRoute = bridgeIsLark(bridgeLarkRoute)
         if (isAlive(liveSess)) {
           if (!dbHasLarkRoute && !bridgeHasLarkRoute) {
             actions.push({
@@ -106,7 +108,7 @@ export function createTelegramSyncRouter({ db, aiTerminal, openclaw, wizard, get
             })
           }
         } else if ((dbHasLarkRoute || bridgeHasLarkRoute) && t.status !== 'done') {
-          const larkRoute = aiSess.larkRoute || (bridgeHasLarkRoute ? bridgeRoute : null)
+          const larkRoute = aiSess.larkRoute || (bridgeHasLarkRoute ? bridgeLarkRoute : null)
           if (larkRoute) {
             actions.push({
               type: 'close_thread',
