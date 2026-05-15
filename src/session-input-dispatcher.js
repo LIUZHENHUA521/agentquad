@@ -8,6 +8,8 @@
  *   - hard_cancel    ：`!!` 前缀 或精确 `/stop`，busy 时 Ctrl+C，不投递文本
  */
 
+import { createHash } from 'node:crypto'
+
 const QUEUE_LIMIT = 20
 const STALE_MS = 5 * 60 * 1000
 const SOFT_INTERRUPT_DELAY_MS = 250
@@ -17,6 +19,14 @@ const SOFT_INTERRUPT_DELAY_MS = 250
 // 这里给 dispatcher 一个 "Claude 大概率在 idle prompt" 的兜底判断（PTY busy 时是连续
 // 输出 spinner / token，3s 静默基本不可能是真 busy）。
 const IDLE_GRACE_MS = 3000
+
+const ORIGIN_TTL_MS = 30_000
+const ORIGIN_LIMIT = 16
+
+function normalizeAndHash(text) {
+  const normalized = String(text || '').trim().replace(/\s+/g, ' ')
+  return createHash('sha1').update(normalized).digest('hex')
+}
 
 export function parseTrigger(rawText) {
   const text = String(rawText || '').trim()
@@ -55,6 +65,33 @@ export function createSessionInputDispatcher({ pty, aiTerminal, callbacks = {}, 
   const queues = new Map()
   // sessionId set: 软中断 250ms 窗口内
   const softInterrupting = new Set()
+
+  // sessionId → Array<{ hash, channel, ts }>。30s TTL，FIFO 上限 ORIGIN_LIMIT。
+  // 用于让 UserPromptSubmit hook 区分"这条 prompt 来自 telegram / lark / PC"。
+  const lastOrigins = new Map()
+
+  function recordOrigin(sessionId, text, channel) {
+    if (!sessionId || !text || !channel) return
+    const now = Date.now()
+    const prior = (lastOrigins.get(sessionId) || []).filter(e => now - e.ts < ORIGIN_TTL_MS)
+    const trimmed = prior.slice(-(ORIGIN_LIMIT - 1))
+    trimmed.push({ hash: normalizeAndHash(text), channel, ts: now })
+    lastOrigins.set(sessionId, trimmed)
+  }
+
+  function consumeOrigin(sessionId, text) {
+    if (!sessionId || !text) return null
+    const arr = lastOrigins.get(sessionId)
+    if (!arr || !arr.length) return null
+    const h = normalizeAndHash(text)
+    const now = Date.now()
+    const idx = arr.findIndex(e => e.hash === h && now - e.ts < ORIGIN_TTL_MS)
+    if (idx < 0) return null
+    const { channel } = arr[idx]
+    arr.splice(idx, 1)
+    if (!arr.length) lastOrigins.delete(sessionId)
+    return channel
+  }
 
   function getOrCreateQueue(sessionId) {
     let q = queues.get(sessionId)
@@ -252,5 +289,5 @@ export function createSessionInputDispatcher({ pty, aiTerminal, callbacks = {}, 
     return { sessions: queues.size, byId }
   }
 
-  return { send, onSessionIdle, onSessionEnd, describe, __test__: { queues, parseTrigger } }
+  return { send, onSessionIdle, onSessionEnd, describe, recordOrigin, consumeOrigin, __test__: { queues, parseTrigger } }
 }

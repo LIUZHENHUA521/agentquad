@@ -470,13 +470,36 @@ function backupCorruptConfig(file) {
 	}
 }
 
+// Atomic write: write to a sibling tmp file then rename over the target.
+// POSIX rename is atomic on the same filesystem — readers always see either
+// the old or the new file, never a half-written one. Eliminates the
+// truncated-write → JSON.parse-fail → reset-to-defaults loop.
+function atomicWriteFile(file, contents) {
+	const tmp = `${file}.${process.pid}.${Date.now()}.tmp`;
+	writeFileSync(tmp, contents);
+	renameSync(tmp, file);
+}
+
 function tryWriteConfig(file, cfg) {
 	try {
-		writeFileSync(file, JSON.stringify(cfg, null, 2));
+		atomicWriteFile(file, JSON.stringify(cfg, null, 2));
 		return true;
 	} catch {
 		return false;
 	}
+}
+
+// In-process write serialization. Concurrent PUT /api/config calls (and any
+// other server-side read-modify-write sequence) used to interleave their
+// load/save and lose each other's changes. withConfigLock chains operations
+// onto a single Promise queue so reads + writes within `fn` are atomic
+// against other queued operations. Out-of-process writers (CLI, hooks) are
+// NOT protected — see design doc R2/F4 deferred scope.
+let configWriteQueue = Promise.resolve();
+export function withConfigLock(fn) {
+	const run = configWriteQueue.then(() => fn(), () => fn());
+	configWriteQueue = run.catch(() => {});
+	return run;
 }
 
 export function loadConfig({ rootDir = DEFAULT_ROOT_DIR } = {}) {
@@ -488,9 +511,7 @@ export function loadConfig({ rootDir = DEFAULT_ROOT_DIR } = {}) {
 		return cfg;
 	}
 	try {
-		const cfg = normalizeConfig(JSON.parse(readFileSync(file, "utf8")));
-		tryWriteConfig(file, cfg);
-		return cfg;
+		return normalizeConfig(JSON.parse(readFileSync(file, "utf8")));
 	} catch {
 		backupCorruptConfig(file);
 		const cfg = normalizeConfig();
@@ -501,7 +522,7 @@ export function loadConfig({ rootDir = DEFAULT_ROOT_DIR } = {}) {
 
 export function saveConfig(cfg, { rootDir = DEFAULT_ROOT_DIR } = {}) {
 	ensureRoot(rootDir);
-	writeFileSync(
+	atomicWriteFile(
 		join(rootDir, "config.json"),
 		JSON.stringify(normalizeConfig(cfg), null, 2),
 	);

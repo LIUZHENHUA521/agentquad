@@ -398,3 +398,53 @@ describe('per-sid serialization', () => {
     expect(d.describe().sessions).toBe(2)
   })
 })
+
+describe('origin dedup table (recordOrigin / consumeOrigin)', () => {
+  function makeMinimalDispatcher() {
+    const pty = { write: vi.fn(), has: vi.fn(() => true) }
+    const aiTerminal = { isSessionAwaitingReply: vi.fn(() => true) }
+    return createSessionInputDispatcher({ pty, aiTerminal })
+  }
+
+  it('consumeOrigin 命中后返回 channel 并从表中移除（同 hash 第二次 miss）', () => {
+    const d = makeMinimalDispatcher()
+    d.recordOrigin('sid-1', 'hello world', 'telegram')
+    expect(d.consumeOrigin('sid-1', 'hello world')).toBe('telegram')
+    expect(d.consumeOrigin('sid-1', 'hello world')).toBe(null)
+  })
+
+  it('normalize：trim + 折叠连续 whitespace 后 hash 相等', () => {
+    const d = makeMinimalDispatcher()
+    d.recordOrigin('sid-1', 'hi   there', 'lark')
+    expect(d.consumeOrigin('sid-1', '  hi there  ')).toBe('lark')
+  })
+
+  it('未记录的 sessionId → consumeOrigin 返回 null', () => {
+    const d = makeMinimalDispatcher()
+    expect(d.consumeOrigin('nope', 'x')).toBe(null)
+  })
+
+  it('TTL 过期后 consumeOrigin 返回 null', () => {
+    vi.useFakeTimers()
+    const d = makeMinimalDispatcher()
+    d.recordOrigin('sid-1', 'aged', 'telegram')
+    vi.advanceTimersByTime(31_000)
+    expect(d.consumeOrigin('sid-1', 'aged')).toBe(null)
+    vi.useRealTimers()
+  })
+
+  it('FIFO 上限：第 17 条 push 把最老一条挤出', () => {
+    const d = makeMinimalDispatcher()
+    for (let i = 0; i < 17; i++) d.recordOrigin('sid-1', `msg-${i}`, 'telegram')
+    expect(d.consumeOrigin('sid-1', 'msg-0')).toBe(null)
+    expect(d.consumeOrigin('sid-1', 'msg-16')).toBe('telegram')
+  })
+
+  it('空文本 / 空 channel / 空 sessionId 不抛错', () => {
+    const d = makeMinimalDispatcher()
+    expect(() => d.recordOrigin('', 'x', 'telegram')).not.toThrow()
+    expect(() => d.recordOrigin('sid', '', 'telegram')).not.toThrow()
+    expect(() => d.recordOrigin('sid', 'x', '')).not.toThrow()
+    expect(d.consumeOrigin('sid', 'x')).toBe(null)
+  })
+})

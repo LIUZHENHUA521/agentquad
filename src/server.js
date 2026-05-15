@@ -13,6 +13,7 @@ import {
 	loadConfig,
 	resolveToolsConfig,
 	saveConfig,
+	withConfigLock,
 } from "./config.js";
 import { openDb } from "./db.js";
 import { PtyManager } from "./pty.js";
@@ -377,6 +378,15 @@ function mergeToolConfig(currentTool = {}, nextTool = {}) {
 	};
 }
 
+// "" => 视作「该字段未修改」，从 patch 里删掉。null => 显式清空，保留。
+// 仅扫一层（telegram / lark 的字段都在顶层，没有嵌套 string）。
+function stripEmptyStrings(patch) {
+	if (!patch || typeof patch !== "object") return;
+	for (const key of Object.keys(patch)) {
+		if (patch[key] === "") delete patch[key];
+	}
+}
+
 function splitEditorPath(rawPath = "") {
 	const trimmed = String(rawPath || "").trim();
 	const match = trimmed.match(/^(.*?)(:\d+(?::\d+)?)?$/);
@@ -640,6 +650,7 @@ export function createServer(opts = {}) {
 
 	app.put("/api/config", async (req, res) => {
 		try {
+			const result = await withConfigLock(async () => {
 			const current = loadConfig({ rootDir: configRootDir });
 			const nextToolsPatch = req.body?.tools || {};
 			const pricingPatch = req.body?.pricing;
@@ -660,6 +671,12 @@ export function createServer(opts = {}) {
 			// botTokenMasked / botTokenSource 是 GET-only，PUT 收到的不能写回
 			delete telegramPatch.botTokenMasked;
 			delete telegramPatch.botTokenSource;
+			// 防御性 guard：任何 string 字段为 '' 都视为「保留磁盘原值」。
+			// Drawer 在 form 未就绪时会把整段 telegram/lark 都用 '' 兜底；
+			// 没有这层保护就会把磁盘上现存的 appId / supergroupId / chatId 等清空，
+			// 然后每次保存都延续空值，造成「偶尔丢、丢了之后回不来」。
+			// 显式清空请用 null。
+			stripEmptyStrings(telegramPatch);
 
 			// 合并 telegram / lark 段
 			const mergedTelegram = { ...current.telegram, ...telegramPatch };
@@ -672,6 +689,7 @@ export function createServer(opts = {}) {
 			}
 			delete larkPatch.appSecretMasked;
 			delete larkPatch.appSecretSource;
+			stripEmptyStrings(larkPatch);
 			const mergedLark = { ...current.lark, ...larkPatch };
 
 			// 检测 bot 段是否变化（用于触发热重启）
@@ -742,7 +760,7 @@ export function createServer(opts = {}) {
 			const { token, source } = readBotTokenWithSource(() => reloadedCfg);
 			const { botToken: _drop, ...telegramSafe } = reloadedCfg.telegram || {};
 
-			res.json({
+			return {
 				ok: true,
 				config: {
 					...reloadedCfg,
@@ -760,7 +778,9 @@ export function createServer(opts = {}) {
 					larkRestart,
 				},
 				telegramRestart,
+			};
 			});
+			res.json(result);
 		} catch (e) {
 			res.status(500).json({ ok: false, error: e.message });
 		}
