@@ -1381,6 +1381,11 @@ export function createServer(opts = {}) {
 			getConfig: () => loadConfig({ rootDir: configRootDir }),
 			wizard: {
 				handleInbound: (...args) => openclawWizardLazyRef.handleInbound(...args),
+				// 历史 bug：早先这里只挂了 handleInbound，导致 lark-bot.handleCardAction
+				// 调 wizard.handleCallback 时 typeof !== 'function' → 所有飞书卡片按钮
+				// click 一律被 drop，Lark UI 弹「服务未就绪」。telegram 注入路径（上方
+				// createTelegramBot 那段）一直有这条，本次对齐补全。
+				handleCallback: (...args) => openclawWizardLazyRef.handleCallback(...args),
 			},
 			logger: { warn: (...a) => console.warn(...a), info: (...a) => console.log(...a) },
 		})
