@@ -66,6 +66,27 @@ describe('openclaw-hook helpers', () => {
     expect(m).toContain('无新内容')
   })
 
+  // 实战回归 1：cursor TUI 底部状态栏（model selector / Auto-run / cwd · branch）
+  // 每次 stop 都出现在 PTY tail，没信息量但占大半 IM 消息正文。要全部 strip。
+  it('extractTailSnippet filters Cursor TUI status bar noise (model / Auto-run / cwd-branch)', () => {
+    const raw = [
+      '问：1+1 等于几？',
+      '答：2',
+      '',
+      'Opus 4.6 (Thinking) 200K High · 23.6%',
+      'Auto-run',
+      '  ~/Desktop/code/crazyCombo/quadtodo · main',
+      'Opus 4.6 (Thinking) 200K High · 64%',
+      'Auto-run',
+      '~/Desktop/code/crazyCombo/quadtodo · main',
+    ].join('\n')
+    const out = __test__.extractTailSnippet(raw)
+    expect(out).toContain('答：2')
+    expect(out).not.toMatch(/Opus 4\.6/)
+    expect(out).not.toMatch(/Auto-run/)
+    expect(out).not.toMatch(/quadtodo · main/)
+  })
+
   it('buildMessage strips box-drawing chars from snippet', () => {
     const ugly = '╭─────╮\n│ abc │\n╰─────╯\n请回 a/b/c'
     const m = __test__.buildMessage({ event: 'stop', todoId: 'x', todoTitle: 'T', snippet: ugly })
@@ -892,6 +913,46 @@ describe('openclaw-hook handler', () => {
     const r = await handler.handle({ sessionId: 's1' })
     expect(r.ok).toBe(false)
     expect(r.reason).toBe('event_required')
+  })
+
+  // 实战回归 2：Cursor 1.7+ 每轮 stop hook 连发 3 次（13ms 内），导致 IM 收到 3 条同内容消息。
+  // 5 秒短 cooldown 去重，Claude/Codex 不受影响。
+  it('cursor session stop fires 3x → 2nd/3rd 被 cooldown 吞，只发 1 条', async () => {
+    const sessionId = 'sid-cursor-burst'
+    bridge = makeFakeBridge({ route: { channel: 'telegram', threadId: 7 } })
+    handler = createOpenClawHookHandler({
+      db, openclaw: bridge,
+      aiTerminal: { sessions: new Map([[sessionId, { tool: 'cursor', recentOutput: 'reply', outputHistory: [] }]]) },
+    })
+
+    const r1 = await handler.handle({ event: 'stop', sessionId, todoId: 't1' })
+    const r2 = await handler.handle({ event: 'stop', sessionId, todoId: 't1' })
+    const r3 = await handler.handle({ event: 'stop', sessionId, todoId: 't1' })
+
+    expect(r1.action).toBe('sent')
+    expect(r2.action).toBe('skipped')
+    expect(r2.reason).toBe('cursor_stop_dedup')
+    expect(r3.action).toBe('skipped')
+    expect(r3.reason).toBe('cursor_stop_dedup')
+    expect(bridge.broadcastText).toHaveBeenCalledTimes(1)
+  })
+
+  it('claude session 3 连发 stop 不被 cursor cooldown 影响（cooldown 只对 cursor）', async () => {
+    const sessionId = 'sid-claude-three'
+    bridge = makeFakeBridge({ route: { channel: 'telegram', threadId: 7 } })
+    handler = createOpenClawHookHandler({
+      db, openclaw: bridge,
+      aiTerminal: { sessions: new Map([[sessionId, { tool: 'claude', recentOutput: 'reply', outputHistory: [] }]]) },
+    })
+
+    const r1 = await handler.handle({ event: 'stop', sessionId, todoId: 't1' })
+    const r2 = await handler.handle({ event: 'stop', sessionId, todoId: 't1' })
+    const r3 = await handler.handle({ event: 'stop', sessionId, todoId: 't1' })
+
+    expect(r1.action).toBe('sent')
+    expect(r2.action).toBe('sent')
+    expect(r3.action).toBe('sent')
+    expect(bridge.broadcastText).toHaveBeenCalledTimes(3)
   })
 
   // ─── Claude PTY-detector 兜底（修复 auto 模式不 fire Notification 时状态/IM 都没反应）

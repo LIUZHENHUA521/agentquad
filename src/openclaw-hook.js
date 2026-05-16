@@ -118,6 +118,15 @@ const PROMPT_LINE = /^\s*(❯|⏵|►|→)/
 const AUTO_MODE_LINE = /(auto mode (on|off)|shift\+tab to cycle|ctrl\+[a-z]\b)/i
 const BORDER_LINE = /^[\s\-=_|+~]+$/
 
+// Cursor TUI 底部状态栏噪声 —— 每次 stop hook 触发时这些行都会出现在 PTY tail，
+// 完全没信息量，发到 IM 是纯刷屏。
+//   "Opus 4.6 (Thinking) 200K High · 23.6%"  → 模型选择器 + context %
+//   "Auto-run" / "Manual"                    → 模式指示
+//   "~/Desktop/code/crazyCombo/quadtodo · main" → cwd · git branch
+const CURSOR_MODEL_LINE = /^\s*(Opus|Sonnet|Haiku|GPT|Claude|Codex|Composer)\s+[\w.-]+.*·\s*[\d.]+%\s*$/i
+const CURSOR_AUTORUN_LINE = /^\s*(Auto-run|Manual|Auto)\s*$/i
+const CURSOR_CWD_BRANCH_LINE = /^\s*~?\/[^\s·]+(?:\/[^\s·]+)*\s+·\s+[\w./-]+\s*$/
+
 function isSpinnerOnly(line) {
   // 全部是 spinner 字符（含空格）
   const trimmed = line.replace(/\s+/g, '')
@@ -134,6 +143,9 @@ function isStatusLine(line) {
   if (PROMPT_LINE.test(line)) return true
   if (AUTO_MODE_LINE.test(line)) return true
   if (BORDER_LINE.test(line)) return true
+  if (CURSOR_MODEL_LINE.test(line)) return true
+  if (CURSOR_AUTORUN_LINE.test(line)) return true
+  if (CURSOR_CWD_BRANCH_LINE.test(line)) return true
   return false
 }
 
@@ -743,6 +755,16 @@ export function createOpenClawHookHandler(deps = {}) {
       return { ok: true, action: 'skipped', reason: 'ask_user_pending' }
     }
 
+    // 1a) Cursor 的 stop hook 每轮 fire 3 次（实测 13ms 内连发，cursor 内部架构使然）。
+    //     给 cursor session 加 5 秒短 cooldown 去重 —— 5s 足够吞掉同一轮内的连发，
+    //     又远小于用户两轮对话的最小间隔。Claude/Codex 不受影响（它们 stop 一轮一发）。
+    if (evt === 'stop' && sessionId) {
+      const sess = aiTerminal?.sessions?.get?.(sessionId)
+      if (sess?.tool === 'cursor' && isOnCooldown(sessionId, 'stop', 5_000)) {
+        return { ok: true, action: 'skipped', reason: 'cursor_stop_dedup' }
+      }
+    }
+
     const permissionReminderEligible = evt === 'notification' && isPermissionReminderEligible(sessionId)
 
     // 注：原来这里会立即 notifyWebTurnDone。已经挪到 ③ 读完 JSONL 之后，
@@ -1034,4 +1056,4 @@ export function createOpenClawHookHandler(deps = {}) {
   }
 }
 
-export const __test__ = { buildMessage, shortTodoId }
+export const __test__ = { buildMessage, shortTodoId, extractTailSnippet }
