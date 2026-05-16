@@ -11,9 +11,9 @@ import { Router } from 'express'
 
 const ALLOWED_KEYS = new Set([
   'enabled',
+  'tool',
   'model',
-  'apiKey',
-  'apiBaseUrl',
+  'timeoutMs',
   'threshold',
   'allowlist',
   'permissionAuto',
@@ -42,10 +42,6 @@ export function createAgentSupervisorRouter({ db, supervisor, getConfig, saveCon
     const filtered = {}
     for (const [k, v] of Object.entries(patch)) {
       if (ALLOWED_KEYS.has(k)) filtered[k] = v
-    }
-    // apiKey 特殊处理：如果传的是脱敏 hint（包含 …），保持原值
-    if (typeof filtered.apiKey === 'string' && filtered.apiKey.includes('…')) {
-      delete filtered.apiKey
     }
     try {
       const updated = await (withConfigLock

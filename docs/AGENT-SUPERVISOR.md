@@ -14,17 +14,22 @@
 
 ### Phase 1（本期）— 守望者骨架 + 权限弹窗自动决策
 
-1. **配置**：在 `config.js` 加 `agent.supervisor`：
+> ⚠️ **不调 Anthropic API**——主人没买 API key。守望者用主人本地已装好并登录的
+> `claude` / `codex` / `cursor-agent` CLI，以 headless 模式（`-p` / `exec`）做判断。
+> 所有 token 消耗都走主人现有的订阅，不会额外扣费。
+
+1. **配置**：在 `config.js` 加 `agentSupervisor`：
    - `enabled`（全局开关，默认 false）
-   - `model`（默认 `claude-opus-4-7`）
-   - `apiKey`（可读 env `ANTHROPIC_API_KEY`，覆盖优先）
+   - `tool`（用哪个 CLI：`claude` / `codex` / `cursor`，默认 `claude`）
+   - `model`（可选：传给 CLI 的 `--model`；空 = 用 CLI 默认）
+   - `timeoutMs`（单次决策超时，默认 60s）
    - `threshold`（默认 0.8）
-   - `allowlist`（默认 `['allow', 'allow once', 'yes', '1', 'continue']` 等非破坏选项关键词）
+   - `allowlist`（默认 `['allow', 'yes', 'continue', 'proceed', 'approve']`）
    - `permissionAuto`（默认 true，是否处理 PTY 权限弹窗）
    - `askUserAuto`（默认 true，是否处理 ask_user MCP 弹窗）
 2. **DB**：新表 `agent_decisions(id, todo_id, session_id, kind, prompt, options, choice, confidence, reason, model, tokens_in, tokens_out, ms, status, created_at)`
 3. **模块**：`src/agent-supervisor.js`
-   - `decide({ kind, todoTitle, todoDescription, promptText, options, recentOutput })` → 调 Anthropic API，返回 `{ choice, confidence, reason, modelUsed, tokensIn, tokensOut }`
+   - `decide({ kind, todoTitle, todoDescription, promptText, options, recentOutput, cwd })` → spawn 配置的 CLI（claude `-p --output-format text` / codex `exec` / cursor `-p --output-format text`），prompt 走 stdin，返回 `{ choice, confidence, reason }`
    - 自带白名单过滤、阈值检查、超时、错误降级
 4. **接入**：
    - `pending-questions.js`：`ask()` 创建 pending 后立即异步问 supervisor；命中就 `submitReply()`
@@ -62,8 +67,8 @@
 ## 风险点
 
 - **判官误判**：白名单 + 阈值 + audit 是兜底；用户可以一键回滚最近一次（Phase 1 至少要做"撤销 = 给 session 发一个反向 prompt"，不要硬撤回 PTY 状态）
-- **token 失控**：每条 todo 一个累计上限；超过强制叫人
-- **API key 泄漏**：apiKey 存 config 文件需 600 权限；env 优先；前端不回显完整 key
+- **token 失控**：每条 todo 一个累计上限；超过强制叫人。CLI 路径下 token 消耗走主人订阅，不会额外扣费，但仍可能撞订阅速率限制
+- **CLI 没登录 / bin 缺失**：CLI exit code 非 0 → 直接 fallback 到原流程，audit 记 `exit_<code>: <stderr>`
 - **死循环**：模型卡在"还需要推进"反复回 same prompt → 检测连续相同 prompt 强制叫人
 - **浏览器抢占**：Phase 3 必须有 advisory lock + UI 显示
 

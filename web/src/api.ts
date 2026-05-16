@@ -978,9 +978,11 @@ export interface ProbeHit {
 // ─── Agent Supervisor（守望者）─────────────────────────────────────
 export interface AgentSupervisorConfig {
   enabled: boolean
-  hasApiKey: boolean
-  apiKeyHint: string
+  tool: 'claude' | 'codex' | 'cursor'
+  command: string
+  bin: string
   model: string
+  timeoutMs: number
   threshold: number
   allowlist: string[]
   permissionAuto: boolean
@@ -1013,9 +1015,9 @@ export async function getAgentSupervisorStatus(): Promise<{ ok: true; config: Ag
 
 export async function updateAgentSupervisorConfig(patch: Partial<{
   enabled: boolean
+  tool: 'claude' | 'codex' | 'cursor'
   model: string
-  apiKey: string
-  apiBaseUrl: string
+  timeoutMs: number
   threshold: number
   allowlist: string[]
   permissionAuto: boolean

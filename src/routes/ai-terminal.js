@@ -328,6 +328,7 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
         promptText,
         options,
         recentOutput,
+        cwd: session.cwd || null,
       })
       if (verdict?.status !== 'auto') return
       // status 仍是 pending_confirm 才发；用户可能已经手动回了
