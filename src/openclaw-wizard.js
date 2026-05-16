@@ -1992,7 +1992,13 @@ export function createOpenClawWizard({
     const route = openclaw?.resolveRoute?.(sid, channel) || null
     if (!route) return stale(`no_route sid=${sid} channel=${channel || 'null'}`)
     const sameChat = String(route.targetUserId) === String(chatId)
-    const sameThread = (route.threadId || null) === (threadId || null)
+    // 飞书 card.action.trigger 事件实测经常不带 open_thread_id（即使卡片是在 thread
+    // 里发的）；用 sameThread 硬校验会把所有 lark click 卡成 stale。lark 渠道下
+    // 信任 sameChat + shortid（已经锁到具体 session）就够了，threadId 只在 telegram
+    // 渠道生效（topic 隔离才有意义）。
+    const sameThread = route.channel === 'lark'
+      ? true
+      : (route.threadId || null) === (threadId || null)
     // 允许 telegram / lark 渠道的权限回调；老的"threadId 非空就算"留作 legacy 兜底。
     const isRoutedChannel = route.channel === 'telegram' || route.channel === 'lark' || route.threadId != null
     if (!sameChat || !sameThread || !isRoutedChannel) {

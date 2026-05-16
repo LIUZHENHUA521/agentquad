@@ -2068,6 +2068,43 @@ describe('openclaw-wizard inline keyboard (callback_query)', () => {
     expect(r.action).toBe('permission_allow_sent')
   })
 
+  // 实战回归 2：飞书 card.action.trigger 事件实测经常不带 open_thread_id（即使
+  // 卡片是在 thread 里发的）。route 里 threadId 是 'omt_xxx'，click 里 threadId 是
+  // null —— sameThread 硬校验会误判 stale。lark 渠道下放过 threadId 校验。
+  it('permission callback allows lark click with missing threadId (Lark SDK quirk)', async () => {
+    const writes = []
+    bridge.findSessionByShortId = vi.fn(() => 'sess-lark-no-tid')
+    bridge.resolveRoute = vi.fn((sid, channel) => {
+      if (channel === 'lark') {
+        return {
+          targetUserId: 'oc_lark_chat',
+          threadId: 'omt_actual_thread',     // route 知道 thread
+          channel: 'lark',
+          rootMessageId: 'om_root',
+        }
+      }
+      return null
+    })
+    wizard = createOpenClawWizard({
+      db, aiTerminal: ai, openclaw: bridge, pending,
+      pty: {
+        has: vi.fn((sid) => sid === 'sess-lark-no-tid'),
+        write: vi.fn((sid, data) => writes.push({ sid, data })),
+      },
+      getConfig: () => ({ defaultCwd: '/tmp', port: 5677 }),
+    })
+
+    const r = await wizard.handleCallback({
+      channel: 'lark',
+      chatId: 'oc_lark_chat',
+      threadId: null,                         // click 里没 thread —— 真实复现
+      callbackData: 'qt:perm:tid0:allow',
+    })
+
+    expect(writes).toEqual([{ sid: 'sess-lark-no-tid', data: '\r' }])
+    expect(r.action).toBe('permission_allow_sent')
+  })
+
   it('permission allow callback also works for lark-routed sessions (channel=lark)', async () => {
     const writes = []
     bridge.findSessionByShortId = vi.fn(() => 'sess-lark-allow')
