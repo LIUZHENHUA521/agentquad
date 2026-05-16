@@ -72,6 +72,75 @@ export function buildDecisionPrompt({ kind, todoTitle, todoDescription, promptTe
 }
 
 /**
+ * Phase 2 主动推进：分析当前 session 是否完成 + 应该给 AI 什么下一句 prompt。
+ * 跟 buildDecisionPrompt（二选一）是不同的任务：这里没有候选选项，让 CLI 自己生成 nextPrompt。
+ */
+export function buildActivePushPrompt({ todoTitle, todoDescription, recentOutput }) {
+  const parts = []
+  parts.push('你正在替主人监督一个 AI session 的进展。主人离开了电脑，让你看着他的终端，你需要替他判断两件事：')
+  parts.push('1. AI 是否已经把 todo 完成到可以让主人验收的程度？')
+  parts.push('2. 如果还没完成，应该让 AI 接下来做什么？只能给出单行的、简短明确的下一句 prompt。')
+  parts.push('')
+  if (todoTitle) parts.push(`# Todo 标题\n${todoTitle}`)
+  parts.push(`# Todo 描述（这是验收标准）\n${todoDescription || '(无描述，请基于标题和 AI 输出推断)'}`)
+  const tail = typeof recentOutput === 'string'
+    ? (recentOutput.length > 3000 ? `…${recentOutput.slice(-3000)}` : recentOutput)
+    : ''
+  parts.push(`# AI 最近的输出\n${tail || '(无输出)'}`)
+  parts.push('')
+  parts.push('只输出一行 JSON，不要 markdown 围栏：')
+  parts.push('{"done": <true|false>, "needsHumanReview": <true|false>, "nextPrompt": "<单行字符串，done=true 时为空>", "confidence": <0.0-1.0>, "reason": "<一句话理由>"}')
+  parts.push('')
+  parts.push('规则：')
+  parts.push('- 没有明显进展（AI 只输出思考、没改代码 / 没运行命令）→ done=false，nextPrompt 提示推进（"请继续"/"请运行测试"/"请把改动提交"）')
+  parts.push('- AI 在等用户决策不可逆操作（删除文件、git push、改 schema、删数据库）→ done=true + needsHumanReview=true')
+  parts.push('- AI 输出明显完成信号（"已完成"/"all done"/列了变更摘要） + todo 描述里的所有项都已经满足 → done=true，needsHumanReview 看场景')
+  parts.push('- AI 报错卡住、无法自动恢复 → done=true + needsHumanReview=true')
+  parts.push('- 不确定时给低 confidence（< 0.5）；主人会被通知验收')
+  parts.push('- nextPrompt 必须单行、≤ 200 字、不要 markdown 围栏')
+  return parts.join('\n')
+}
+
+export function parseActivePushResponse(text) {
+  if (!text || typeof text !== 'string') return null
+  let s = text.trim()
+  const fenceMatch = s.match(/```(?:json)?\s*([\s\S]*?)```/i)
+  if (fenceMatch) s = fenceMatch[1].trim()
+  const first = s.indexOf('{')
+  const last = s.lastIndexOf('}')
+  if (first < 0 || last < 0 || last <= first) return null
+  const jsonStr = s.slice(first, last + 1)
+  let obj
+  try { obj = JSON.parse(jsonStr) } catch { return null }
+  const done = obj.done === true
+  const needsHumanReview = obj.needsHumanReview === true
+  const nextPrompt = typeof obj.nextPrompt === 'string' ? obj.nextPrompt : ''
+  const confidence = Number(obj.confidence)
+  const reason = typeof obj.reason === 'string' ? obj.reason : ''
+  if (!Number.isFinite(confidence) || confidence < 0 || confidence > 1) return null
+  return { done, needsHumanReview, nextPrompt, confidence, reason }
+}
+
+/**
+ * 把 nextPrompt 清理成能安全写进 PTY 的单行串：
+ *   - 剥 ANSI / 控制字符
+ *   - 折叠换行成单个空格
+ *   - trim 两端
+ *   - 截断到 2000 字（再长 CLI 也吐不出有意义的 prompt）
+ */
+export function sanitizePtyInput(s) {
+  if (!s || typeof s !== 'string') return ''
+  let t = s
+    .replace(/\x1b\[[0-9;?]*[A-Za-z~]/g, '')
+    .replace(/\x1b\][^\x07]*\x07/g, '')
+    .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, '')
+    .replace(/[\r\n]+/g, ' ')
+    .trim()
+  if (t.length > 2000) t = t.slice(0, 2000)
+  return t
+}
+
+/**
  * 解析 CLI 回复。CLI 偶尔会带 ```json 围栏或者引号问题，我们容错处理。
  */
 export function parseDecisionResponse(text, options) {
@@ -173,9 +242,45 @@ async function runHeadlessCli({ bin, args, prompt, cwd, timeoutMs, logger }) {
  *   - logger
  *   - runCli: 测试注入用，签名 = ({ bin, args, prompt, cwd, timeoutMs }) => Promise<{stdout, stderr, exitCode}>
  */
-export function createAgentSupervisor({ db, getConfig, logger = console, runCli } = {}) {
+export function createAgentSupervisor({ db, getConfig, logger = console, runCli, now = Date.now } = {}) {
   if (!db) throw new Error('db_required')
   if (typeof getConfig !== 'function') throw new Error('getConfig_required')
+
+  // 每个 sessionId 的连续自动推进计数。
+  // count: 已连续推进了几次；lastPushAt: 上次推进时间戳（用于自然衰减）；
+  // tokens: 累计 token 估算（暂时不精确，先占位）
+  // 10 分钟没有新推进 → 自然衰减回 0，避免 session 被永久锁住。
+  const pushState = new Map()
+  const PUSH_DECAY_MS = 10 * 60_000
+  const PUSH_MIN_INTERVAL_MS = 5_000  // 同一 session 两次推进之间至少 5 秒，避免 Stop hook 抖动多推
+
+  function getEffectivePushCount(sessionId) {
+    const s = pushState.get(sessionId)
+    if (!s) return 0
+    if (now() - s.lastPushAt > PUSH_DECAY_MS) {
+      pushState.delete(sessionId)
+      return 0
+    }
+    return s.count
+  }
+
+  function bumpPushCount(sessionId) {
+    const cur = pushState.get(sessionId) || { count: 0, lastPushAt: 0 }
+    cur.count = (now() - cur.lastPushAt > PUSH_DECAY_MS ? 0 : cur.count) + 1
+    cur.lastPushAt = now()
+    pushState.set(sessionId, cur)
+    return cur
+  }
+
+  function resetPushState(sessionId) {
+    pushState.delete(sessionId)
+  }
+
+  function getPushState(sessionId) {
+    const s = pushState.get(sessionId)
+    if (!s) return { count: 0, lastPushAt: 0 }
+    return { ...s, effectiveCount: getEffectivePushCount(sessionId) }
+  }
 
   function resolvedConfig() {
     const cfg = getConfig() || {}
@@ -321,6 +426,169 @@ export function createAgentSupervisor({ db, getConfig, logger = console, runCli 
     }
   }
 
+  /**
+   * Phase 2 主动推进：在 session 完成一轮后，问 CLI 该不该继续推、推什么。
+   *
+   * 返回 { action: 'push'|'notify'|'done'|'fallback'|'skipped'|'failed', nextPrompt?, reason, confidence?, state }
+   *
+   * 调用方（ait.notifyTurnDone 的回调）应该：
+   *   - action='push'   → pty.write(sessionId, nextPrompt + '\r')，让 AI 跑下一轮
+   *   - action='notify' → 不做事，等原 Stop hook IM 流程通知主人（CLI 觉得需要主人验收）
+   *   - action='done'   → 不做事，等用户来看（CLI 觉得任务完成且无需验收）
+   *   - 其余             → 不做事
+   */
+  async function analyzeForPush({ sessionId, todoId, todoTitle, todoDescription, recentOutput, cwd }) {
+    const startedAt = now()
+    const cfg = resolvedConfig()
+
+    if (!cfg.enabled) return { action: 'skipped', reason: 'disabled' }
+    const ap = cfg.activePush || {}
+    if (!ap.enabled) return { action: 'skipped', reason: 'active_push_off' }
+    if (!sessionId) return { action: 'skipped', reason: 'no_session' }
+
+    // 同 session 限速
+    const state = pushState.get(sessionId)
+    if (state && now() - state.lastPushAt < PUSH_MIN_INTERVAL_MS) {
+      return { action: 'skipped', reason: 'cooldown', state: getPushState(sessionId) }
+    }
+
+    // 同 session 最大连续推进次数
+    const maxConsecutive = Number.isFinite(Number(ap.maxConsecutive)) ? Number(ap.maxConsecutive) : 5
+    const effectiveCount = getEffectivePushCount(sessionId)
+    if (effectiveCount >= maxConsecutive) {
+      writeAudit({
+        kind: 'active_push', sessionId, todoId,
+        prompt: '(max consecutive reached, skipping)', options: null,
+        status: 'skipped', reason: `max_consecutive=${maxConsecutive}`,
+        ms: now() - startedAt,
+      })
+      return { action: 'skipped', reason: 'max_consecutive_reached', state: getPushState(sessionId) }
+    }
+
+    const tool = cfg.tool || 'claude'
+    let args
+    try {
+      args = buildSpawnArgs({ tool, model: cfg.model || '' })
+    } catch (e) {
+      writeAudit({ kind: 'active_push', sessionId, todoId, prompt: '(spawn args failed)', options: null, status: 'failed', reason: e.message, ms: now() - startedAt })
+      return { action: 'failed', reason: e.message }
+    }
+    const { bin } = resolvedToolBin(tool)
+    const cliPrompt = buildActivePushPrompt({ todoTitle, todoDescription, recentOutput })
+    const timeoutMs = Number.isFinite(cfg.timeoutMs) ? cfg.timeoutMs : 60_000
+
+    let cliResult
+    try {
+      cliResult = await (runCli
+        ? runCli({ tool, bin, args, prompt: cliPrompt, cwd, timeoutMs })
+        : runHeadlessCli({ bin, args, prompt: cliPrompt, cwd, timeoutMs, logger }))
+    } catch (e) {
+      logger.warn?.(`[agent-supervisor] active push cli failed: ${e.message}`)
+      writeAudit({
+        kind: 'active_push', sessionId, todoId,
+        prompt: '(active push)', options: null,
+        status: 'failed', reason: e.message || 'cli_error',
+        model: cfg.model || tool, ms: now() - startedAt,
+      })
+      return { action: 'failed', reason: e.message || 'cli_error' }
+    }
+
+    const ms = now() - startedAt
+    if (cliResult.exitCode !== 0) {
+      const detail = (cliResult.stderr || '').slice(0, 300)
+      writeAudit({
+        kind: 'active_push', sessionId, todoId,
+        prompt: '(active push)', options: null,
+        status: 'failed', reason: `exit_${cliResult.exitCode}: ${detail}`,
+        model: cfg.model || tool, ms,
+      })
+      return { action: 'failed', reason: `exit_${cliResult.exitCode}` }
+    }
+
+    const parsed = parseActivePushResponse(cliResult.stdout)
+    if (!parsed) {
+      writeAudit({
+        kind: 'active_push', sessionId, todoId,
+        prompt: '(active push)', options: null,
+        status: 'fallback', reason: 'parse_failed',
+        model: cfg.model || tool, ms,
+      })
+      return { action: 'fallback', reason: 'parse_failed' }
+    }
+
+    const threshold = Number.isFinite(cfg.threshold) ? cfg.threshold : 0.8
+    if (parsed.confidence < threshold) {
+      writeAudit({
+        kind: 'active_push', sessionId, todoId,
+        prompt: '(active push)', options: null,
+        choice: parsed.done ? 'done?' : (parsed.nextPrompt || '?'),
+        confidence: parsed.confidence,
+        reason: `${parsed.reason} | below_threshold(${threshold})`,
+        model: cfg.model || tool, ms,
+        status: 'fallback',
+      })
+      return { action: 'fallback', reason: 'below_threshold', confidence: parsed.confidence }
+    }
+
+    if (parsed.done) {
+      const action = parsed.needsHumanReview ? 'notify' : 'done'
+      writeAudit({
+        kind: 'active_push', sessionId, todoId,
+        prompt: '(active push)', options: null,
+        choice: action, confidence: parsed.confidence, reason: parsed.reason,
+        model: cfg.model || tool, ms,
+        status: 'auto',
+      })
+      return { action, reason: parsed.reason, confidence: parsed.confidence }
+    }
+
+    // 推进：清洗 nextPrompt 才写 PTY；空 nextPrompt 视为模型没想好
+    const cleanPrompt = sanitizePtyInput(parsed.nextPrompt)
+    if (!cleanPrompt) {
+      writeAudit({
+        kind: 'active_push', sessionId, todoId,
+        prompt: '(active push)', options: null,
+        choice: 'push', confidence: parsed.confidence,
+        reason: `${parsed.reason} | empty_next_prompt`,
+        model: cfg.model || tool, ms,
+        status: 'fallback',
+      })
+      return { action: 'fallback', reason: 'empty_next_prompt' }
+    }
+
+    const stateAfter = bumpPushCount(sessionId)
+    writeAudit({
+      kind: 'active_push', sessionId, todoId,
+      prompt: '(active push)', options: null,
+      choice: cleanPrompt, confidence: parsed.confidence, reason: parsed.reason,
+      model: cfg.model || tool, ms,
+      status: 'auto',
+    })
+    return {
+      action: 'push',
+      nextPrompt: cleanPrompt,
+      reason: parsed.reason,
+      confidence: parsed.confidence,
+      state: { ...stateAfter, max: maxConsecutive },
+    }
+  }
+
+  /**
+   * 当 active push 开启且 session 还有推进 budget 时，建议 Stop hook IM 推送方静默——
+   * 避免主人在 supervisor 自动迭代期间被 N 条"AI 一轮结束"刷屏。
+   * 一旦 budget 耗尽（max consecutive 命中）或 active push 已经决策 notify/done/fail，
+   * 这个函数返回 false，IM 推送恢复，主人收到收尾通知。
+   */
+  function shouldSuppressStopPush(sessionId) {
+    const cfg = resolvedConfig()
+    if (!cfg.enabled) return false
+    if (!cfg.activePush?.enabled) return false
+    if (!sessionId) return false
+    const maxConsecutive = Number.isFinite(Number(cfg.activePush?.maxConsecutive)) ? Number(cfg.activePush.maxConsecutive) : 5
+    const cur = getEffectivePushCount(sessionId)
+    return cur < maxConsecutive
+  }
+
   function writeAudit(row) {
     try {
       db.insertAgentDecision(row)
@@ -333,6 +601,16 @@ export function createAgentSupervisor({ db, getConfig, logger = console, runCli 
     const cfg = resolvedConfig()
     const tool = cfg.tool || 'claude'
     const { command, bin } = resolvedToolBin(tool)
+    // 把当前所有 session 的 push 状态摘要一并返回，UI 可以一目了然看到"哪些 session 被推过几次"
+    const pushStates = []
+    for (const [sid, st] of pushState.entries()) {
+      pushStates.push({
+        sessionId: sid,
+        count: st.count,
+        lastPushAt: st.lastPushAt,
+        effectiveCount: getEffectivePushCount(sid),
+      })
+    }
     return {
       enabled: !!cfg.enabled,
       tool,
@@ -346,15 +624,20 @@ export function createAgentSupervisor({ db, getConfig, logger = console, runCli 
       askUserAuto: !!cfg.askUserAuto,
       activePush: cfg.activePush || {},
       browserControl: cfg.browserControl || {},
+      pushStates,
     }
   }
 
   return {
     decide,
+    analyzeForPush,
+    shouldSuppressStopPush,
+    getPushState,
+    resetPushState,
     describe,
     isEnabled,
     // 测试钩子
-    _internals: { buildDecisionPrompt, parseDecisionResponse, isOptionInAllowlist, buildSpawnArgs },
+    _internals: { buildDecisionPrompt, parseDecisionResponse, isOptionInAllowlist, buildSpawnArgs, buildActivePushPrompt, parseActivePushResponse, sanitizePtyInput },
   }
 }
 
@@ -363,4 +646,7 @@ export const __test__ = {
   parseDecisionResponse,
   isOptionInAllowlist,
   buildSpawnArgs,
+  buildActivePushPrompt,
+  parseActivePushResponse,
+  sanitizePtyInput,
 }

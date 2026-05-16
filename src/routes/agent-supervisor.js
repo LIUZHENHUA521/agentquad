@@ -86,6 +86,19 @@ export function createAgentSupervisorRouter({ db, supervisor, getConfig, saveCon
     }
   })
 
+  router.post('/reset-push-state', (req, res) => {
+    const sessionId = typeof req.body?.sessionId === 'string' ? req.body.sessionId.trim() : ''
+    if (!sessionId) {
+      return res.status(400).json({ ok: false, error: 'sessionId_required' })
+    }
+    try {
+      supervisor.resetPushState?.(sessionId)
+      res.json({ ok: true, sessionId, state: supervisor.getPushState?.(sessionId) || null })
+    } catch (e) {
+      res.status(500).json({ ok: false, error: e.message })
+    }
+  })
+
   router.get('/decisions', (req, res) => {
     const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 50))
     const offset = Math.max(0, Number(req.query.offset) || 0)

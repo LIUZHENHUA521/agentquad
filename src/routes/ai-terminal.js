@@ -94,6 +94,9 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
   // PTY redraw 多次调用时重复发 API 请求
   /** @type {Set<string>} */
   const supervisorBusy = new Set()
+  // 同样的防重入，给 Phase 2 active push 用：一个 session 在被守望者分析时不再触发新分析
+  /** @type {Set<string>} */
+  const activePushBusy = new Set()
 
   function resolveSessionCwd(requestedCwd) {
     const fallback = getDefaultCwd?.() || defaultCwd || process.env.HOME || process.cwd()
@@ -396,7 +399,60 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
       status: payload.status || session.status || 'idle',
       timestamp: ts,
     })
+
+    // Phase 2 active push：session 转 idle 时 fire 守望者去判断"还要不要推进"。
+    // 异步、不阻塞 notifyTurnDone 返回；推进决定由 supervisor 自己 audit。
+    if (agentSupervisor && session.todoId) {
+      runActivePush({ session }).catch((e) => {
+        console.warn(`[ai-terminal] active push threw: ${e.message}`)
+      })
+    }
     return true
+  }
+
+  async function runActivePush({ session }) {
+    if (!agentSupervisor?.analyzeForPush) return
+    const sessionId = session.sessionId
+    if (!sessionId) return
+    if (activePushBusy.has(sessionId)) return
+    if (!agentSupervisor.isEnabled?.()) return
+    activePushBusy.add(sessionId)
+    try {
+      let todoTitle = null
+      let todoDescription = null
+      try {
+        const todo = session.todoId ? db.getTodo?.(session.todoId) : null
+        todoTitle = todo?.title || null
+        todoDescription = todo?.description || null
+      } catch { /* ignore */ }
+      const recentOutput = typeof session.recentOutput === 'string' ? session.recentOutput.slice(-3000) : ''
+      const result = await agentSupervisor.analyzeForPush({
+        sessionId,
+        todoId: session.todoId,
+        todoTitle,
+        todoDescription,
+        recentOutput,
+        cwd: session.cwd || null,
+      })
+      if (result?.action !== 'push' || !result.nextPrompt) return
+      // 决定推进时，session 必须仍处于 idle 状态——避免在用户已经手动接管后还往里塞 prompt
+      const fresh = sessions.get(sessionId)
+      if (!fresh || (fresh.status !== 'idle' && fresh.status !== 'running')) return
+      try {
+        pty.write(sessionId, `${result.nextPrompt}\r`)
+        broadcastToSession(fresh, {
+          type: 'active_push_sent',
+          by: 'agent-supervisor',
+          nextPrompt: result.nextPrompt,
+          confidence: result.confidence,
+          state: result.state,
+        })
+      } catch (e) {
+        console.warn(`[ai-terminal] active push write failed: ${e.message}`)
+      }
+    } finally {
+      activePushBusy.delete(sessionId)
+    }
   }
 
   function sendToBrowser(ws, msg) {

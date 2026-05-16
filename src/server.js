@@ -1525,6 +1525,7 @@ export function createServer(opts = {}) {
 		loadingTracker: loadingTrackerProxy,                  // Stop hook → 标题切 ✅/❌/⏹（终态）
 		reactionTracker: reactionTrackerProxy,                // Stop hook → 清 telegram "✍" reaction
 		sessionInputDispatcher,                               // Stop / session-end → 触发 dispatcher flush / cleanup
+		agentSupervisor,                                      // Phase 2：active push 期间静默 Stop IM
 		getConfig: () => loadConfig({ rootDir: configRootDir }),
 	});
 	app.use("/api/openclaw/hook", createOpenClawHookRouter({ hookHandler: openclawHookHandler }));

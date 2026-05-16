@@ -41,21 +41,26 @@
 6. **Web UI**：`SettingsDrawer` 加新 section + 单独的"代决策时间线"小抽屉
 7. **测试**：白名单边界、阈值边界、API 错误降级、并发多 pending
 
-### Phase 2 — 主动推进（每个 session 的定时复诊）
+### Phase 2 — 主动推进（已上线）
 
-1. 守望者起一个定时器（默认每 3 分钟）
-2. 扫描所有 `running` / `idle` session：
-   - 取 todo 的标题、描述、最近 1-2 轮 transcript
-   - 问 Opus 4.7：「这个 session 是否已经达到验收标准？如果没有，应该让 AI 做什么？」
-   - 模型返回 `{ done: true | false, nextPrompt?: string, needHumanReview?: { reason } }`
-3. 决策：
-   - `done` + `needHumanReview` → IM 通知主人验收
-   - `done` 但不需要验收 → 不做事（等用户来看）
-   - 未完成 + `nextPrompt` → 通过 `sessionInputDispatcher` 把 prompt 喂给 PTY
-4. 安全闸：
-   - 同 session 最大连续自动推进次数（默认 5），超过 → 强制叫人
-   - 同 session 累计 token 上限（防失控）
-5. UI：每条 todo 卡片显示"已被守望者推进 N 次 / token 已用 X"
+实现策略：**事件驱动**而非定时器——ait.notifyTurnDone 是"session 转 idle"的天然信号，比定时轮询更省 CLI 调用。
+
+1. `agent-supervisor.analyzeForPush()`：spawn 配置好的 CLI，让它判断 `{ done, needsHumanReview, nextPrompt, confidence, reason }`
+2. 决策映射：
+   - `done` + `needsHumanReview` → action='notify'，不做事，让原 Stop hook IM 通知主人验收
+   - `done` 且不需要验收 → action='done'，不做事
+   - 未完成 + 高置信度 + nextPrompt 非空 → action='push'，sanitize 后 `pty.write(<prompt>\r)`
+   - 置信度 < threshold → action='fallback'
+3. 安全闸：
+   - 同 session 最大连续推进次数（默认 5）；命中后 supervisor 不再推、Stop IM 恢复推送
+   - 10 分钟内无新推进则计数自然衰减回 0（避免 session 永久锁住）
+   - 同一 session 两次推进间最小 5s 冷却（防 Stop hook 抖动）
+   - 推进期间 `agentSupervisor.shouldSuppressStopPush` 让 openclaw-hook 静默 IM 通知，避免主人被刷屏
+   - `nextPrompt` 经 `sanitizePtyInput` 清洗：剥 ANSI / 控制字符、折叠换行、截断 2000 字
+4. API：
+   - `POST /api/agent-supervisor/reset-push-state` 主动重置某 session 的推进计数
+   - `GET /api/agent-supervisor/status` 返回 `pushStates[]` 让前端看到每个 session 已推几次
+5. UI：设置面板里"主动推进"子区 + 当前 session 推进计数表 + 每行的"重置计数"按钮
 
 ### Phase 3 — 浏览器代驾（claude-in-chrome MCP 注入）
 

@@ -976,6 +976,13 @@ export interface ProbeHit {
  * onHit 收到每个命中条目；onDone 收到「probe 结束」事件。
  */
 // ─── Agent Supervisor（守望者）─────────────────────────────────────
+export interface AgentSupervisorPushState {
+  sessionId: string
+  count: number
+  lastPushAt: number
+  effectiveCount: number
+}
+
 export interface AgentSupervisorConfig {
   enabled: boolean
   tool: 'claude' | 'codex' | 'cursor'
@@ -989,6 +996,14 @@ export interface AgentSupervisorConfig {
   askUserAuto: boolean
   activePush: { enabled?: boolean; intervalMs?: number; maxConsecutive?: number; maxTokensPerTodo?: number }
   browserControl: { enabled?: boolean }
+  pushStates?: AgentSupervisorPushState[]
+}
+
+export async function resetAgentPushState(sessionId: string): Promise<{ ok: true; sessionId: string; state: any }> {
+  return jsonFetch('/api/agent-supervisor/reset-push-state', {
+    method: 'POST',
+    body: JSON.stringify({ sessionId }),
+  })
 }
 
 export interface AgentDecisionRow {

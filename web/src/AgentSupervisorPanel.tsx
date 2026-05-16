@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Alert, Button, Form, Input, InputNumber, Select, Space, Switch, Table, Tag, Typography, message } from 'antd'
-import { getAgentSupervisorStatus, updateAgentSupervisorConfig, listAgentDecisions, type AgentSupervisorConfig, type AgentDecisionRow } from './api'
+import { getAgentSupervisorStatus, updateAgentSupervisorConfig, listAgentDecisions, resetAgentPushState, type AgentSupervisorConfig, type AgentDecisionRow } from './api'
 
 const { Text, Paragraph } = Typography
 
@@ -57,6 +57,8 @@ export default function AgentSupervisorPanel() {
         threshold: r.config.threshold ?? 0.8,
         permissionAuto: r.config.permissionAuto !== false,
         askUserAuto: r.config.askUserAuto !== false,
+        activePushEnabled: !!r.config.activePush?.enabled,
+        maxConsecutive: r.config.activePush?.maxConsecutive ?? 5,
       })
       const list = await listAgentDecisions({ limit: 50 })
       setDecisions(list.items)
@@ -83,6 +85,10 @@ export default function AgentSupervisorPanel() {
         permissionAuto: !!v.permissionAuto,
         askUserAuto: !!v.askUserAuto,
         allowlist: allowlistText.split(/[\n,]/).map((s) => s.trim()).filter(Boolean),
+        activePush: {
+          enabled: !!v.activePushEnabled,
+          maxConsecutive: Number(v.maxConsecutive) || 5,
+        },
       }
       await updateAgentSupervisorConfig(patch)
       message.success('已保存')
@@ -170,6 +176,20 @@ export default function AgentSupervisorPanel() {
           <Switch />
         </Form.Item>
 
+        <Typography.Title level={5} style={{ marginTop: 16 }}>主动推进（Phase 2）</Typography.Title>
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 12 }}
+          message="开启后，AI 一轮结束（idle）时会自动找 CLI 判断该不该继续推；推进期间 Stop hook 的 IM 通知会被静默，直到 max-consecutive 命中或 CLI 判定需要主人验收。"
+        />
+        <Form.Item label="开启主动推进" name="activePushEnabled" valuePropName="checked">
+          <Switch />
+        </Form.Item>
+        <Form.Item label="同一 session 最多连续推几次" name="maxConsecutive" extra="命中后 supervisor 不再推、Stop IM 恢复通知；10 分钟内无新推进则自然衰减回 0。">
+          <InputNumber min={1} max={50} style={{ width: 160 }} />
+        </Form.Item>
+
         <Form.Item>
           <Space>
             <Button type="primary" onClick={onSave} loading={saving}>保存</Button>
@@ -177,6 +197,31 @@ export default function AgentSupervisorPanel() {
           </Space>
         </Form.Item>
       </Form>
+
+      {config?.pushStates && config.pushStates.length > 0 ? (
+        <>
+          <Typography.Title level={5} style={{ marginTop: 16 }}>当前 session 推进计数</Typography.Title>
+          <Table
+            size="small"
+            rowKey="sessionId"
+            dataSource={config.pushStates}
+            pagination={false}
+            columns={[
+              { title: 'Session', dataIndex: 'sessionId', width: 220, ellipsis: true, render: (v: string) => <Text code>{v.slice(-12)}</Text> },
+              { title: '已推次数', dataIndex: 'effectiveCount', width: 100 },
+              { title: '上次推进', dataIndex: 'lastPushAt', width: 180, render: (v: number) => v ? new Date(v).toLocaleString() : '—' },
+              {
+                title: '操作', width: 120, render: (_: any, row: any) => (
+                  <Button size="small" onClick={async () => {
+                    try { await resetAgentPushState(row.sessionId); message.success('已重置'); await refresh() }
+                    catch (e: any) { message.error(`重置失败：${e.message}`) }
+                  }}>重置计数</Button>
+                ),
+              },
+            ]}
+          />
+        </>
+      ) : null}
 
       <Typography.Title level={5} style={{ marginTop: 24 }}>代决策时间线（最近 50 条 / 共 {total}）</Typography.Title>
       <Table<AgentDecisionRow>
