@@ -24,6 +24,9 @@ const BOX_HORIZONTAL = /[─━┄┅┈┉═]/g
 const BOX_VERTICAL = /[│┃┆┇┊┋║]/g
 const BOX_CORNERS = /[┌┍┎┏┐┑┒┓└┕┖┗┘┙┚┛╭╮╯╰╓╒╕╖╙╘╛╜╔╗╚╝]/g
 const BOX_TEES = /[├┝┞┟┠┡┢┣┤┥┦┧┨┩┪┫┬┭┮┯┰┱┲┳┴┵┶┷┸┹┺┻┼┽┾┿╀╁╂╃╄╅╆╇╈╉╊╋╠╣╦╩╬]/g
+// Unicode Block Elements (U+2580-259F)：▀▁▂▃▄▅▆▇█ ▉▊▋▌▍▎▏ ▐░▒▓▔▕▖▗▘▙▚▛▜▝▞▟
+// Cursor TUI 用这些字符画状态栏 / 进度条 / 边框，连一串看起来就是大片黑条。
+const BOX_BLOCK = /[▀-▟]/g
 
 // Claude TUI 噪声 —— 与 openclaw-hook.js 保持同步
 const SPINNER_CHARS_STR = '✶✳✻✽★⚙∗⠁⠂⠄⡀⢀⠠⠐⠈'
@@ -83,6 +86,7 @@ function stripBoxDrawing(s) {
     .replace(BOX_VERTICAL, '')
     .replace(BOX_CORNERS, '')
     .replace(BOX_TEES, '')
+    .replace(BOX_BLOCK, '')
 }
 
 function compactBlankLines(s) {

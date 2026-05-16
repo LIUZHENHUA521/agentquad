@@ -15,6 +15,16 @@ describe('permission-prompt', () => {
       expect(out).not.toMatch(/[│╭╮╯╰─]/)
     })
 
+    // 用户回归：Cursor TUI 用 Unicode Block Elements (U+2580-259F) 画状态栏 / 边框
+    // ▄▄▄▄▄ 一串发到飞书 / Telegram，渲染就是大片"黑线"。strip 掉。
+    it('strips Unicode Block Elements (▄▆█▌▐ ...) used by Cursor TUI', () => {
+      const raw = '▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄\n▌ Cursor status ▐\n████████████\nReal text here'
+      const out = cleanPtyTail(raw)
+      expect(out).toContain('Cursor status')
+      expect(out).toContain('Real text here')
+      expect(out).not.toMatch(/[▀-▟]/)
+    })
+
     it('drops decorative ❯ marker lines and trims marker prefix', () => {
       const raw = '❯ 1. Yes\n  2. No\n❯'
       const out = cleanPtyTail(raw)

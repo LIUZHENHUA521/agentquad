@@ -83,6 +83,9 @@ const BOX_HORIZONTAL = /[─━┄┅┈┉═]/g
 const BOX_VERTICAL = /[│┃┆┇┊┋║]/g
 const BOX_CORNERS = /[┌┍┎┏┐┑┒┓└┕┖┗┘┙┚┛┌┐└┘╭╮╯╰╓╒╕╖╙╘╛╜╔╗╚╝]/g
 const BOX_TEES = /[├┝┞┟┠┡┢┣┤┥┦┧┨┩┪┫┬┭┮┯┰┱┲┳┴┵┶┷┸┹┺┻┼┽┾┿╀╁╂╃╄╅╆╇╈╉╊╋╠╣╦╩╬]/g
+// Unicode Block Elements (U+2580-259F)：▀▁▂▃▄▅▆▇█ ▉▊▋▌▍▎▏ ▐░▒▓▔▕▖▗▘▙▚▛▜▝▞▟
+// Cursor TUI 用这些画状态栏 / 进度条 / 边框，发到 IM 一串看就是黑条。
+const BOX_BLOCK = /[▀-▟]/g
 
 function cleanBoxDrawing(s) {
   return String(s || '')
@@ -90,6 +93,7 @@ function cleanBoxDrawing(s) {
     .replace(BOX_VERTICAL, '|')     // 竖线 → |
     .replace(BOX_CORNERS, '+')      // 角 → +
     .replace(BOX_TEES, '+')         // 三叉 → +
+    .replace(BOX_BLOCK, '')         // 块元素直接删（连成一片就是黑条，没语义）
 }
 
 function compactBlankLines(s) {
