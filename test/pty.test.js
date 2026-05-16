@@ -635,7 +635,7 @@ describe('PtyManager', () => {
   //
   // 测试通过写入真实 tmp 文件 + 推进 fake timers 来驱动 setInterval(2000)。
   describe('claude jsonl tail watcher', () => {
-    function setupClaudeWatcher(jsonl) {
+    function setupClaudeWatcher(jsonl, extraStartOpts = {}) {
       vi.useFakeTimers()
       const dir = mkdtempSync(join(tmpdir(), 'pty-claude-watch-'))
       const filePath = join(dir, 'session.jsonl')
@@ -652,6 +652,7 @@ describe('PtyManager', () => {
         prompt: null,
         cwd: '/tmp',
         resumeNativeId: 'abcdef12-3456-7890-abcd-ef1234567890',
+        ...extraStartOpts,
       })
       return {
         pm, factory, events, filePath, dir,
@@ -802,6 +803,39 @@ describe('PtyManager', () => {
       vi.advanceTimersByTime(10000)
       expect(events).toEqual([])
       vi.useRealTimers()
+    })
+
+    // 治本回归：托管模式切换（半托管 ↔ 全托管）会把老 PTY kill 在 mid-turn，
+    // 新的 claude --resume 接管同一份 jsonl —— 最后一行通常是 user/tool_result 或
+    // assistant.tool_use，watcher 默认会把它当成"新一轮 turn-started"emit 出来，
+    // 让 ai-terminal 把刚翻成 idle 的状态又翻回 running。suppressStaleTurnDetect:true
+    // 告诉 watcher：第一次扫到时只 seed 内部 mtime/kind、不 emit。
+    it('swallows the first emit when suppressStaleTurnDetect=true (mode-switch resume)', () => {
+      const t = setupClaudeWatcher(
+        JSON.stringify({ type: 'user', message: { role: 'user', content: 'in-flight prompt' } }) + '\n' +
+        JSON.stringify({ type: 'assistant', message: { role: 'assistant', stop_reason: 'tool_use', content: [{ type: 'tool_use', name: 'Bash' }] } }) + '\n' +
+        JSON.stringify({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'x', content: 'partial' }] } }) + '\n',
+        { suppressStaleTurnDetect: true },
+      )
+      try {
+        // 第一次 tick：watcher 扫到 kind='turn-started'（mid-turn 残留），按设计应该吞掉。
+        t.tick()
+        expect(t.events.started).toEqual([])
+        expect(t.events.done).toEqual([])
+        // 再扫一次：mtime 没变 / kind 没变，watcher 自身的去重也不会重 emit。
+        t.tick()
+        expect(t.events.started).toEqual([])
+        // 用户在新 PTY 里发了下一轮 prompt → jsonl 追加新内容、kind 翻成新一轮 turn-done
+        // → 应该正常 emit（验证 suppress 是 one-shot 而不是永久禁用）
+        t.rewrite(
+          JSON.stringify({ type: 'user', message: { role: 'user', content: 'in-flight prompt' } }) + '\n' +
+          JSON.stringify({ type: 'assistant', message: { role: 'assistant', stop_reason: 'tool_use', content: [{ type: 'tool_use', name: 'Bash' }] } }) + '\n' +
+          JSON.stringify({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'x', content: 'partial' }] } }) + '\n' +
+          JSON.stringify({ type: 'assistant', message: { role: 'assistant', stop_reason: 'end_turn', content: [{ type: 'text', text: 'ok' }] } }) + '\n',
+        )
+        t.tick()
+        expect(t.events.done).toHaveLength(1)
+      } finally { t.cleanup() }
     })
   })
 

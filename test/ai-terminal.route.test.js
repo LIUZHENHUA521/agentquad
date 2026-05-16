@@ -1151,7 +1151,9 @@ describe('routes/ai-terminal', () => {
     const updated = ctx.db.getTodo(todo.id)
     expect(updated.status).toBe('ai_running')
     expect(updated.aiSession.sessionId).toBe(ctx.pty.created[1].sessionId)
-    expect(updated.aiSession.status).toBe('running')
+    // 切换托管模式 = 打断当前轮 + 用新权限 resume —— 老 PTY 死了、新 PTY 还没真跑过新一轮，
+    // 所以新 session 应该立刻显示 'idle'，而不是继续显示 'running' 直到 jsonl watcher 触发。
+    expect(updated.aiSession.status).toBe('idle')
     // 老 session 已被 mergeTodoAiSessions 按 tool+nativeSessionId 去重剔除，
     // pty.on('done') 不会再 append 回去 → 历史只保留新的 bypass session。
     expect(updated.aiSessions).toHaveLength(1)
@@ -1163,6 +1165,15 @@ describe('routes/ai-terminal', () => {
       newSessionId: ctx.pty.created[1].sessionId,
       autoMode: 'bypass',
     })
+    // pty.create 应该收到 suppressStaleTurnDetect:true：让 PtyManager 的 claude jsonl
+    // watcher 在第一次扫到 turn-started 时只更新内部 mtime/kind、不 emit，
+    // 避免它把刚翻成 idle 的状态再翻回 running。
+    expect(ctx.pty.created[1].suppressStaleTurnDetect).toBe(true)
+    // 内存里的 session 也得在 spawnSession 返回前就 idle，否则 /sessions endpoint 在
+    // 第一次轮询时还会看到 running。
+    const newSession = ctx.ait.sessions.get(ctx.pty.created[1].sessionId)
+    expect(newSession.status).toBe('idle')
+    expect(newSession.awaitingReply).toBe(true)
   })
 
   it('set_auto_mode bypass broadcasts auto_mode_switching before session_restarted', async () => {

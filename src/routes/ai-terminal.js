@@ -593,7 +593,7 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
   })
 
   // ─── 程序化 session 启动入口（供 orchestrator 等模块直接调用，跳过 HTTP） ───
-  function spawnSession({ todoId, prompt, tool, cwd, resumeNativeId, permissionMode, label, extraEnv, sessionId: externalSessionId, skipTelegram = false, ignoreExistingNativeSessionId = false, parentTodoId = null }) {
+  function spawnSession({ todoId, prompt, tool, cwd, resumeNativeId, permissionMode, label, extraEnv, sessionId: externalSessionId, skipTelegram = false, ignoreExistingNativeSessionId = false, parentTodoId = null, suppressStaleTurnDetect = false }) {
     if (!todoId || typeof prompt !== 'string' || !tool) {
       const err = new Error('missing todoId, prompt, or tool'); err.code = 'bad_request'
       throw err
@@ -720,6 +720,7 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
         extraEnv: { ...(extraEnv || {}), ...autoEnv },
         mcpConfigPath: runtimeMcpPath,
         codexMcpUrl,
+        suppressStaleTurnDetect,
       })
       // 2. 读出 preset nativeId（claude 新会话 = randomUUID, resume = resumeNativeId, codex 新 = null）。
       //    这是让"首屏即正确"成立的核心：先于 db.updateTodo 拿到值。
@@ -1182,6 +1183,9 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
         label: `runtime:${nextEffective}`,
         skipTelegram: true,
         ignoreExistingNativeSessionId: true,
+        // 老 PTY 即将被 kill，新的 claude --resume 只是接管 jsonl —— 没有真跑新一轮。
+        // 让 watcher 吃掉第一帧 stale 状态，避免它把刚翻成 idle 的状态再翻回 running。
+        suppressStaleTurnDetect: true,
       })
     } catch (e) {
       delete session.replacedBySessionId
@@ -1196,6 +1200,18 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
       return
     }
 
+    // 把新 session 翻到 idle：托管模式切换的语义就是"打断当前轮、换一套权限再起来"，
+    // 老 PTY 已经被 kill 在 mid-turn，新的 claude --resume 不会自动续上那一轮 ——
+    // 它只是接管 jsonl 等用户输入。spawnSession 默认 status='running' 适用于"首次启动 +
+    // CLI 直接吃 prompt"的场景；resume-after-mode-switch 都应该是 idle。
+    // RESTARTABLE_TOOLS (claude/codex/cursor) 一视同仁——三家都是"resume 不续轮"的语义。
+    const newSession = sessions.get(restarted.sessionId)
+    if (newSession && LIVE_AI_STATUSES.has(newSession.status)) {
+      newSession.status = 'idle'
+      newSession.awaitingReply = true
+      newSession.lastTurnDoneAt = Date.now()
+      persistLiveSessionState(newSession, 'idle', 'ai_running', { lastTurnDoneAt: newSession.lastTurnDoneAt })
+    }
     broadcastToSession(session, {
       type: 'session_restarted',
       oldSessionId: sessionId,

@@ -472,7 +472,7 @@ export class PtyManager extends EventEmitter {
    * 会话建立时调 create()、收到前端真实 cols/rows 后再调 startWithSize()，
    * 这样 PTY 永远不会在默认 80×24 上 spawn 一次再 resize。
    */
-  create({ sessionId, tool, prompt, cwd, resumeNativeId, permissionMode, extraEnv, mcpConfigPath = null, codexMcpUrl = null }) {
+  create({ sessionId, tool, prompt, cwd, resumeNativeId, permissionMode, extraEnv, mcpConfigPath = null, codexMcpUrl = null, suppressStaleTurnDetect = false }) {
     const toolCfg = this.tools[tool]
     if (!toolCfg) throw new Error(`unknown tool: ${tool}`)
     const baseArgs = toolCfg.args || []
@@ -582,6 +582,13 @@ export class PtyManager extends EventEmitter {
       lastTuiAlertAt: 0,
       cursorChatPromise,
       mcpConfigPath: mcpConfigPath || null,
+      // 当 ai-terminal 在"运行中"触发托管模式切换（半托管 ↔ 全托管）时置 true：
+      // 老 PTY 被 kill 时 jsonl 处于 mid-turn 状态（最后一行往往是 user/tool_result
+      // 或 assistant.tool_use），新的 claude --resume 只是接管同一个 jsonl，不会再
+      // 真跑一轮。watcher 默认会把这条残留的"turn-started"当成新输入 emit，把刚被
+      // ai-terminal 翻成 idle 的状态又翻回 running。这里告诉 watcher：吃掉第一帧
+      // stale 状态、只用它来 seed 内部 mtime/kind，下次 jsonl 真正再变才 emit。
+      suppressStaleTurnDetect: !!suppressStaleTurnDetect,
       spawnSpec: {
         args,
         env,
@@ -916,6 +923,13 @@ export class PtyManager extends EventEmitter {
           }
           session.claudeLastJsonlMtimeMs = st.mtimeMs
           session.claudeLastEmittedKind = kind
+          // 托管模式切换重启场景：第一次扫到的 kind 是 kill 前的残留状态，吞掉这次
+          // emit 但保留 mtime/kind tracking —— 下次 jsonl 真正变动（用户新输入 / 新一轮
+          // 结束）会因为 kind 切换正常 emit。
+          if (session.suppressStaleTurnDetect) {
+            session.suppressStaleTurnDetect = false
+            return
+          }
           if (kind === 'turn-started') {
             // 新一轮开始 → 让 PTY detector 的 lastEmittedText 失效，下一次权限提示能再次 emit
             try { session.detector?.reset?.() } catch { /* ignore */ }
