@@ -1,10 +1,10 @@
 /**
- * OpenClaw 双向桥接的 MCP 工具集（8 个）：
+ * OpenClaw 双向桥接的 MCP 工具集：
  *
  * 创建任务向导（OpenClaw skill 调）：
  *   - list_workdir_options
- *   - list_quadrants
- *   - list_templates
+ *   - list_quadrants       （已废弃，仅为兼容旧 skill；返回空数组 + deprecated 标记）
+ *   - list_templates       （用户面叫 "agent / 员工"，工具名保留向后兼容）
  *
  * 启动 PTY（OpenClaw skill 调）：
  *   - start_ai_session
@@ -36,13 +36,6 @@ function asError(message, extra = null) {
     content: [{ type: 'text', text }],
   }
 }
-
-const QUADRANTS = [
-  { id: 1, label: '重要紧急', shortLabel: 'Q1', isDefault: false },
-  { id: 2, label: '重要不紧急', shortLabel: 'Q2', isDefault: true },
-  { id: 3, label: '紧急不重要', shortLabel: 'Q3', isDefault: false },
-  { id: 4, label: '不重要不紧急', shortLabel: 'Q4', isDefault: false },
-]
 
 function expandHome(p) {
   if (!p) return p
@@ -105,22 +98,25 @@ export function registerOpenClawTools(server, deps) {
     },
   )
 
-  // ─── 2. list_quadrants ──────────────────────────────────────────
+  // ─── 2. list_quadrants（已废弃；保留以兼容旧版 OpenClaw skill）──
   server.registerTool(
     'list_quadrants',
     {
-      description: '返回 4 个象限的元数据（id/label/isDefault），创建向导第二步用。',
+      description:
+        '【已废弃】象限概念已从 AgentQuad 移除。本工具仅为兼容旧 skill 而保留，' +
+        '返回空数组 + deprecated 标记。新创建任务无需再选象限。',
       inputSchema: {},
     },
-    async () => asText({ quadrants: QUADRANTS }),
+    async () => asText({ quadrants: [], deprecated: true }),
   )
 
-  // ─── 3. list_templates ──────────────────────────────────────────
+  // ─── 3. list_templates (用户面叫 agent / 员工) ─────────────────────
   server.registerTool(
     'list_templates',
     {
       description:
-        '返回所有提示词模板（id/name/description/builtin/contentPreview），创建向导第三步用。' +
+        '返回所有可指派的 agent / 员工（id/name/description/builtin/contentPreview），' +
+        '创建向导选 agent 那一步用。' +
         '完整 content 不返回（避免上下文爆）；启动会话时按 templateId 自动注入。',
       inputSchema: {},
     },

@@ -50,7 +50,7 @@ describe('mcp write tools', () => {
     rmSync(tmp, { recursive: true, force: true })
   })
 
-  it('create_todo creates a new todo', async () => {
+  it('create_todo creates a new todo (quadrant arg ignored)', async () => {
     const res = await ctx.client.callTool({
       name: 'create_todo',
       arguments: { title: 'Draft proposal', quadrant: 2, description: 'for Q3 planning' },
@@ -58,41 +58,40 @@ describe('mcp write tools', () => {
     const payload = parseText(res)
     expect(payload.ok).toBe(true)
     expect(payload.todo.title).toBe('Draft proposal')
-    expect(payload.todo.quadrant).toBe(2)
     expect(payload.todo.description).toBe('for Q3 planning')
     // 能立刻在 db 里查到
     expect(ctx.db.getTodo(payload.todo.id)?.title).toBe('Draft proposal')
   })
 
-  it('create_todo with parentId makes a subtodo inheriting quadrant', async () => {
+  it('create_todo with parentId still creates child (quadrant inheritance no longer surfaced)', async () => {
     const parent = ctx.db.createTodo({ title: 'Parent', quadrant: 1 })
     const res = await ctx.client.callTool({
       name: 'create_todo',
-      arguments: { title: 'Child', quadrant: 4, parentId: parent.id },
+      arguments: { title: 'Child', parentId: parent.id },
     })
     const payload = parseText(res)
     expect(payload.todo.parentId).toBe(parent.id)
-    expect(payload.todo.quadrant).toBe(1) // 继承父象限
   })
 
   it('create_todo rejects empty title', async () => {
     const res = await ctx.client.callTool({
       name: 'create_todo',
-      arguments: { title: '   ', quadrant: 1 },
+      arguments: { title: '   ' },
     })
     expect(res.isError).toBe(true)
     expect(res.content[0].text).toMatch(/title_required/)
   })
 
-  it('update_todo patches fields', async () => {
+  it('update_todo patches fields (quadrant arg ignored)', async () => {
     const t = ctx.db.createTodo({ title: 'Old', quadrant: 4 })
     const res = await ctx.client.callTool({
       name: 'update_todo',
-      arguments: { id: t.id, title: 'New', quadrant: 2 },
+      arguments: { id: t.id, title: 'New', quadrant: 2 },   // quadrant 入参被退役忽略
     })
     const payload = parseText(res)
     expect(payload.todo.title).toBe('New')
-    expect(payload.todo.quadrant).toBe(2)
+    // quadrant 字段还在 DB 里（兼容性保留），但不再受 update_todo 影响：保持原值 4
+    expect(payload.todo.quadrant).toBe(4)
   })
 
   it('update_todo errors on missing todo', async () => {

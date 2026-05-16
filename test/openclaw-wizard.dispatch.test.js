@@ -49,28 +49,21 @@ describe('openclaw-wizard dispatch resolution', () => {
       getConfig: () => cfg,
     })
 
-    // Drive the wizard to completion: workdir hint + quadrant 1 + free template (option 6)
+    // Drive the wizard to completion: workdir hint → 自由模式 agent (free)
     let r = await wizard.handleInbound({
       channel: 'lark',
       chatId: 'oc_chat_x',
       fromUserId: 'open_a',
       text: '帮我做 写个 demo 目录 /tmp/foo',
     })
-    expect(r.reply).toContain('🎯 选象限')
+    // workdir hint 命中 → 直接进 agent 选择（quadrant 步骤已移除）
+    expect(r.reply).toContain('👤 派哪个 Agent')
 
     r = await wizard.handleInbound({
       channel: 'lark',
       chatId: 'oc_chat_x',
       fromUserId: 'open_a',
-      text: '1',
-    })
-    expect(r.reply).toContain('📋 选模板')
-
-    r = await wizard.handleInbound({
-      channel: 'lark',
-      chatId: 'oc_chat_x',
-      fromUserId: 'open_a',
-      text: '6',
+      text: '自由',   // 自由模式
     })
     expect(r.action).toBe('wizard_done')
     expect(ai.sessions).toHaveLength(1)
@@ -151,9 +144,8 @@ describe('openclaw-wizard dispatch resolution', () => {
       fromUserId: 'open_b',
       text: '帮我做 写个 demo 目录 /tmp/foo',
     })
-    expect(r.reply).toContain('🎯 选象限')
-    r = await wizard.handleInbound({ channel: 'lark', chatId: 'oc_chat_y', fromUserId: 'open_b', text: '1' })
-    r = await wizard.handleInbound({ channel: 'lark', chatId: 'oc_chat_y', fromUserId: 'open_b', text: '6' })
+    expect(r.reply).toContain('👤 派哪个 Agent')
+    r = await wizard.handleInbound({ channel: 'lark', chatId: 'oc_chat_y', fromUserId: 'open_b', text: '自由' })
     expect(r.action).toBe('wizard_done')
     expect(ai.sessions[0].tool).toBe('codex')
   })

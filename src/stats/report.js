@@ -111,7 +111,6 @@ export function buildReport(db, { since, until = Date.now(), pricing, topN = 10 
 			return {
 				todoId: b.todoId,
 				title: t?.title || '(已删除)',
-				quadrant: t?.quadrant || 0,
 				activeMs: b.activeMs,
 				wallClockMs: todoWall.get(b.todoId) || 0,
 				tokens: b.tokens,
@@ -128,11 +127,8 @@ export function buildReport(db, { since, until = Date.now(), pricing, topN = 10 
 		})
 		.slice(0, topN)
 
-	// byTool / byQuadrant / byModel
+	// byTool / byModel
 	const byTool = aggregateBy(files, logs, f => f.tool, l => l.tool, pricing)
-	const byQuadrant = aggregateBy(files, logs,
-		f => { const t = todoById.get(effectiveTodoId(f)); return t ? t.quadrant : null },
-		l => l.quadrant, pricing)
 	const byModel = aggregateBy(files, [], f => f.primary_model || '(unknown)', () => null, pricing, { includeWall: false })
 
 	// timeline
@@ -168,7 +164,6 @@ export function buildReport(db, { since, until = Date.now(), pricing, topN = 10 
 		},
 		topTodos,
 		byTool,
-		byQuadrant,
 		byModel,
 		timeline,
 	}

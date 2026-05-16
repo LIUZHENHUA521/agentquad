@@ -123,7 +123,7 @@ describe('mcp read tools (in-memory)', () => {
     const res = await ctx.client.callTool({ name: 'get_stats', arguments: {} })
     const payload = JSON.parse(res.content[0].text)
     expect(payload.openCount).toBeGreaterThanOrEqual(1)
-    expect(payload.byQuadrant).toBeDefined()
+    expect(payload.byStatus).toBeDefined()        // 替换原 byQuadrant
     expect(payload.completedThisWeek).toBeGreaterThanOrEqual(0)
     expect(payload.generatedAt).toBeTypeOf('number')
   })

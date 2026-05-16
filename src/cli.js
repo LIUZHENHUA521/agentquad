@@ -667,7 +667,7 @@ export async function runStart(cmdOpts = {}) {
 const program = new Command()
 program
   .name('agentquad')
-  .description('Local four-quadrant todo CLI with embedded Claude Code / Codex terminal')
+  .description('Local status-board todo CLI with embedded Claude Code / Codex / Cursor terminal')
   .version(loadPkgVersion())
 
 program.command('start')

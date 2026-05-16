@@ -53,7 +53,8 @@ export function registerReadTools(server, { db, searchService, wikiDir, transcri
       description:
         '按过滤条件列出 todos。不做全文搜索——用 search 做模糊搜索。返回元数据数组，不含 AI 会话详情（用 get_todo 取）。',
       inputSchema: {
-        quadrant: z.number().int().min(1).max(4).optional().describe('1=重要且紧急 2=重要不紧急 3=紧急不重要 4=不重要不紧急'),
+        quadrant: z.number().int().min(1).max(4).optional()
+          .describe('【已退役】象限概念已移除；保留参数用于兼容旧调用方，传入会被忽略'),
         status: z.enum(['todo', 'done', 'all']).optional().describe('默认 all'),
         archived: z.union([z.boolean(), z.literal('all')]).optional().describe('默认 false 只看未归档；"all" 两者都要'),
         parentId: z.string().optional().describe('仅列某 parent 下的子任务'),
@@ -63,8 +64,8 @@ export function registerReadTools(server, { db, searchService, wikiDir, transcri
     async (args = {}) => {
       try {
         const rawStatus = args.status === 'all' ? '' : args.status
+        // quadrant 已退役，不再透传 db 层
         const list = db.listTodos({
-          quadrant: args.quadrant,
           status: rawStatus,
           archived: args.archived,
         })
@@ -78,7 +79,6 @@ export function registerReadTools(server, { db, searchService, wikiDir, transcri
           id: t.id,
           parentId: t.parentId,
           title: t.title,
-          quadrant: t.quadrant,
           status: t.status,
           dueDate: t.dueDate,
           workDir: t.workDir,
@@ -151,7 +151,7 @@ export function registerReadTools(server, { db, searchService, wikiDir, transcri
     'get_stats',
     {
       description:
-        '一个当前快照：按象限/状态的分布、今日截止、本周完成、最近 7 天活跃度、归档数量。轻量实时计算。',
+        '一个当前快照：按 todo 状态分布、今日截止、本周完成、最近 7 天活跃度、归档数量。轻量实时计算。',
       inputSchema: {},
     },
     async () => {
@@ -162,15 +162,15 @@ export function registerReadTools(server, { db, searchService, wikiDir, transcri
         const all = db.listTodos({ archived: 'all' })
         const open = all.filter((t) => t.status !== 'done' && t.status !== 'missed' && t.archivedAt == null)
         const archivedCount = all.filter((t) => t.archivedAt != null).length
-        const byQuadrant = {}
-        for (const t of open) byQuadrant[t.quadrant] = (byQuadrant[t.quadrant] || 0) + 1
+        const byStatus = {}
+        for (const t of open) byStatus[t.status] = (byStatus[t.status] || 0) + 1
         const overdue = open.filter((t) => t.dueDate && t.dueDate < now)
         const dueToday = open.filter((t) => t.dueDate && t.dueDate >= startOfDay.getTime() && t.dueDate < startOfDay.getTime() + 86_400_000)
         const weekDone = db.listCompletedTodos({ since: startOfWeek.getTime(), until: now + 1 })
         return asText({
           openCount: open.length,
           archivedCount,
-          byQuadrant,
+          byStatus,
           overdue: { count: overdue.length, ids: overdue.slice(0, 10).map((t) => t.id) },
           dueToday: { count: dueToday.length, ids: dueToday.map((t) => t.id) },
           completedThisWeek: weekDone.length,

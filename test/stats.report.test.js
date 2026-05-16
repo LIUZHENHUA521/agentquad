@@ -57,7 +57,6 @@ describe('buildReport', () => {
 
 		expect(report.range.label).toBe('自定义')
 		expect(report.byTool.find(x => x.key === 'claude').sessions).toBeGreaterThan(0)
-		expect(report.byQuadrant.map(x => x.key)).toEqual(expect.arrayContaining([1, 2]))
 		expect(report.byModel.find(x => x.key === 'claude-opus-4-6')).toBeTruthy()
 		expect(report.timeline.length).toBeGreaterThan(0)
 	})
@@ -113,8 +112,6 @@ describe('buildReport', () => {
 		const byToolClaude = r.byTool.find(x => x.key === 'claude')
 		expect(byToolClaude.cost.usd).toBeCloseTo(31.60, 6)
 
-		// byQuadrant: Q2 包含 opus + haiku
-		const q2 = r.byQuadrant.find(x => x.key === 2)
-		expect(q2.cost.usd).toBeCloseTo(31, 6)
+		// byQuadrant 已退役：报告不再按象限聚合
 	})
 })

@@ -1,13 +1,6 @@
 import { parseTranscriptFile } from '../transcripts/scanner.js'
 import { estimateCost, DEFAULT_PRICING } from '../pricing.js'
 
-const QUADRANT_LABEL = {
-	1: 'Q1 紧急且重要',
-	2: 'Q2 重要不紧急',
-	3: 'Q3 紧急不重要',
-	4: 'Q4 不紧急不重要',
-}
-
 const STATUS_LABEL = {
 	todo: '待办',
 	ai_pending: 'AI 待确认',
@@ -30,7 +23,7 @@ export async function buildTodoExport(db, todoId, { turns = 'summary', turnLimit
 	if (!todo) return null
 	const comments = db.listComments(todoId)
 	const aiSessions = Array.isArray(todo.aiSessions) ? todo.aiSessions : []
-	const subtodos = todo.parentId ? [] : db.listTodos({ quadrant: todo.quadrant }).filter(item => item.parentId === todo.id)
+	const subtodos = todo.parentId ? [] : db.listTodos().filter(item => item.parentId === todo.id)
 
 	const sessionRows = []
 	for (const s of aiSessions) {
@@ -122,7 +115,6 @@ export function renderTodoMarkdown(report) {
 	lines.push(`# ${todo.title}`)
 	lines.push('')
 	const meta = [
-		`**象限**：${QUADRANT_LABEL[todo.quadrant] || todo.quadrant}`,
 		`**状态**：${STATUS_LABEL[todo.status] || todo.status}`,
 	]
 	if (todo.dueDate) meta.push(`**截止**：${fmtDateTime(todo.dueDate)}`)

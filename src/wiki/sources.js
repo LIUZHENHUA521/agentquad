@@ -53,7 +53,6 @@ export async function buildSourceMarkdown({
   lines.push('---')
   lines.push(`todoId: ${todo.id}`)
   lines.push(`title: ${todo.title.replace(/\n/g, ' ')}`)
-  lines.push(`quadrant: ${todo.quadrant}`)
   lines.push(`workDir: ${todo.workDir || '-'}`)
   lines.push(`createdAt: ${new Date(todo.createdAt).toISOString()}`)
   lines.push(`completedAt: ${new Date(todo.updatedAt).toISOString()}`)
