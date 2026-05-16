@@ -359,57 +359,62 @@ export class PtyManager extends EventEmitter {
     if (session.detectTimer) { clearInterval(session.detectTimer); session.detectTimer = null }
     if (session.fsWatcher) { try { session.fsWatcher.close() } catch { /* ignore */ } session.fsWatcher = null }
     this.emit('native-session', { sessionId: session.sessionId, nativeId })
-    // codex 专属：拿到 native id 后落 sidecar + 启动 jsonl 增量 emitter，给 IM 推送链路用。
-    if (session.tool === 'codex') {
-      console.log(`[codex-detect] _setNativeId session=${session.sessionId} nativeId=${nativeId}`)
-      if (this.sidecar) {
-        try {
-          const p = this.sidecar.write({
-            nativeId,
-            quadtodoSessionId: session.sessionId,
-            todoId: session.todoId || null,
-            cwd: session.cwd || null,
-          })
-          if (p && typeof p.catch === 'function') p.catch(() => {})
-          console.log(`[codex-detect] sidecar.write OK nativeId=${nativeId}`)
-        } catch (e) {
-          console.warn(`[codex-detect] sidecar.write FAILED:`, e?.message || e)
-        }
-      } else {
-        console.warn(`[codex-detect] this.sidecar is null — server.js didn't wire it`)
-      }
-      if (this.eventEmitterFactory && !session.eventEmitter) {
-        try {
-          const loc = this.codexSessionLocator(nativeId)
-          if (loc?.filePath) {
-            session.eventEmitter = this.eventEmitterFactory({ filePath: loc.filePath, nativeId })
-            session.eventEmitter.start?.()
-            console.log(`[codex-detect] emitter started filePath=${loc.filePath}`)
-          } else {
-            console.warn(`[codex-detect] codexSessionLocator returned null for nativeId=${nativeId} — emitter NOT started (will retry below)`)
-            // jsonl 文件这一刻可能还没 flush 到 fs；500ms / 1500ms 各重试一次。
-            const retry = (delay) => setTimeout(() => {
-              if (session.eventEmitter || session.stopped) return
-              const loc2 = this.codexSessionLocator(nativeId)
-              if (loc2?.filePath && this.eventEmitterFactory) {
-                session.eventEmitter = this.eventEmitterFactory({ filePath: loc2.filePath, nativeId })
-                session.eventEmitter.start?.()
-                console.log(`[codex-detect] emitter started on retry+${delay}ms filePath=${loc2.filePath}`)
-              } else if (delay < 1500) {
-                console.warn(`[codex-detect] retry+${delay}ms still no jsonl file for ${nativeId}`)
-              }
-            }, delay)
-            retry(500).unref?.()
-            retry(1500).unref?.()
-          }
-        } catch (e) {
-          console.warn(`[codex-detect] emitter start FAILED:`, e?.message || e)
-        }
-      } else if (!this.eventEmitterFactory) {
-        console.warn(`[codex-detect] this.eventEmitterFactory is null — server.js didn't wire it`)
-      }
-    }
+    this._ensureCodexSidecarAndEmitter(session, nativeId)
     return true
+  }
+
+  // 把 codex sidecar.write + emitter.start 抽出来，方便 codex resume 路径直接调
+  // （resume 时 session.nativeId 在 spawn 阶段就预置好，_setNativeId 里那个
+  // "已经一样了 → return false" 早早短路，emitter 永远起不来 → 状态条卡"运行中"）。
+  _ensureCodexSidecarAndEmitter(session, nativeId) {
+    if (session.tool !== 'codex' || !nativeId) return
+    console.log(`[codex-detect] ensure sidecar+emitter session=${session.sessionId} nativeId=${nativeId}`)
+    if (this.sidecar) {
+      try {
+        const p = this.sidecar.write({
+          nativeId,
+          quadtodoSessionId: session.sessionId,
+          todoId: session.todoId || null,
+          cwd: session.cwd || null,
+        })
+        if (p && typeof p.catch === 'function') p.catch(() => {})
+        console.log(`[codex-detect] sidecar.write OK nativeId=${nativeId}`)
+      } catch (e) {
+        console.warn(`[codex-detect] sidecar.write FAILED:`, e?.message || e)
+      }
+    } else {
+      console.warn(`[codex-detect] this.sidecar is null — server.js didn't wire it`)
+    }
+    if (this.eventEmitterFactory && !session.eventEmitter) {
+      try {
+        const loc = this.codexSessionLocator(nativeId)
+        if (loc?.filePath) {
+          session.eventEmitter = this.eventEmitterFactory({ filePath: loc.filePath, nativeId })
+          session.eventEmitter.start?.()
+          console.log(`[codex-detect] emitter started filePath=${loc.filePath}`)
+        } else {
+          console.warn(`[codex-detect] codexSessionLocator returned null for nativeId=${nativeId} — emitter NOT started (will retry below)`)
+          // jsonl 文件这一刻可能还没 flush 到 fs；500ms / 1500ms 各重试一次。
+          const retry = (delay) => setTimeout(() => {
+            if (session.eventEmitter || session.stopped) return
+            const loc2 = this.codexSessionLocator(nativeId)
+            if (loc2?.filePath && this.eventEmitterFactory) {
+              session.eventEmitter = this.eventEmitterFactory({ filePath: loc2.filePath, nativeId })
+              session.eventEmitter.start?.()
+              console.log(`[codex-detect] emitter started on retry+${delay}ms filePath=${loc2.filePath}`)
+            } else if (delay < 1500) {
+              console.warn(`[codex-detect] retry+${delay}ms still no jsonl file for ${nativeId}`)
+            }
+          }, delay)
+          retry(500).unref?.()
+          retry(1500).unref?.()
+        }
+      } catch (e) {
+        console.warn(`[codex-detect] emitter start FAILED:`, e?.message || e)
+      }
+    } else if (!this.eventEmitterFactory) {
+      console.warn(`[codex-detect] this.eventEmitterFactory is null — server.js didn't wire it`)
+    }
   }
 
   has(sessionId) {
@@ -706,6 +711,11 @@ export class PtyManager extends EventEmitter {
     // Codex 新会话（无 resume 也无 preset）走下面的 fs.watch / 轮询 / regex 三路探测
     if (session.nativeId) {
       this.emit('native-session', { sessionId, nativeId: session.nativeId })
+      // Codex resume 专用：nativeId 早就在 create() 阶段被预置，_setNativeId 里
+      // "已经一样了 → return false" 会短路掉 sidecar.write + emitter.start，导致 codex
+      // 重启 resume 后 jsonl 不被读、task_complete 事件不上报、UI 状态条永远卡"运行中"。
+      // 走 _ensureCodexSidecarAndEmitter 显式补齐（idempotent，emitter 已存在就 no-op）。
+      this._ensureCodexSidecarAndEmitter(session, session.nativeId)
     }
 
     // Codex 新会话：codex CLI 无 --session-id / --rollout-path 预置能力。
