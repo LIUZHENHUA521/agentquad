@@ -253,7 +253,6 @@ export function createOpenClawHookHandler(deps = {}) {
     loadingTracker = null,
     reactionTracker = null,
     sessionInputDispatcher = null,     // Stop / session-end → 触发 dispatcher flush / cleanup
-    agentSupervisor = null,            // Phase 2：active push 期间静默 Stop IM 推送
     cooldownMs = DEFAULT_COOLDOWN_MS,
     getConfig = null,                  // () => app config（用于读 telegram.notificationCooldownMs）
     logger = console,
@@ -581,23 +580,19 @@ export function createOpenClawHookHandler(deps = {}) {
       ? `${headLine}\n\n${text}${footer ? `\n\n${footer}` : ''}`
       : `${headLine}${footer ? `\n\n${footer}` : ''}`
 
-    // 6) 推送 —— Phase 2：Stop 期间如果 active push 还有 budget，跳过 IM 推送避免刷屏。
+    // 6) 推送
     // bridge.postText 的形参是 `message`，不是 `text`——早期实现写错字段名，
     // 导致 bridge 收到 message=undefined 直接走 message_required 短路返回。
-    if (event === 'Stop' && agentSupervisor?.shouldSuppressStopPush?.(quadtodoSessionId)) {
-      logger.info?.(`[codex-hook] active push suppress: skipping Stop IM for ${quadtodoSessionId}`)
-    } else {
-      try {
-        const r = await codexBridge.broadcastText({ sessionId: quadtodoSessionId, message: fullText })
-        if (!r?.ok) {
-          logger.warn?.(`[codex-hook] broadcastText returned not-ok: reason=${r?.reason} detail=${r?.detail || ''}`)
-          return { ok: false, reason: 'post_failed', detail: r?.reason }
-        }
-        logger.info?.(`[codex-hook] broadcastText OK sessionId=${quadtodoSessionId} event=${event} len=${fullText.length}`)
-      } catch (e) {
-        logger.warn?.(`[codex-hook] postText threw: ${e.message}`)
-        return { ok: false, reason: 'post_failed', detail: e?.message }
+    try {
+      const r = await codexBridge.broadcastText({ sessionId: quadtodoSessionId, message: fullText })
+      if (!r?.ok) {
+        logger.warn?.(`[codex-hook] broadcastText returned not-ok: reason=${r?.reason} detail=${r?.detail || ''}`)
+        return { ok: false, reason: 'post_failed', detail: r?.reason }
       }
+      logger.info?.(`[codex-hook] broadcastText OK sessionId=${quadtodoSessionId} event=${event} len=${fullText.length}`)
+    } catch (e) {
+      logger.warn?.(`[codex-hook] postText threw: ${e.message}`)
+      return { ok: false, reason: 'post_failed', detail: e?.message }
     }
 
     // 7) SessionEnd → 附完整 transcript
@@ -956,22 +951,13 @@ export function createOpenClawHookHandler(deps = {}) {
     // footer 永远附在最末尾（即使消息被截短到附件也要保留，让用户能看到费用）
     if (usageFooter) message = `${message}\n\n${usageFooter}`
 
-    // Phase 2 抑制：active push 开启 + 本 session 推进 budget 还没用完时，
-    // Stop hook 的 IM 推送直接跳过（不然主人会被每一轮 AI 完成都刷一条通知）。
-    // 一旦 budget 用完（max consecutive 命中），或 supervisor 决策 notify/done/fail，
-    // shouldSuppressStopPush 返回 false，IM 恢复推送，主人收到收尾通知。
-    let result
-    if (evt === 'stop' && agentSupervisor?.shouldSuppressStopPush?.(sessionId)) {
-      result = { ok: true, action: 'skipped', reason: 'active_push_suppress' }
-    } else {
-      // 4) 推送（broadcastText 扇出到 session 所有绑定 channel；接受可选 attachment）
-      result = await openclaw.broadcastText({
-        sessionId,
-        message,
-        attachment: attachmentPath,    // bridge 转给 telegramBot.sendDocument
-        replyMarkup,
-      })
-    }
+    // 4) 推送（broadcastText 扇出到 session 所有绑定 channel；接受可选 attachment）
+    const result = await openclaw.broadcastText({
+      sessionId,
+      message,
+      attachment: attachmentPath,    // bridge 转给 telegramBot.sendDocument
+      replyMarkup,
+    })
 
     // 5) SessionEnd 后处理：close topic + 改名 ✅ + 清状态
     if (evt === 'session-end') {

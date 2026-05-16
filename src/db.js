@@ -136,27 +136,6 @@ CREATE TABLE IF NOT EXISTS pending_questions (
 );
 CREATE INDEX IF NOT EXISTS idx_pq_status_created ON pending_questions(status, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_pq_session ON pending_questions(session_id);
-
-CREATE TABLE IF NOT EXISTS agent_decisions (
-  id              TEXT PRIMARY KEY,
-  todo_id         TEXT,
-  session_id      TEXT,
-  kind            TEXT NOT NULL,         -- 'permission' | 'ask_user' | 'active_push'
-  prompt          TEXT,
-  options_json    TEXT,
-  choice          TEXT,
-  confidence      REAL,
-  reason          TEXT,
-  model           TEXT,
-  tokens_in       INTEGER,
-  tokens_out      INTEGER,
-  ms              INTEGER,
-  status          TEXT NOT NULL,         -- 'auto' | 'fallback' | 'failed' | 'skipped'
-  created_at      INTEGER NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_ad_created ON agent_decisions(created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_ad_session ON agent_decisions(session_id, created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_ad_todo    ON agent_decisions(todo_id, created_at DESC);
 `
 
 const UNFINISHED = ['todo', 'ai_running', 'ai_pending', 'ai_done']
@@ -1131,79 +1110,6 @@ export function openDb(file = ':memory:') {
     return r.changes
   }
 
-  // ─── agent_decisions ───────────────────────────────────────────
-  // 守望者审计：每次自动决策 / 降级 / 失败都写一行；前端"代决策时间线"按 created_at 倒序读。
-  const adInsert = db.prepare(`
-    INSERT INTO agent_decisions (
-      id, todo_id, session_id, kind, prompt, options_json,
-      choice, confidence, reason, model, tokens_in, tokens_out, ms, status, created_at
-    ) VALUES (
-      @id, @todo_id, @session_id, @kind, @prompt, @options_json,
-      @choice, @confidence, @reason, @model, @tokens_in, @tokens_out, @ms, @status, @created_at
-    )
-  `)
-  function insertAgentDecision(row) {
-    const id = row.id || randomUUID()
-    adInsert.run({
-      id,
-      todo_id: row.todoId || null,
-      session_id: row.sessionId || null,
-      kind: row.kind,
-      prompt: row.prompt || null,
-      options_json: row.options ? JSON.stringify(row.options) : null,
-      choice: row.choice ?? null,
-      confidence: Number.isFinite(Number(row.confidence)) ? Number(row.confidence) : null,
-      reason: row.reason || null,
-      model: row.model || null,
-      tokens_in: Number.isInteger(row.tokensIn) ? row.tokensIn : null,
-      tokens_out: Number.isInteger(row.tokensOut) ? row.tokensOut : null,
-      ms: Number.isInteger(row.ms) ? row.ms : null,
-      status: row.status || 'auto',
-      created_at: row.createdAt || Date.now(),
-    })
-    return id
-  }
-  function rowToAgentDecision(r) {
-    if (!r) return null
-    let options = []
-    try { if (r.options_json) options = JSON.parse(r.options_json) } catch {}
-    return {
-      id: r.id,
-      todoId: r.todo_id,
-      sessionId: r.session_id,
-      kind: r.kind,
-      prompt: r.prompt,
-      options,
-      choice: r.choice,
-      confidence: r.confidence,
-      reason: r.reason,
-      model: r.model,
-      tokensIn: r.tokens_in,
-      tokensOut: r.tokens_out,
-      ms: r.ms,
-      status: r.status,
-      createdAt: r.created_at,
-    }
-  }
-  function listAgentDecisions({ limit = 50, offset = 0, sessionId = null, todoId = null } = {}) {
-    const where = []
-    const args = []
-    if (sessionId) { where.push('session_id = ?'); args.push(sessionId) }
-    if (todoId) { where.push('todo_id = ?'); args.push(todoId) }
-    const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
-    const sql = `SELECT * FROM agent_decisions ${whereSql} ORDER BY created_at DESC LIMIT ? OFFSET ?`
-    args.push(Math.min(200, Math.max(1, Number(limit) || 50)), Math.max(0, Number(offset) || 0))
-    return db.prepare(sql).all(...args).map(rowToAgentDecision)
-  }
-  function countAgentDecisions({ sessionId = null, todoId = null } = {}) {
-    const where = []
-    const args = []
-    if (sessionId) { where.push('session_id = ?'); args.push(sessionId) }
-    if (todoId) { where.push('todo_id = ?'); args.push(todoId) }
-    const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
-    return db.prepare(`SELECT COUNT(*) AS n FROM agent_decisions ${whereSql}`).get(...args).n
-  }
-
   // Canonical list of builtin templates. On startup we ensure each one exists
   // in the DB (matched by exact name + builtin=1). Missing ones get inserted;
   // user-edited copies are left alone. Adding a new entry here will surface
@@ -1611,10 +1517,6 @@ export function openDb(file = ':memory:') {
     answerPendingQuestion,
     setPendingStatus,
     sweepExpiredPendingQuestions,
-    // agent_decisions (守望者审计)
-    insertAgentDecision,
-    listAgentDecisions,
-    countAgentDecisions,
     close: () => db.close(),
   }
 }

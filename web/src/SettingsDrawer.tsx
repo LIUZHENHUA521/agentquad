@@ -11,7 +11,6 @@ import { markdownComponents } from './markdownComponents'
 import { getConfig, updateConfig, AppConfig, pickDirectory, ToolDiagnostic, testTelegram, testLark, listTemplates, type ProbeHit, type DispatchChannelConfig, type PromptTemplate } from './api'
 import { useAppConfigStore } from './store/appConfigStore'
 import { TelegramProbeModal } from './TelegramProbeModal'
-import AgentSupervisorPanel from './AgentSupervisorPanel'
 import telegramSetupMd from '../../docs/TELEGRAM-setup.md?raw'
 import larkSetupMd from '../../docs/LARK.md?raw'
 import { AgentIcon } from './components/AgentIcon'
@@ -127,7 +126,7 @@ export default function SettingsDrawer({ open, onClose }: Props) {
   const [larkSecretSource, setLarkSecretSource] = useState<'agentquad' | 'missing'>('missing')
   const [larkTesting, setLarkTesting] = useState(false)
   const [larkTestResult, setLarkTestResult] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState<'run' | 'tools' | 'telegram' | 'lark' | 'pricing' | 'supervisor'>('run')
+  const [activeTab, setActiveTab] = useState<'run' | 'tools' | 'telegram' | 'lark' | 'pricing'>('run')
   const [templates, setTemplates] = useState<PromptTemplate[]>([])
   const [viewingTool, setViewingTool] = useState<ToolKey>('claude')
   const [dispatchDraft, setDispatchDraft] = useState<{
@@ -1335,7 +1334,6 @@ export default function SettingsDrawer({ open, onClose }: Props) {
             { key: 'telegram', label: t('settings:tab.telegram'), children: telegramTab },
             { key: 'lark', label: t('settings:tab.lark'), children: larkTab },
             { key: 'pricing', label: t('settings:tab.pricing'), children: pricingTab },
-            { key: 'supervisor', label: '🤖 代决策官', children: <AgentSupervisorPanel /> },
           ]}
         />
       </Form>

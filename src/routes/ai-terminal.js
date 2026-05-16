@@ -83,20 +83,13 @@ function checkToolAvailable(tool, cfg) {
   }
 }
 
-export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, onSessionSpawned = null, onSessionEnded = null, rootDir = DEFAULT_ROOT_DIR, agentSupervisor = null }) {
+export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, onSessionSpawned = null, onSessionEnded = null, rootDir = DEFAULT_ROOT_DIR }) {
   /** @type {Map<string, any>} */
   const sessions = new Map()
   /** @type {Map<string, string>} */
   const todoSessionMap = new Map()
   /** @type {Map<string, string>} */
   const nativeSessionMap = new Map()
-  // sessionId 上守望者已经在跑的 decide() —— 防止 markPendingConfirm 在同一轮里被
-  // PTY redraw 多次调用时重复发 API 请求
-  /** @type {Set<string>} */
-  const supervisorBusy = new Set()
-  // 同样的防重入，给 Phase 2 active push 用：一个 session 在被守望者分析时不再触发新分析
-  /** @type {Set<string>} */
-  const activePushBusy = new Set()
 
   function resolveSessionCwd(requestedCwd) {
     const fallback = getDefaultCwd?.() || defaultCwd || process.env.HOME || process.cwd()
@@ -309,66 +302,7 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
       options,
       source: source || 'hook',
     })
-
-    // 守望者介入：异步、不阻塞 markPendingConfirm 返回。命中就给 PTY 发选项对应的按键。
-    // Claude/Codex 权限框标准是数字 1/2/3 + Enter；我们让 supervisor 选好后写"<idx+1>\r"。
-    if (agentSupervisor && hasContent && options.length > 0) {
-      runSupervisorOnPendingConfirm({ session, promptText: text, options }).catch((e) => {
-        console.warn(`[ai-terminal] supervisor on pending_confirm threw: ${e.message}`)
-      })
-    }
     return true
-  }
-
-  async function runSupervisorOnPendingConfirm({ session, promptText, options }) {
-    if (!agentSupervisor || !pty) return
-    const sessionId = session.sessionId
-    if (!sessionId) return
-    if (supervisorBusy.has(sessionId)) return
-    if (!agentSupervisor.isEnabled?.()) return
-    supervisorBusy.add(sessionId)
-    try {
-      let todoTitle = null
-      let todoDescription = null
-      try {
-        const todo = session.todoId ? db.getTodo?.(session.todoId) : null
-        todoTitle = todo?.title || null
-        todoDescription = todo?.description || null
-      } catch { /* ignore */ }
-      const recentOutput = typeof session.recentOutput === 'string' ? session.recentOutput.slice(-3000) : ''
-      const verdict = await agentSupervisor.decide({
-        kind: 'permission',
-        sessionId,
-        todoId: session.todoId || null,
-        todoTitle,
-        todoDescription,
-        promptText,
-        options,
-        recentOutput,
-        cwd: session.cwd || null,
-      })
-      if (verdict?.status !== 'auto') return
-      // status 仍是 pending_confirm 才发；用户可能已经手动回了
-      const fresh = sessions.get(sessionId)
-      if (!fresh || fresh.status !== 'pending_confirm') return
-      const idx = Number.isInteger(verdict.choiceIndex) ? verdict.choiceIndex + 1 : 1
-      try {
-        pty.write(sessionId, `${idx}\r`)
-        // 翻状态：从 pending_confirm 回到 running（PTY 会接着输出，effectiveStatus 也会确认）
-        fresh.status = 'running'
-        fresh.permissionPrompt = null
-        broadcastToSession(fresh, {
-          type: 'pending_confirm_resolved',
-          by: 'agent-supervisor',
-          choice: verdict.choice,
-          confidence: verdict.confidence,
-        })
-      } catch (e) {
-        console.warn(`[ai-terminal] supervisor write failed: ${e.message}`)
-      }
-    } finally {
-      supervisorBusy.delete(sessionId)
-    }
   }
 
   function notifyTurnDone(sessionId, payload = {}) {
@@ -399,60 +333,7 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
       status: payload.status || session.status || 'idle',
       timestamp: ts,
     })
-
-    // Phase 2 active push：session 转 idle 时 fire 守望者去判断"还要不要推进"。
-    // 异步、不阻塞 notifyTurnDone 返回；推进决定由 supervisor 自己 audit。
-    if (agentSupervisor && session.todoId) {
-      runActivePush({ session }).catch((e) => {
-        console.warn(`[ai-terminal] active push threw: ${e.message}`)
-      })
-    }
     return true
-  }
-
-  async function runActivePush({ session }) {
-    if (!agentSupervisor?.analyzeForPush) return
-    const sessionId = session.sessionId
-    if (!sessionId) return
-    if (activePushBusy.has(sessionId)) return
-    if (!agentSupervisor.isEnabled?.()) return
-    activePushBusy.add(sessionId)
-    try {
-      let todoTitle = null
-      let todoDescription = null
-      try {
-        const todo = session.todoId ? db.getTodo?.(session.todoId) : null
-        todoTitle = todo?.title || null
-        todoDescription = todo?.description || null
-      } catch { /* ignore */ }
-      const recentOutput = typeof session.recentOutput === 'string' ? session.recentOutput.slice(-3000) : ''
-      const result = await agentSupervisor.analyzeForPush({
-        sessionId,
-        todoId: session.todoId,
-        todoTitle,
-        todoDescription,
-        recentOutput,
-        cwd: session.cwd || null,
-      })
-      if (result?.action !== 'push' || !result.nextPrompt) return
-      // 决定推进时，session 必须仍处于 idle 状态——避免在用户已经手动接管后还往里塞 prompt
-      const fresh = sessions.get(sessionId)
-      if (!fresh || (fresh.status !== 'idle' && fresh.status !== 'running')) return
-      try {
-        pty.write(sessionId, `${result.nextPrompt}\r`)
-        broadcastToSession(fresh, {
-          type: 'active_push_sent',
-          by: 'agent-supervisor',
-          nextPrompt: result.nextPrompt,
-          confidence: result.confidence,
-          state: result.state,
-        })
-      } catch (e) {
-        console.warn(`[ai-terminal] active push write failed: ${e.message}`)
-      }
-    } finally {
-      activePushBusy.delete(sessionId)
-    }
   }
 
   function sendToBrowser(ws, msg) {
