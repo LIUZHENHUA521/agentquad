@@ -599,6 +599,31 @@ export function createServer(opts = {}) {
 		}
 	});
 
+	// Claude stdout 提示词检测器命中 → 兜底 Notification hook 不 fire 的场景
+	// （settings.json permissions.defaultMode='auto' 时 model classifier 触发的权限框
+	// 实测不走 Notification hook）。复用 handleClaude 的 Notification 分支：
+	// markPendingConfirm + IM 推送都靠现有逻辑跑；与真 Notification 之间用 cooldown 去重。
+	pty.on("claude-prompt", async (data) => {
+		const port = runtimeConfig?.port || 5677;
+		try {
+			await fetch(`http://127.0.0.1:${port}/api/openclaw/hook`, {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					source: "claude",
+					path: "detector",
+					event: "Notification",
+					sessionId: data.sessionId,
+					nativeId: data.nativeId,
+					promptText: data.promptText,
+					options: data.options,
+				}),
+			});
+		} catch (e) {
+			console.warn("[claude-prompt] post failed:", e.message);
+		}
+	});
+
 	// Telegram 自动 topic 钩子：ait 创建在前，wizard 创建在后；用 lazy ref 桥接
 	const aiSessionHooks = {
 		onSessionSpawned: () => null,

@@ -893,6 +893,128 @@ describe('openclaw-hook handler', () => {
     expect(r.ok).toBe(false)
     expect(r.reason).toBe('event_required')
   })
+
+  // ─── Claude PTY-detector 兜底（修复 auto 模式不 fire Notification 时状态/IM 都没反应）
+  it('source=claude,path=detector: 翻 pending_confirm 且推 IM 权限按钮', async () => {
+    const sessionId = 'ai-claude-pty'
+    bridge = makeFakeBridge({ route: { channel: 'telegram', threadId: 9 } })
+    const markPendingConfirm = vi.fn()
+    handler = createOpenClawHookHandler({
+      db, openclaw: bridge,
+      getConfig: () => ({ telegram: { suppressNotificationEvents: true, notificationCooldownMs: 0 } }),
+      aiTerminal: {
+        sessions: new Map([[sessionId, {
+          todoId: 't1',
+          permissionMode: 'default',   // 非 bypass → 适合接 IM 推送
+          recentOutput: '',
+          outputHistory: [],
+        }]]),
+        markPendingConfirm,
+      },
+    })
+
+    const r = await handler.handle({
+      source: 'claude',
+      path: 'detector',
+      event: 'Notification',
+      sessionId,
+      promptText: 'Do you want to proceed?\n1. Yes\n2. No',
+    })
+
+    expect(markPendingConfirm).toHaveBeenCalledWith(sessionId, expect.objectContaining({ source: 'claude-pty-detector' }))
+    expect(r.ok).toBe(true)
+    expect(r.action).toBe('sent')
+    expect(bridge.broadcastText).toHaveBeenCalled()
+    const sent = bridge.broadcastText.mock.calls[0][0]
+    expect(sent.message).toContain('Do you want to proceed')
+    expect(sent.replyMarkup).toBeTruthy()   // Enter/Esc 按钮
+  })
+
+  it('source=claude,path=detector: bypass session 不推 IM（仍翻 pending_confirm 由 markPendingConfirm 自己决定）', async () => {
+    const sessionId = 'ai-claude-pty-bypass'
+    bridge = makeFakeBridge({ route: { channel: 'telegram', threadId: 9 } })
+    const markPendingConfirm = vi.fn()
+    handler = createOpenClawHookHandler({
+      db, openclaw: bridge,
+      getConfig: () => ({ telegram: { suppressNotificationEvents: true, notificationCooldownMs: 0 } }),
+      aiTerminal: {
+        sessions: new Map([[sessionId, {
+          todoId: 't1',
+          permissionMode: 'bypass',
+          recentOutput: '',
+          outputHistory: [],
+        }]]),
+        markPendingConfirm,
+      },
+    })
+
+    const r = await handler.handle({
+      source: 'claude',
+      path: 'detector',
+      event: 'Notification',
+      sessionId,
+      promptText: 'Do you want to proceed?',
+    })
+
+    expect(markPendingConfirm).toHaveBeenCalled()
+    expect(r.action).toBe('skipped')
+    expect(r.reason).toBe('im_push_not_eligible')
+    expect(bridge.broadcastText).not.toHaveBeenCalled()
+  })
+
+  it('source=claude,path=detector: 真 Notification 已写过 cooldown → detector 不再重复推 IM', async () => {
+    const sessionId = 'ai-claude-pty-cooldown'
+    bridge = makeFakeBridge({ route: { channel: 'telegram', threadId: 9 } })
+    handler = createOpenClawHookHandler({
+      db, openclaw: bridge,
+      getConfig: () => ({ telegram: { suppressNotificationEvents: false, notificationCooldownMs: 60_000 } }),
+      aiTerminal: {
+        sessions: new Map([[sessionId, {
+          todoId: 't1',
+          permissionMode: 'default',
+          recentOutput: '',
+          outputHistory: [],
+        }]]),
+        markPendingConfirm: vi.fn(),
+      },
+    })
+
+    // 先模拟真 Notification 走完（推 IM + recordSent）
+    const first = await handler.handle({ event: 'notification', sessionId, todoId: 't1' })
+    expect(first.action).toBe('sent')
+    expect(bridge.broadcastText).toHaveBeenCalledTimes(1)
+
+    // 紧接着 PTY detector 也命中 —— cooldown 应拦掉
+    const second = await handler.handle({
+      source: 'claude',
+      path: 'detector',
+      event: 'Notification',
+      sessionId,
+      promptText: 'Do you want to proceed?',
+    })
+    expect(second.action).toBe('skipped')
+    expect(second.reason).toBe('notification_cooldown')
+    // bridge 仍只被调用一次
+    expect(bridge.broadcastText).toHaveBeenCalledTimes(1)
+  })
+
+  it('source=claude,path=detector: session_gone 安全返回（不崩、不调 bridge）', async () => {
+    bridge = makeFakeBridge()
+    handler = createOpenClawHookHandler({
+      db, openclaw: bridge,
+      aiTerminal: { sessions: new Map(), markPendingConfirm: vi.fn() },
+    })
+    const r = await handler.handle({
+      source: 'claude',
+      path: 'detector',
+      event: 'Notification',
+      sessionId: 'gone',
+      promptText: 'whatever',
+    })
+    expect(r.ok).toBe(false)
+    expect(r.reason).toBe('session_gone')
+    expect(bridge.broadcastText).not.toHaveBeenCalled()
+  })
 })
 
 describe('openclaw-hook router', () => {

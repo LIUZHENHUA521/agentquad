@@ -6,6 +6,7 @@ import { readdirSync, statSync, existsSync, unlinkSync, watch as fsWatch, mkdirS
 import { delimiter, dirname, isAbsolute, join } from 'node:path'
 import { homedir } from 'node:os'
 import { createCodexPromptDetector } from './codex-prompt-detector.js'
+import { createClaudePromptDetector } from './claude-prompt-detector.js'
 
 const require = createRequire(import.meta.url)
 
@@ -325,7 +326,7 @@ function defaultClaudeSessionLocator(nativeSessionId) {
 }
 
 export class PtyManager extends EventEmitter {
-  constructor({ tools, ptyFactory, promptDelayMs = 2000, codexWatcherFactory, claudeSessionLocator, codexSessionLocator, sidecar = null, eventEmitterFactory = null, codexPromptDetectorFactory = null } = {}) {
+  constructor({ tools, ptyFactory, promptDelayMs = 2000, codexWatcherFactory, claudeSessionLocator, codexSessionLocator, sidecar = null, eventEmitterFactory = null, codexPromptDetectorFactory = null, claudePromptDetectorFactory = null } = {}) {
     super()
     if (!tools) throw new Error('PtyManager: tools required')
     this.tools = tools
@@ -337,6 +338,7 @@ export class PtyManager extends EventEmitter {
     this.sidecar = sidecar
     this.eventEmitterFactory = eventEmitterFactory
     this.codexPromptDetectorFactory = codexPromptDetectorFactory || createCodexPromptDetector
+    this.claudePromptDetectorFactory = claudePromptDetectorFactory || createClaudePromptDetector
     this.sessions = new Map()
   }
 
@@ -673,6 +675,30 @@ export class PtyManager extends EventEmitter {
       }
     }
 
+    // Claude 专属：stdout 提示词检测器，兜底 Notification hook 不 fire 的场景
+    // （settings.json permissions.defaultMode='auto' 时 model classifier 决定弹权限框
+    // 但 Notification hook 实测不 fire；Notification 是 markPendingConfirm 的唯一上游，
+    // 没它就既不翻 pending_confirm 也不推 IM）。
+    if (tool === 'claude') {
+      try {
+        session.detector = this.claudePromptDetectorFactory({
+          pty: proc,
+          onMatch: ({ promptText, options }) => {
+            this.emit('claude-prompt', {
+              sessionId: session.sessionId,
+              nativeId: session.nativeId,
+              promptText,
+              options,
+            })
+          },
+        })
+        session.detector.start?.()
+      } catch (e) {
+        console.warn('[pty] claude prompt detector start failed:', e?.message || e)
+        session.detector = null
+      }
+    }
+
     // 已知 nativeId 立即同步通知 —— 覆盖三种情况：
     //   1) Claude 新会话：presetClaudeId（randomUUID）
     //   2) Claude --resume：resumeNativeId（沿用 native id）
@@ -881,6 +907,8 @@ export class PtyManager extends EventEmitter {
           session.claudeLastJsonlMtimeMs = st.mtimeMs
           session.claudeLastEmittedKind = kind
           if (kind === 'turn-started') {
+            // 新一轮开始 → 让 PTY detector 的 lastEmittedText 失效，下一次权限提示能再次 emit
+            try { session.detector?.reset?.() } catch { /* ignore */ }
             this.emit('claude-turn-started', { sessionId, nativeId })
           } else {
             this.emit('claude-turn-done', { sessionId, nativeId })

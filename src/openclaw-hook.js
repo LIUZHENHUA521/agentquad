@@ -444,6 +444,7 @@ export function createOpenClawHookHandler(deps = {}) {
    * 处理一条 hook 事件 —— 统一入口，按 source/path 分发。
    *  - source=codex,path=jsonl    → handleCodexJsonl（Phase C）
    *  - source=codex,path=detector → handleCodexDetector（Phase E 占位，目前直接拒绝）
+   *  - source=claude,path=detector→ handleClaudeDetector（PTY 兜底 Notification hook 不 fire）
    *  - 其它（默认 claude）        → handleClaude（保留原逻辑，签名不变）
    * 返回 { ok, action: 'sent'|'skipped'|'failed', reason? }
    */
@@ -451,6 +452,7 @@ export function createOpenClawHookHandler(deps = {}) {
     const source = req?.source || 'claude'
     if (source === 'codex' && req?.path === 'jsonl') return handleCodexJsonl(req)
     if (source === 'codex' && req?.path === 'detector') return handleCodexDetector(req)
+    if (source === 'claude' && req?.path === 'detector') return handleClaudeDetector(req)
     return handleClaude(req)
   }
 
@@ -626,6 +628,54 @@ export function createOpenClawHookHandler(deps = {}) {
       return { ok: false, reason: 'post_failed', detail: e?.message }
     }
     return { ok: true, action: 'sent', source: 'codex', event, nativeId, matchedPattern }
+  }
+
+  // ─── Claude PTY-detector 分支 ────────────────────────────────────────────────
+  // Notification hook 不 fire 的兜底（实测 permissions.defaultMode='auto' 时 model
+  // classifier 触发的权限框走不到 hook）。两件事：
+  //   1) 翻 session.status → pending_confirm（web 端 deriveAiState 据此显示"待确认"）
+  //   2) 推 IM 权限卡 / 按钮（跟真 Notification 走同一份 cooldown，避免双推）
+  // 与 handleCodexDetector 同构，但走 broadcastText（保持跟 Claude 真 Notification 一致），
+  // header 标题区别成 "Claude Code 等待你的响应"。
+  async function handleClaudeDetector({ event, sessionId, promptText } = {}) {
+    if (!sessionId) return { ok: false, reason: 'no_sessionId' }
+    const sess = aiTerminal?.sessions?.get(sessionId)
+    if (!sess) return { ok: false, reason: 'session_gone' }
+
+    // 1) 翻状态。markPendingConfirm 内置 status 守卫（只在 running/pending_confirm 翻），
+    //    所以即便此处和真 Notification 抢跑，也只会幂等更新。
+    try { aiTerminal?.markPendingConfirm?.(sessionId, { source: 'claude-pty-detector', promptText }) } catch { /* ignore */ }
+
+    // 2) IM 推送资格 & cooldown 跟真 Notification 共享 → 不会双推
+    if (!isPermissionReminderEligible(sessionId)) {
+      return { ok: true, action: 'skipped', reason: 'im_push_not_eligible' }
+    }
+    const cd = notificationCooldownMs()
+    if (cd > 0 && isOnCooldown(sessionId, 'notification', cd)) {
+      return { ok: true, action: 'skipped', reason: 'notification_cooldown', cooldownMs: cd }
+    }
+
+    // 3) 拼消息：直接用 PTY detector 抽出来的 promptText（已经过 anchor + cleanPtyTail 清洗）
+    const todoId = sess.todoId
+    let todoTitle = todoId
+    try {
+      const todo = await db.getTodo?.(todoId)
+      todoTitle = todo?.title || todoId
+    } catch { /* ignore */ }
+    const idTail = todoId ? String(todoId).slice(-3) : '???'
+    let message = `[#t${idTail}] 任务「${todoTitle}」\n\n${promptText || '(no prompt text)'}`
+    message = buildPermissionNotificationMessage(message)
+    const replyMarkup = buildPermissionReplyMarkup(sessionId)
+
+    let result
+    try {
+      result = await openclaw.broadcastText({ sessionId, message, replyMarkup })
+    } catch (e) {
+      logger.warn?.(`[claude-detector] broadcastText failed: ${e.message}`)
+      return { ok: false, reason: 'post_failed', detail: e?.message }
+    }
+    if (result?.ok !== false) recordSent(sessionId, 'notification')
+    return { ok: true, action: 'sent', source: 'claude', path: 'detector', event }
   }
 
   // ─── Claude 分支（既有实现，原 handle() 主体不变）─────────────────────────────
