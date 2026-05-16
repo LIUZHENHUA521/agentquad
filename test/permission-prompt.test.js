@@ -279,26 +279,49 @@ describe('permission-prompt', () => {
       expect(options.length).toBeGreaterThanOrEqual(2)
     })
 
-    // Bug 2 回归：AI 自由回复里如果恰好出现 anchor + 数字列表 + 老 footer 残骸，
-    // 旧 detector 会误命中。新规则要求 footer 在屏幕末尾（lines 末 5 行内）才认。
-    it('AI 自由回复带数字列表 + 缓冲深处的老 footer → 不应误命中', () => {
-      // 模拟：缓冲里上面有老 prompt 的 footer 残骸，下面是当前的 AI 回复
+    // 用户回归：Claude 在 TodoWrite 工具激活时，会把 tasks 列表渲染在 footer
+    // 之后。老的 "footer 必须在末 5 行" 规则把这种情况漏掉（footer 被 todo 列表
+    // 顶到中间）。现在 footer 可以在缓冲任何位置，紧凑性 (anchor + options
+    // 在 footer 上方 15 行内) 仍是强守卫。
+    it('Claude TodoWrite 状态面板在 prompt footer 之后 → 仍命中（footer 不在末 5 行也算）', () => {
       const raw = [
         'Bash command',
+        '  cd /repo && git status -s',
+        '  Check status',
+        '',
+        'This command changes directory before running git, which can execute untrusted hooks.',
+        '',
         'Do you want to proceed?',
         '1. Yes',
         '2. No',
-        'Esc to cancel · Tab to amend',   // ← 老 footer 残骸（不在末尾 5 行）
         '',
-        'Claude reply: 成功了！日志里：',     // ← 当前回复
-        '1. b35b411 — cleanPtyTail 展开 CUF/CUD',
-        '2. 09a8814 — detector 必须看到 Esc to cancel · Tab to amend footer',
-        '3. 7e21396 — adaptWizardResponseToLark 把 toast: string 转 Lark 期望的',
-        '4. fab8d09 — server.js 给 createLarkBot 注入 wizard.handleCallback',
-        '5. e2ddc5b — channel hint',
-        '6. 22a983a — lark 渠道下放过 sameThread',
+        'Esc to cancel · Tab to amend',
         '',
-        '完成。',                              // ← 末尾不是 footer
+        '4 tasks (3 done, 1 open)',                  // ← Claude TodoWrite panel 在 footer 后面
+        '  ✔ Phase 1: 守望者骨架',
+        '  ✔ Phase 2: 主动推进',
+        '  ◻ Phase 3: 浏览器代驾',
+        '  ✔ v2: 守望者改用本地 CLI',
+      ].join('\n')
+      const { text, options } = extractPermissionPrompt(raw)
+      expect(text).toContain('Do you want to proceed?')
+      expect(text).toContain('git status -s')
+      expect(options).toEqual([
+        { index: 1, label: 'Yes' },
+        { index: 2, label: 'No' },
+      ])
+    })
+
+    // 自由回复（纯 markdown，buffer 里没出现过任何 footer）→ 不匹配
+    it('AI 自由回复没有任何 footer → 不应误命中', () => {
+      const raw = [
+        'Claude reply: 成功了！日志里：',
+        '1. b35b411 — fix A',
+        '2. 09a8814 — fix B',
+        '3. 7e21396 — fix C',
+        'Do you want to know more?',                  // anchor-like，但缓冲无 footer
+        '',
+        '完成。',
       ].join('\n')
       expect(extractPermissionPrompt(raw)).toEqual({ text: '', options: [] })
     })

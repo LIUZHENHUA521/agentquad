@@ -180,10 +180,15 @@ function findAnchorIndex(lines) {
  *
  * 命中：返回 { startIdx, footerIdx, options }；不命中：null。
  */
-function findStrictPermissionWindow(lines, { maxBack = 15, footerTailRange = 5, contextLinesBeforeAnchor = 8 } = {}) {
-  // 1) 找最末 5 行内的 footer
+function findStrictPermissionWindow(lines, { maxBack = 15, contextLinesBeforeAnchor = 8 } = {}) {
+  // 1) 找缓冲里"最后"一次出现的 footer（不再硬限末 5 行 —— Claude TUI 把 TodoWrite
+  //    状态面板、active 任务列表等渲染在 prompt 之后，footer 会被它们顶到中间）。
+  //    "最后一次"语义：如果缓冲里有多个老 prompt，用最新的那个的 footer。
+  //    紧凑性 (anchor 在 footer 上方 15 行内) + 数字选项的约束已经够区分 AI 自由
+  //    回复（自由回复不会刚好"anchor + ≥2 数字选项 + Esc to cancel"全部出现在
+  //    15 行紧凑窗口里）。
   let footerIdx = -1
-  for (let i = lines.length - 1; i >= Math.max(0, lines.length - footerTailRange); i--) {
+  for (let i = lines.length - 1; i >= 0; i--) {
     if (CLAUDE_FOOTER_RE.test(lines[i])) { footerIdx = i; break }
   }
   if (footerIdx < 0) return null
