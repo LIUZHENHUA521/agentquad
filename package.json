@@ -53,6 +53,10 @@
     "build:all": "npm run setup && npm run build",
     "clean": "rm -rf node_modules web/node_modules dist-web web/dist",
     "ensure-web-deps": "node scripts/ensure-web-deps.js",
+    "release": "bash scripts/release.sh patch",
+    "release:patch": "bash scripts/release.sh patch",
+    "release:minor": "bash scripts/release.sh minor",
+    "release:major": "bash scripts/release.sh major",
     "prepack": "npm run ensure-web-deps && npm run build:web",
     "postinstall": "chmod +x node_modules/node-pty/prebuilds/*/spawn-helper 2>/dev/null || true"
   },
