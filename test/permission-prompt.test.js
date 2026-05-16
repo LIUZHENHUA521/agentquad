@@ -28,6 +28,43 @@ describe('permission-prompt', () => {
       const raw = 'a\n\n\n\nb'
       expect(cleanPtyTail(raw)).toBe('a\n\nb')
     })
+
+    // 回归（claude-prompt-detector 在 bypass 模式实战失火）：
+    // Claude/ink TUI 用 CUF（`\x1b[NC`，cursor forward N）做对齐而不是直接打空格。
+    // 若先无脑 strip CSI，"Do you want to proceed?" 会被压成 "Doyouwanttoproceed?"，
+    // 所有 PERMISSION_ANCHORS 全部失配。
+    it('CUF 还原成空格（用 PTY 真实捕获的 spacing 形态做回归）', () => {
+      // 真实数据形态：每个 word 之间 \x1b[1C 而不是空格
+      const raw = 'Do\x1b[1Cyou\x1b[1Cwant\x1b[1Cto\x1b[1Cproceed?'
+      const out = cleanPtyTail(raw)
+      // 关键：words 之间必须有空格，否则下游 anchor regex 全瞎
+      expect(out).toBe('Do you want to proceed?')
+    })
+
+    it('CUD 还原成换行（连续多行被 cursor down 压扁的场景）', () => {
+      const raw = 'first line\x1b[2Bsecond line'
+      const out = cleanPtyTail(raw)
+      expect(out).toContain('first line')
+      expect(out).toContain('second line')
+      // 中间必须有换行（cleanPtyTail 会把多余空行 compact 成 2 个）
+      expect(out).toMatch(/first line\n.*second line/s)
+    })
+
+    it('Claude 权限框（带 CUF 间距）→ extractor 能找到 anchor + 数字选项', () => {
+      // 模拟真实 Claude TUI 弹权限框的 PTY 形态
+      const raw = [
+        '\x1b[2CBash\x1b[1Ccommand',
+        '\x1b[2Ctouch\x1b[1C/tmp/foo.txt',
+        '\x1b[2CDo\x1b[1Cyou\x1b[1Cwant\x1b[1Cto\x1b[1Cproceed?',
+        '\x1b[2C\x1b[38;2;100;200;100m❯\x1b[39m\x1b[1C1.\x1b[1CYes',
+        '\x1b[2C\x1b[1C2.\x1b[1CNo',
+      ].join('\r\n')
+      const { text, options } = extractPermissionPrompt(raw)
+      expect(text).toContain('Do you want to proceed?')
+      expect(options.length).toBeGreaterThanOrEqual(2)
+      expect(options.find(o => o.index === 1)?.label).toBe('Yes')
+      expect(options.find(o => o.index === 2)?.label).toBe('No')
+    })
   })
 
   describe('parsePermissionOptions', () => {

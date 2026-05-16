@@ -1276,7 +1276,7 @@ describe('routes/ai-terminal', () => {
       autoMode: 'bypass',
       immediate: false,
       reason: 'restart_failed',
-      message: '切换全托管失败：spawn failed',
+      message: '切换托管模式失败：spawn failed',
     })
   })
 
@@ -1321,8 +1321,163 @@ describe('routes/ai-terminal', () => {
       autoMode: 'bypass',
       immediate: false,
       reason: 'native_session_missing',
-      message: '当前 Claude 会话尚未拿到原生 session id，全托管将仅对后续启动/恢复的会话生效。',
+      message: '当前会话尚未拿到原生 session id，模式切换将仅对后续启动/恢复的会话生效。',
     })
+  })
+
+  // ─── 对称重启：从 bypass 切回 default / acceptEdits，以及 codex / cursor 也要重启 ───
+
+  it('set_auto_mode default restarts a bypass Claude session with no permission flag', async () => {
+    const nativeId = 'abcdef12-3456-7890-abcd-ef1234567890'
+    const todo = ctx.db.createTodo({ title: 'T', quadrant: 1 })
+    const { body } = await request(ctx.app).post('/api/ai-terminal/exec')
+      .send({ todoId: todo.id, prompt: 'hi', tool: 'claude', cwd: '/tmp', permissionMode: 'bypass' })
+    ctx.pty.emit('native-session', { sessionId: body.sessionId, nativeId })
+
+    const sent = []
+    const ws = { readyState: 1, OPEN: 1, send: (d) => sent.push(JSON.parse(d)) }
+    ctx.ait.addBrowser(body.sessionId, ws)
+
+    // 前端切回"默认"会发 autoMode: null（FocusSubbar 把 'default' 映射成 null）
+    ctx.ait.handleBrowserMessage(body.sessionId, { type: 'set_auto_mode', autoMode: null }, ws)
+
+    expect(ctx.pty.created).toHaveLength(2)
+    expect(ctx.pty.created[1]).toMatchObject({
+      todoId: todo.id,
+      tool: 'claude',
+      prompt: null,
+      cwd: '/tmp',
+      resumeNativeId: nativeId,
+      permissionMode: 'default',
+    })
+    expect(ctx.pty.stopped).toEqual([body.sessionId])
+    const updated = ctx.db.getTodo(todo.id)
+    expect(updated.aiSession.sessionId).toBe(ctx.pty.created[1].sessionId)
+    expect(updated.aiSession.permissionMode).toBe('default')
+    expect(sent).toContainEqual({
+      type: 'session_restarted',
+      oldSessionId: body.sessionId,
+      newSessionId: ctx.pty.created[1].sessionId,
+      autoMode: 'default',
+    })
+    const switching = sent.find(m => m.type === 'auto_mode_switching')
+    expect(switching).toMatchObject({ type: 'auto_mode_switching', target: 'default' })
+  })
+
+  it('set_auto_mode acceptEdits restarts a bypass Claude session', async () => {
+    const nativeId = 'abcdef12-3456-7890-abcd-ef1234567890'
+    const todo = ctx.db.createTodo({ title: 'T', quadrant: 1 })
+    const { body } = await request(ctx.app).post('/api/ai-terminal/exec')
+      .send({ todoId: todo.id, prompt: 'hi', tool: 'claude', cwd: '/tmp', permissionMode: 'bypass' })
+    ctx.pty.emit('native-session', { sessionId: body.sessionId, nativeId })
+
+    const sent = []
+    const ws = { readyState: 1, OPEN: 1, send: (d) => sent.push(JSON.parse(d)) }
+    ctx.ait.addBrowser(body.sessionId, ws)
+
+    ctx.ait.handleBrowserMessage(body.sessionId, { type: 'set_auto_mode', autoMode: 'acceptEdits' }, ws)
+
+    expect(ctx.pty.created).toHaveLength(2)
+    expect(ctx.pty.created[1].permissionMode).toBe('acceptEdits')
+    expect(ctx.pty.stopped).toEqual([body.sessionId])
+    expect(sent).toContainEqual({
+      type: 'session_restarted',
+      oldSessionId: body.sessionId,
+      newSessionId: ctx.pty.created[1].sessionId,
+      autoMode: 'acceptEdits',
+    })
+  })
+
+  it('set_auto_mode acceptEdits restarts a default Claude session (升档也要重启)', async () => {
+    const nativeId = 'abcdef12-3456-7890-abcd-ef1234567891'
+    const todo = ctx.db.createTodo({ title: 'T', quadrant: 1 })
+    const { body } = await request(ctx.app).post('/api/ai-terminal/exec')
+      .send({ todoId: todo.id, prompt: 'hi', tool: 'claude', cwd: '/tmp' })
+    ctx.pty.emit('native-session', { sessionId: body.sessionId, nativeId })
+
+    const sent = []
+    const ws = { readyState: 1, OPEN: 1, send: (d) => sent.push(JSON.parse(d)) }
+    ctx.ait.addBrowser(body.sessionId, ws)
+
+    ctx.ait.handleBrowserMessage(body.sessionId, { type: 'set_auto_mode', autoMode: 'acceptEdits' }, ws)
+
+    expect(ctx.pty.created).toHaveLength(2)
+    expect(ctx.pty.created[1].permissionMode).toBe('acceptEdits')
+    expect(ctx.pty.stopped).toEqual([body.sessionId])
+  })
+
+  it('set_auto_mode bypass restarts a running Codex session', async () => {
+    const nativeId = 'codex-uuid-1'
+    const todo = ctx.db.createTodo({ title: 'T', quadrant: 1 })
+    const { body } = await request(ctx.app).post('/api/ai-terminal/exec')
+      .send({ todoId: todo.id, prompt: 'hi', tool: 'codex', cwd: '/tmp' })
+    // codex 新会话 native id 默认 null，要手动 emit 才能进入"有 nativeId"的重启路径
+    ctx.pty.emit('native-session', { sessionId: body.sessionId, nativeId })
+
+    const sent = []
+    const ws = { readyState: 1, OPEN: 1, send: (d) => sent.push(JSON.parse(d)) }
+    ctx.ait.addBrowser(body.sessionId, ws)
+
+    ctx.ait.handleBrowserMessage(body.sessionId, { type: 'set_auto_mode', autoMode: 'bypass' }, ws)
+
+    expect(ctx.pty.created).toHaveLength(2)
+    expect(ctx.pty.created[1]).toMatchObject({
+      tool: 'codex',
+      resumeNativeId: nativeId,
+      permissionMode: 'bypass',
+    })
+    expect(ctx.pty.stopped).toEqual([body.sessionId])
+    expect(sent).toContainEqual({
+      type: 'session_restarted',
+      oldSessionId: body.sessionId,
+      newSessionId: ctx.pty.created[1].sessionId,
+      autoMode: 'bypass',
+    })
+  })
+
+  it('set_auto_mode bypass restarts a running Cursor session', async () => {
+    // cursor.bin 默认未在 makeApp 里 setConfigValue，单测内补一行；走 /bin/sh 让 PATH 检查过
+    setConfigValue('tools.cursor.bin', '/bin/sh', { rootDir: ctx.rootDir })
+    const nativeId = 'cursor-uuid-1'
+    const todo = ctx.db.createTodo({ title: 'T', quadrant: 1 })
+    const { body } = await request(ctx.app).post('/api/ai-terminal/exec')
+      .send({ todoId: todo.id, prompt: 'hi', tool: 'cursor', cwd: '/tmp' })
+    ctx.pty.emit('native-session', { sessionId: body.sessionId, nativeId })
+
+    const sent = []
+    const ws = { readyState: 1, OPEN: 1, send: (d) => sent.push(JSON.parse(d)) }
+    ctx.ait.addBrowser(body.sessionId, ws)
+
+    ctx.ait.handleBrowserMessage(body.sessionId, { type: 'set_auto_mode', autoMode: 'bypass' }, ws)
+
+    expect(ctx.pty.created).toHaveLength(2)
+    expect(ctx.pty.created[1]).toMatchObject({
+      tool: 'cursor',
+      resumeNativeId: nativeId,
+      permissionMode: 'bypass',
+    })
+    expect(ctx.pty.stopped).toEqual([body.sessionId])
+  })
+
+  it('set_auto_mode default on an already-default session is a no-op (no restart, no session_restarted)', async () => {
+    const nativeId = 'abcdef12-3456-7890-abcd-ef1234567892'
+    const todo = ctx.db.createTodo({ title: 'T', quadrant: 1 })
+    const { body } = await request(ctx.app).post('/api/ai-terminal/exec')
+      .send({ todoId: todo.id, prompt: 'hi', tool: 'claude', cwd: '/tmp' })
+    ctx.pty.emit('native-session', { sessionId: body.sessionId, nativeId })
+
+    const sent = []
+    const ws = { readyState: 1, OPEN: 1, send: (d) => sent.push(JSON.parse(d)) }
+    ctx.ait.addBrowser(body.sessionId, ws)
+
+    ctx.ait.handleBrowserMessage(body.sessionId, { type: 'set_auto_mode', autoMode: null }, ws)
+
+    expect(ctx.pty.created).toHaveLength(1)
+    expect(ctx.pty.stopped).toEqual([])
+    expect(sent.find(m => m.type === 'session_restarted')).toBeUndefined()
+    expect(sent.find(m => m.type === 'auto_mode_switching')).toBeUndefined()
+    // 仍要广播 auto_mode 元数据回声，让其它浏览器同步
+    expect(sent.some(m => m.type === 'auto_mode' && (m.autoMode === null || m.autoMode === undefined))).toBe(true)
   })
 
   it('outputHistory enforces 5MB ceiling', async () => {

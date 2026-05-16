@@ -50,8 +50,19 @@ const PERMISSION_ANCHORS = [
   /(允许|批准|授权).*\?/,
 ]
 
-function stripAnsi(s) {
+// Claude Code (ink/yoga) TUI 用 CUF（cursor forward, `\x1b[NC`）和 CUD（cursor down,
+// `\x1b[NB`）做空白对齐，而不是直接打空格/换行。如果先无脑 strip 掉 CSI，对齐空白
+// 就跟着没了——"Do you want to proceed" 会变成 "Doyouwanttoproceed"，PERMISSION_ANCHORS
+// 这种带字面量空格的 regex 全部失配，detector 永远 emit 不出来。
+// 修复：strip CSI 之前先把 CUF/CUD 还原成对应数量的空格/换行；缺省参数 N 视作 1。
+function expandCursorMoves(s) {
   return String(s || '')
+    .replace(/\x1b\[(\d*)C/g, (_m, n) => ' '.repeat(Math.min(parseInt(n, 10) || 1, 200)))
+    .replace(/\x1b\[(\d*)B/g, (_m, n) => '\n'.repeat(Math.min(parseInt(n, 10) || 1, 50)))
+}
+
+function stripAnsi(s) {
+  return expandCursorMoves(s)
     .replace(ANSI_OSC, '')
     .replace(ANSI_CSI, '')
     .replace(ANSI_OTHER, '')
