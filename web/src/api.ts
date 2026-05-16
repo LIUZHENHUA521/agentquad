@@ -975,6 +975,70 @@ export interface ProbeHit {
  * 订阅 probe SSE。返回 close 函数。
  * onHit 收到每个命中条目；onDone 收到「probe 结束」事件。
  */
+// ─── Agent Supervisor（守望者）─────────────────────────────────────
+export interface AgentSupervisorConfig {
+  enabled: boolean
+  hasApiKey: boolean
+  apiKeyHint: string
+  model: string
+  threshold: number
+  allowlist: string[]
+  permissionAuto: boolean
+  askUserAuto: boolean
+  activePush: { enabled?: boolean; intervalMs?: number; maxConsecutive?: number; maxTokensPerTodo?: number }
+  browserControl: { enabled?: boolean }
+}
+
+export interface AgentDecisionRow {
+  id: string
+  todoId: string | null
+  sessionId: string | null
+  kind: string
+  prompt: string | null
+  options: string[]
+  choice: string | null
+  confidence: number | null
+  reason: string | null
+  model: string | null
+  tokensIn: number | null
+  tokensOut: number | null
+  ms: number | null
+  status: string
+  createdAt: number
+}
+
+export async function getAgentSupervisorStatus(): Promise<{ ok: true; config: AgentSupervisorConfig; recent: AgentDecisionRow[] }> {
+  return jsonFetch('/api/agent-supervisor/status')
+}
+
+export async function updateAgentSupervisorConfig(patch: Partial<{
+  enabled: boolean
+  model: string
+  apiKey: string
+  apiBaseUrl: string
+  threshold: number
+  allowlist: string[]
+  permissionAuto: boolean
+  askUserAuto: boolean
+  activePush: { enabled?: boolean; intervalMs?: number; maxConsecutive?: number; maxTokensPerTodo?: number }
+  browserControl: { enabled?: boolean }
+}>): Promise<{ ok: true; config: AgentSupervisorConfig }> {
+  return jsonFetch('/api/agent-supervisor/config', {
+    method: 'POST',
+    body: JSON.stringify(patch),
+  })
+}
+
+export async function listAgentDecisions(params: { limit?: number; offset?: number; sessionId?: string; todoId?: string } = {}): Promise<{ ok: true; total: number; items: AgentDecisionRow[] }> {
+  const qs = new URLSearchParams()
+  if (params.limit) qs.set('limit', String(params.limit))
+  if (params.offset) qs.set('offset', String(params.offset))
+  if (params.sessionId) qs.set('sessionId', params.sessionId)
+  if (params.todoId) qs.set('todoId', params.todoId)
+  const suffix = qs.toString() ? `?${qs.toString()}` : ''
+  return jsonFetch(`/api/agent-supervisor/decisions${suffix}`)
+}
+
 export function subscribeProbeChatId(callbacks: {
   onHit: (hit: ProbeHit) => void
   onDone?: () => void

@@ -35,6 +35,8 @@ import { createSearchService } from "./search/index.js";
 import { createMcpRouter } from "./mcp/server.js";
 import { createOpenClawBridge } from "./openclaw-bridge.js";
 import { createPendingQuestionCoordinator } from "./pending-questions.js";
+import { createAgentSupervisor } from "./agent-supervisor.js";
+import { createAgentSupervisorRouter } from "./routes/agent-supervisor.js";
 import { createOpenClawHookHandler } from "./openclaw-hook.js";
 import { createTelegramSyncRouter } from "./routes/telegram-sync.js";
 import { createOpenClawHookRouter } from "./routes/openclaw-hook.js";
@@ -629,6 +631,12 @@ export function createServer(opts = {}) {
 		onSessionSpawned: () => null,
 		onSessionEnded: () => null,
 	};
+	// Agent Supervisor（守望者）：在 ait 和 pendingCoord 之前实例化，让它们都能拿到引用
+	const agentSupervisor = createAgentSupervisor({
+		db,
+		getConfig: () => (configRootDir ? loadConfig({ rootDir: configRootDir }) : initialConfig || {}),
+		logger: console,
+	});
 	const ait = createAiTerminal({
 		db,
 		pty,
@@ -636,6 +644,7 @@ export function createServer(opts = {}) {
 		getDefaultCwd: () => runtimeConfig.defaultCwd,
 		onSessionSpawned: (info) => aiSessionHooks.onSessionSpawned(info),
 		onSessionEnded: (info) => aiSessionHooks.onSessionEnded(info),
+		agentSupervisor,
 	});
 
 	const app = express();
@@ -1184,6 +1193,13 @@ export function createServer(opts = {}) {
 	app.use("/api/templates", createTemplatesRouter({ db }));
 	app.use("/api/recurring-rules", createRecurringRulesRouter({ db }));
 	app.use("/api/ai-terminal", ait.router);
+	app.use("/api/agent-supervisor", createAgentSupervisorRouter({
+		db,
+		supervisor: agentSupervisor,
+		getConfig: () => loadConfig({ rootDir: configRootDir }),
+		saveConfig: (next) => saveConfig(next, { rootDir: configRootDir }),
+		withConfigLock,
+	}));
 
 	const transcriptsService = createTranscriptsService({
 		db,
@@ -1255,7 +1271,7 @@ export function createServer(opts = {}) {
 			return { telegram: null, lark: null }
 		},
 	});
-	const pendingCoord = createPendingQuestionCoordinator({ db });
+	const pendingCoord = createPendingQuestionCoordinator({ db, agentSupervisor });
 	pendingCoord.start();
 
 	// ─── Telegram stack（可热重启）─────────────────────────────────

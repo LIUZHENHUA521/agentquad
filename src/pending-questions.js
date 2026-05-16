@@ -104,11 +104,44 @@ export function extractTicketCandidate(rawText) {
  *   - db: 暴露 createPendingQuestion / getPendingQuestion / answerPendingQuestion /
  *         setPendingStatus / getLatestPendingQuestion / sweepExpiredPendingQuestions
  */
-export function createPendingQuestionCoordinator({ db, sweepIntervalMs = DEFAULT_SWEEP_INTERVAL_MS, logger = console } = {}) {
+export function createPendingQuestionCoordinator({ db, sweepIntervalMs = DEFAULT_SWEEP_INTERVAL_MS, logger = console, agentSupervisor = null } = {}) {
   if (!db) throw new Error('db_required')
 
   // ticket → { resolve, reject, options, createdAt, expiresAt }
   const waiters = new Map()
+
+  // 守望者接入点：异步问 supervisor，命中就自动 submitReply。
+  // 失败 / 降级都不影响原流程（pending 仍在，用户依然可以从 IM 回复）。
+  async function maybeAutoAnswer({ ticket, sessionId, todoId, question, options }) {
+    if (!agentSupervisor) return
+    try {
+      if (!agentSupervisor.isEnabled?.()) return
+      let todoTitle = null
+      let todoDescription = null
+      try {
+        const todo = todoId ? db.getTodo?.(todoId) : null
+        todoTitle = todo?.title || null
+        todoDescription = todo?.description || null
+      } catch { /* ignore */ }
+      const verdict = await agentSupervisor.decide({
+        kind: 'ask_user',
+        sessionId,
+        todoId,
+        todoTitle,
+        todoDescription,
+        promptText: question,
+        options,
+      })
+      if (verdict?.status !== 'auto') return
+      // 仍要 pending 才能 submit；竞态下用户可能已经回了
+      const cur = db.getPendingQuestion(ticket)
+      if (!cur || cur.status !== 'pending') return
+      logger.info?.(`[pending-questions] agent-supervisor auto-answered ticket=${ticket} choice=${verdict.choice} confidence=${verdict.confidence}`)
+      submitReply(`#${ticket} ${verdict.choice}`)
+    } catch (e) {
+      logger.warn?.(`[pending-questions] maybeAutoAnswer threw: ${e.message}`)
+    }
+  }
 
   function makeFreshTicket() {
     for (let i = 0; i < MAX_GENERATE_RETRIES; i++) {
@@ -131,6 +164,9 @@ export function createPendingQuestionCoordinator({ db, sweepIntervalMs = DEFAULT
 
     const ticket = makeFreshTicket()
     db.createPendingQuestion({ ticket, sessionId, todoId, question, options, timeoutMs })
+
+    // 守望者异步介入；不 await，不阻塞 ask() 立即返回 ticket
+    maybeAutoAnswer({ ticket, sessionId, todoId, question, options }).catch(() => {})
 
     const promise = new Promise((resolve) => {
       const startedAt = Date.now()

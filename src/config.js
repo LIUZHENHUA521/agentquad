@@ -118,6 +118,35 @@ const DEFAULT_TELEGRAM_CONFIG = {
 	reactionRunningEmoji: '✍',          // 用哪个 Telegram 标准 emoji；群里若限制了 Available Reactions，改成允许列表里的（譬如 👀 / 🤔）
 };
 
+// Agent Supervisor（守望者）—— C 方案：替主人盯着所有 todo session，自动处理待确认 + 主动推进
+// Phase 1：只接 PTY 权限弹窗 + ask_user MCP；Phase 2 才上主动推进；Phase 3 才接浏览器代驾
+const DEFAULT_AGENT_SUPERVISOR_CONFIG = {
+	enabled: false,                            // 全局开关，默认关
+	model: "claude-opus-4-7",                  // 判官模型，UI 可改成 sonnet / haiku 省钱
+	apiKey: "",                                // 留空 → 走 env ANTHROPIC_API_KEY；config 落盘时会脱敏
+	apiBaseUrl: "https://api.anthropic.com",   // 私有镜像 / 网关可改
+	threshold: 0.8,                            // 置信度 ≥ 这个才自动决策；否则降级原 IM 流程
+	allowlist: [                               // 命中以下关键词的选项才允许自动选（小写匹配）
+		"allow",
+		"allow once",
+		"yes",
+		"continue",
+		"proceed",
+		"approve",
+	],
+	permissionAuto: true,                      // Phase 1：处理 PTY 权限弹窗
+	askUserAuto: true,                         // Phase 1：处理 ask_user MCP 二选一
+	activePush: {                              // Phase 2：主动推进（先占位，未启用）
+		enabled: false,
+		intervalMs: 180_000,                     // 每 3 分钟扫一次
+		maxConsecutive: 5,                       // 同一 session 最多自动推进 N 次
+		maxTokensPerTodo: 500_000,               // 同一 todo 累计 token 上限
+	},
+	browserControl: {                          // Phase 3：浏览器代驾（先占位，未启用）
+		enabled: false,
+	},
+};
+
 const DEFAULT_LARK_CONFIG = {
 	enabled: false,
 	appId: "",
@@ -348,6 +377,12 @@ function defaultConfig() {
 			enabled: { claude: true, codex: true, cursor: true },
 			warnPtyCount: 8,                  // doctor 软 warning 阈值
 		},
+		agentSupervisor: {
+			...DEFAULT_AGENT_SUPERVISOR_CONFIG,
+			allowlist: [...DEFAULT_AGENT_SUPERVISOR_CONFIG.allowlist],
+			activePush: { ...DEFAULT_AGENT_SUPERVISOR_CONFIG.activePush },
+			browserControl: { ...DEFAULT_AGENT_SUPERVISOR_CONFIG.browserControl },
+		},
 };
 }
 
@@ -452,6 +487,37 @@ export function normalizeConfig(cfg = {}) {
 			...(cfg.wiki || {}),
 		},
 		dispatch: normalizeDispatch(cfg.dispatch),
+		agentSupervisor: normalizeAgentSupervisor(cfg.agentSupervisor),
+	};
+}
+
+function normalizeAgentSupervisor(raw = {}) {
+	const base = DEFAULT_AGENT_SUPERVISOR_CONFIG;
+	const input = raw && typeof raw === "object" ? raw : {};
+	const threshold = Number(input.threshold);
+	const allowlist = Array.isArray(input.allowlist)
+		? input.allowlist.map((x) => String(x).trim().toLowerCase()).filter(Boolean)
+		: [...base.allowlist];
+	const activePush = input.activePush && typeof input.activePush === "object" ? input.activePush : {};
+	const browserControl = input.browserControl && typeof input.browserControl === "object" ? input.browserControl : {};
+	return {
+		enabled: input.enabled === true,
+		model: typeof input.model === "string" && input.model.trim() ? input.model.trim() : base.model,
+		apiKey: typeof input.apiKey === "string" ? input.apiKey : "",
+		apiBaseUrl: typeof input.apiBaseUrl === "string" && input.apiBaseUrl.trim() ? input.apiBaseUrl.trim() : base.apiBaseUrl,
+		threshold: Number.isFinite(threshold) && threshold >= 0 && threshold <= 1 ? threshold : base.threshold,
+		allowlist,
+		permissionAuto: input.permissionAuto !== false,
+		askUserAuto: input.askUserAuto !== false,
+		activePush: {
+			enabled: activePush.enabled === true,
+			intervalMs: Number.isFinite(Number(activePush.intervalMs)) && Number(activePush.intervalMs) >= 30_000 ? Number(activePush.intervalMs) : base.activePush.intervalMs,
+			maxConsecutive: Number.isFinite(Number(activePush.maxConsecutive)) && Number(activePush.maxConsecutive) > 0 ? Math.floor(Number(activePush.maxConsecutive)) : base.activePush.maxConsecutive,
+			maxTokensPerTodo: Number.isFinite(Number(activePush.maxTokensPerTodo)) && Number(activePush.maxTokensPerTodo) > 0 ? Math.floor(Number(activePush.maxTokensPerTodo)) : base.activePush.maxTokensPerTodo,
+		},
+		browserControl: {
+			enabled: browserControl.enabled === true,
+		},
 	};
 }
 
