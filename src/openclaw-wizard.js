@@ -2010,8 +2010,13 @@ export function createOpenClawWizard({
         pty.write(sid, '\r')
       } catch (e) {
         logger.warn?.(`[wizard] permission allow write failed: ${e.message}`)
-        return stale()
+        return stale('write_failed_allow')
       }
+      // Lark click 直写 PTY 绕过了 /api/ai-terminal/input 路径，web 端的
+      // permissionPrompt + 卡片不会自动消失。手工调一下 awaitingReply(false) 让
+      // ai-terminal 走 markSessionRunningAfterInput → 翻 running、清 permissionPrompt、
+      // 广播 pending_cleared，前端 webview 那张"AI 等待授权"卡随之消失。
+      try { aiTerminal?.markSessionAwaitingReply?.(sid, false) } catch { /* ignore */ }
       return {
         toast: '已发送 Enter',
         chosenLabel: '允许（Enter）',
@@ -2025,8 +2030,9 @@ export function createOpenClawWizard({
         pty.write(sid, '\x1b')
       } catch (e) {
         logger.warn?.(`[wizard] permission deny write failed: ${e.message}`)
-        return stale()
+        return stale('write_failed_deny')
       }
+      try { aiTerminal?.markSessionAwaitingReply?.(sid, false) } catch { /* ignore */ }
       return {
         toast: '已发送 Esc',
         chosenLabel: '拒绝/退出（Esc）',

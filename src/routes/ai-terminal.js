@@ -7,7 +7,7 @@ import { homedir } from 'node:os'
 import pidusage from 'pidusage'
 import { loadConfig, resolveToolsConfig, SUPPORTED_TOOLS, DEFAULT_ROOT_DIR } from '../config.js'
 import { writeRuntimeMcpConfig } from '../agent-installer-shared.js'
-import { CLAUDE_DEFAULT_PERMISSION_OPTIONS, extractPermissionPrompt, formatToolUseAsPrompt } from '../permission-prompt.js'
+import { CLAUDE_DEFAULT_PERMISSION_OPTIONS, extractPermissionPrompt, formatToolUseAsPrompt, parsePermissionOptions } from '../permission-prompt.js'
 import { findLatestPendingToolUse } from '../claude-transcript.js'
 
 const MAX_OUTPUT_BUFFER = 5 * 1024 * 1024
@@ -230,18 +230,24 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
     }
 
     // 兜底：从 PTY 提取（Codex 主路径 / Claude jsonl 拿不到时的 backup）。
-    // recentOutput 是 4KB 滑窗，TUI redraw 抖动会冲掉真实 prompt 文本；
-    // 再兜底用 outputHistory（最大 5MB）的尾部 ~64KB，让 extractor 能找到锚点。
     if (!text) {
-      const extractSource = promptText || session.recentOutput || ''
-      let historicalRaw = null
-      if (!promptText && Array.isArray(session.outputHistory) && session.outputHistory.length > 0) {
-        const joined = session.outputHistory.join('')
-        historicalRaw = joined.length > 65536 ? joined.slice(-65536) : joined
+      if (promptText) {
+        // caller 显式给了 promptText（codex-prompt-detector / claude-prompt-detector
+        // 已经在自己那侧做过严格匹配 + 清洗，这里完全相信，只跑一遍 options 解析）
+        text = String(promptText).slice(-1200)
+        options = parsePermissionOptions(text)
+      } else {
+        // 真正只从 PTY 缓冲爬：recentOutput 4KB 滑窗 + outputHistory 5MB 尾部
+        // extractPermissionPrompt 内部走严格 anchor + 数字选项 + 末尾 footer 的窗口规则。
+        let historicalRaw = null
+        if (Array.isArray(session.outputHistory) && session.outputHistory.length > 0) {
+          const joined = session.outputHistory.join('')
+          historicalRaw = joined.length > 65536 ? joined.slice(-65536) : joined
+        }
+        const r = extractPermissionPrompt(session.recentOutput || '', { historicalRaw })
+        text = r.text
+        options = r.options
       }
-      const r = extractPermissionPrompt(extractSource, { historicalRaw })
-      text = r.text
-      options = r.options
     }
     const hasContent = !!(text || options.length)
     const prevPrompt = session.permissionPrompt || null

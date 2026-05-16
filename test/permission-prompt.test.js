@@ -51,13 +51,15 @@ describe('permission-prompt', () => {
     })
 
     it('Claude 权限框（带 CUF 间距）→ extractor 能找到 anchor + 数字选项', () => {
-      // 模拟真实 Claude TUI 弹权限框的 PTY 形态
+      // 模拟真实 Claude TUI 弹权限框的 PTY 形态（末尾必须带 Esc to cancel footer，
+      // 新的严格 detector 用它锁定"屏幕当前正在显示权限框"，不是缓冲深处的残骸）
       const raw = [
         '\x1b[2CBash\x1b[1Ccommand',
         '\x1b[2Ctouch\x1b[1C/tmp/foo.txt',
         '\x1b[2CDo\x1b[1Cyou\x1b[1Cwant\x1b[1Cto\x1b[1Cproceed?',
         '\x1b[2C\x1b[38;2;100;200;100m❯\x1b[39m\x1b[1C1.\x1b[1CYes',
         '\x1b[2C\x1b[1C2.\x1b[1CNo',
+        '\x1b[2CEsc\x1b[1Cto\x1b[1Ccancel\x1b[1C·\x1b[1CTab\x1b[1Cto\x1b[1Camend',
       ].join('\r\n')
       const { text, options } = extractPermissionPrompt(raw)
       expect(text).toContain('Do you want to proceed?')
@@ -100,6 +102,7 @@ describe('permission-prompt', () => {
         '│ \x1b[33m❯\x1b[0m 1. Yes                  │',
         '│   2. No, suggest changes   │',
         '╰────────────────────────────╯',
+        'Esc to cancel · Tab to amend',
       ].join('\n')
       const { text, options } = extractPermissionPrompt(raw)
       expect(text).toContain('Do you want to proceed?')
@@ -124,12 +127,12 @@ describe('permission-prompt', () => {
       expect(text.length).toBeLessThanOrEqual(100)
     })
 
-    it('handles Codex [Y/n] style — text but no options', () => {
+    it('Codex [Y/n] 样式现在不再被 Claude extractor 命中（Codex 走 codex-prompt-detector）', () => {
+      // 新规则：extractor 是 Claude 专用，必须带 Claude footer (Esc to cancel · Tab to amend)。
+      // Codex 的 "apply patch? [Y/n]" 没这个 footer → 返回空。Codex 的检测路径在
+      // codex-prompt-detector 那一支，跟 Claude 解耦。
       const raw = 'apply patch?\n[Y/n]'
-      const { text, options } = extractPermissionPrompt(raw)
-      expect(text).toContain('apply patch?')
-      expect(text).toContain('[Y/n]')
-      expect(options).toEqual([])
+      expect(extractPermissionPrompt(raw)).toEqual({ text: '', options: [] })
     })
 
     it('用 historicalRaw 兜底：recentOutput 全是 spinner，历史里有真 prompt', () => {
@@ -146,6 +149,7 @@ describe('permission-prompt', () => {
         '│ ❯ 1. Yes                   │',
         '│   2. No, suggest changes   │',
         '╰────────────────────────────╯',
+        'Esc to cancel · Tab to amend',
       ].join('\n')
       const { text, options } = extractPermissionPrompt(noisy, { historicalRaw: real })
       expect(text).toContain('curl -s -X POST')
@@ -157,7 +161,8 @@ describe('permission-prompt', () => {
     })
 
     it('锚点定位：prompt 在中间时窗口包含上下文（Bash 命令文本）', () => {
-      // 真实 PTY 场景：上方是 prompt + 选项，下方是 spinner 噪声继续刷
+      // 真实 PTY 场景：上方是 prompt + 选项 + footer，下方 spinner 是 cleanPtyTail
+      // 过滤后被丢弃的噪声（不影响 footer 在末尾的 footerTailRange 判定）
       const raw = [
         'Bash command',
         '  curl https://example.com/foo',
@@ -166,6 +171,7 @@ describe('permission-prompt', () => {
         'Do you want to proceed?',
         '1. Yes',
         '2. No',
+        'Esc to cancel · Tab to amend',
         '✶ Cooking for 3s ✶',
         '✶ Cooking for 5s ✶',
         '✶ Cooking for 8s ✶',
@@ -214,6 +220,8 @@ describe('permission-prompt', () => {
         'Real content here',
         'Do you want to proceed?',
         '1. Yes',
+        '2. No',
+        'Esc to cancel · Tab to amend',
       ].join('\n')
       const { text } = extractPermissionPrompt(raw)
       expect(text).toContain('Real content here')
@@ -221,6 +229,30 @@ describe('permission-prompt', () => {
       expect(text).not.toMatch(/Brewing for/)
       expect(text).not.toMatch(/Reading…/)
       expect(text).not.toMatch(/auto mode/i)
+    })
+
+    // Bug 2 回归：AI 自由回复里如果恰好出现 anchor + 数字列表 + 老 footer 残骸，
+    // 旧 detector 会误命中。新规则要求 footer 在屏幕末尾（lines 末 5 行内）才认。
+    it('AI 自由回复带数字列表 + 缓冲深处的老 footer → 不应误命中', () => {
+      // 模拟：缓冲里上面有老 prompt 的 footer 残骸，下面是当前的 AI 回复
+      const raw = [
+        'Bash command',
+        'Do you want to proceed?',
+        '1. Yes',
+        '2. No',
+        'Esc to cancel · Tab to amend',   // ← 老 footer 残骸（不在末尾 5 行）
+        '',
+        'Claude reply: 成功了！日志里：',     // ← 当前回复
+        '1. b35b411 — cleanPtyTail 展开 CUF/CUD',
+        '2. 09a8814 — detector 必须看到 Esc to cancel · Tab to amend footer',
+        '3. 7e21396 — adaptWizardResponseToLark 把 toast: string 转 Lark 期望的',
+        '4. fab8d09 — server.js 给 createLarkBot 注入 wizard.handleCallback',
+        '5. e2ddc5b — channel hint',
+        '6. 22a983a — lark 渠道下放过 sameThread',
+        '',
+        '完成。',                              // ← 末尾不是 footer
+      ].join('\n')
+      expect(extractPermissionPrompt(raw)).toEqual({ text: '', options: [] })
     })
   })
 })

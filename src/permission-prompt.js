@@ -30,10 +30,18 @@ const SPINNER_CHARS_STR = '✶✳✻✽★⚙∗⠁⠂⠄⡀⢀⠠⠐⠈'
 // "Brewing for 3m" / "Skedaddled for 5s" / "Cooked." 这类 spinner 状态行
 const STATUS_KEYWORDS = /\b[A-Z][a-z]{2,19}(?:ing|ed)\s+for\s+/
 const STATUS_VERB_LINE = /^\s*[*✶✳✻✽★⚙∗⠁⠂⠄⡀⢀⠠⠐⠈]*\s*[A-Z][a-z]{2,19}(?:ing|ed)\s*(…|\.\.\.|\.\.|\.)\s*$/
+// 真实形态："✽ Embellishing…   7      303          thinking more"——spinner + 动词 + 后面一堆杂物
+// 老的 STATUS_VERB_LINE 要求整行只有 spinner+verb，匹配不上。这条更宽松：spinner 起头 + 动词，
+// 后面爱写啥写啥都丢掉。
+const SPINNER_PROGRESS_LINE = /^\s*[*✶✳✻✽★⚙∗⠁⠂⠄⡀⢀⠠⠐⠈]\s+[A-Z][a-z]{2,19}(?:ing|ed)\b/
 // 行首单独的指示符行（不带任何内容）
 const TUI_PROMPT_LINE = /^\s*[❯⏵►→]\s*$/
 const AUTO_MODE_LINE = /(auto mode (on|off)|shift\+tab to cycle|ctrl\+[a-z]\b)/i
 const BORDER_ONLY = /^[\s\-=_|+~]+$/
+
+// Claude 真权限框/选择器底部固定 footer（cleanPtyTail 不会过滤掉这行）。
+// 跟 claude-prompt-detector 里的 CLAUDE_PERMISSION_FOOTER 是同一份语义。
+const CLAUDE_FOOTER_RE = /Esc\s+to\s+cancel|Tab\s+to\s+amend|Tab\s+to\s+select/i
 
 // 已知的"该停下来等用户"锚点。命中后我们围绕它取窗口，避免把锚点前的 prompt
 // 文本（Bash 命令、文件路径、warning 等）切掉。多语言都列上，省得后续再扩。
@@ -92,6 +100,7 @@ function isSpinnerOnly(line) {
 
 function isNoiseLine(line) {
   if (STATUS_VERB_LINE.test(line)) return true
+  if (SPINNER_PROGRESS_LINE.test(line)) return true
   if (STATUS_KEYWORDS.test(line)) return true
   if (TUI_PROMPT_LINE.test(line)) return true
   if (AUTO_MODE_LINE.test(line)) return true
@@ -148,19 +157,66 @@ function findAnchorIndex(lines) {
 }
 
 /**
- * 从清洗后的 lines 取一个"覆盖授权 prompt 的窗口"。
- * - 找到锚点：起点 = anchor - maxLines*0.7，终点 = anchor + maxLines*0.3 + 1
- *   （要把选项行也带进来）
- * - 没找到锚点：直接取尾部 maxLines
+ * 严格的"真权限框"窗口定位：
+ *
+ *   1. footer (Esc to cancel · Tab to amend) 必须在最后 5 行 —— 屏幕**当前**正在显示
+ *      权限框，不是缓冲深处某次老 prompt 的残骸；
+ *   2. footer 上面 maxBack 行内必须找到 anchor (Do you want to ...)；
+ *   3. anchor 和 footer 之间必须有 ≥2 个数字选项 (1. Yes / 2. No)。
+ *
+ * 三个信号全在一个紧凑、顺序正确的窗口里才认。这条规则把
+ *   "AI 自由回复里恰好出现 anchor、缓冲老地方有 footer、又有 markdown 数字列表"
+ * 这种零散信号拼出来的假阳性挡掉。
+ *
+ * 命中：返回 { startIdx, footerIdx, options }；不命中：null。
  */
-function takeWindow(lines, maxLines) {
-  const idx = findAnchorIndex(lines)
-  if (idx >= 0) {
-    const back = Math.floor(maxLines * 0.7)
-    const fwd = Math.ceil(maxLines * 0.3)
-    return lines.slice(Math.max(0, idx - back), Math.min(lines.length, idx + fwd + 1))
+function findStrictPermissionWindow(lines, { maxBack = 15, footerTailRange = 5, contextLinesBeforeAnchor = 8 } = {}) {
+  // 1) 找最末 5 行内的 footer
+  let footerIdx = -1
+  for (let i = lines.length - 1; i >= Math.max(0, lines.length - footerTailRange); i--) {
+    if (CLAUDE_FOOTER_RE.test(lines[i])) { footerIdx = i; break }
   }
-  return lines.slice(-maxLines)
+  if (footerIdx < 0) return null
+
+  // 2) footer 上方 maxBack 行内找 anchor
+  const searchFloor = Math.max(0, footerIdx - maxBack)
+  let anchorIdx = -1
+  for (let i = footerIdx - 1; i >= searchFloor; i--) {
+    if (PERMISSION_ANCHORS.some((re) => re.test(lines[i]))) { anchorIdx = i; break }
+  }
+  if (anchorIdx < 0) return null
+
+  // 3) anchor → footer 之间 ≥2 数字选项
+  const options = []
+  const seen = new Map()
+  for (let i = anchorIdx + 1; i < footerIdx; i++) {
+    const m = lines[i].match(/^\s*([1-9])\.\s+(\S.{0,79}?)\s*$/)
+    if (!m) continue
+    const idx = parseInt(m[1], 10)
+    const label = m[2].trim()
+    if (!label || seen.has(idx)) continue
+    seen.set(idx, label)
+    options.push({ index: idx, label })
+  }
+  if (options.length < 2) return null
+
+  // 4) 起点往 anchor 上方再退一段（典型形态：Bash command / Edit file path / description
+  //    等几行在 anchor 上方）。stop 在空行或第二个连续空行，避免把上一帧 chat 内容卷进来。
+  let startIdx = anchorIdx
+  let blanksSeen = 0
+  for (let i = anchorIdx - 1; i >= Math.max(0, anchorIdx - contextLinesBeforeAnchor); i--) {
+    const isBlank = !lines[i].trim()
+    if (isBlank) {
+      blanksSeen++
+      if (blanksSeen >= 2) break          // 两个空行 = 工具盒上面，截断
+      startIdx = i
+      continue
+    }
+    blanksSeen = 0
+    startIdx = i
+  }
+
+  return { startIdx, footerIdx, options }
 }
 
 /**
@@ -221,23 +277,23 @@ export function extractPermissionPrompt(
 ) {
   function extract(source) {
     const cleaned = cleanPtyTail(source)
-    if (!cleaned) return ''
+    if (!cleaned) return { text: '', options: [] }
     const lines = cleaned.split('\n')
-    const window = takeWindow(lines, maxLines)
-    let text = window.join('\n').trim()
+    const m = findStrictPermissionWindow(lines, { maxBack: maxLines, footerTailRange: 5 })
+    if (!m) return { text: '', options: [] }
+    let text = lines.slice(m.startIdx, m.footerIdx + 1).join('\n').trim()
     if (text.length > maxChars) text = text.slice(-maxChars)
-    return text
+    return { text, options: m.options }
   }
 
-  let text = extract(raw)
-  // 主源里没有锚点或太瘦 → 回退完整历史尾部
-  const hasAnchor = (s) => PERMISSION_ANCHORS.some((re) => re.test(s))
-  if ((!text || text.length < 40 || !hasAnchor(text)) && historicalRaw) {
+  let { text, options } = extract(raw)
+  // 主源里 strict window 没命中 → 回退完整历史尾部再试一次
+  if ((!text || options.length < 2) && historicalRaw) {
     const fallback = extract(historicalRaw)
-    if (fallback && (hasAnchor(fallback) || fallback.length > text.length)) {
-      text = fallback
+    if (fallback.text && fallback.options.length >= 2) {
+      text = fallback.text
+      options = fallback.options
     }
   }
-  const options = parsePermissionOptions(text)
   return { text, options }
 }
