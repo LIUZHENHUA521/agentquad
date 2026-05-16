@@ -450,22 +450,24 @@ export function createLarkBot({
 
   async function handleCardAction(raw) {
     const ev = normalizeCardAction(raw)
+    logger.info?.(`[lark-bot] card action received: callbackData=${ev.callbackData || 'null'} chatId=${ev.chatId || 'null'} from=${ev.fromUserId || 'null'}`)
     if (!ev.chatId || !ev.callbackData) {
-      return adaptWizardResponseToLark({ toast: '⚠️ 无效的卡片回传', action: 'invalid' })
+      const r = adaptWizardResponseToLark({ toast: '⚠️ 无效的卡片回传', action: 'invalid' })
+      logger.info?.(`[lark-bot] card action → Lark resp: ${JSON.stringify(r)}`)
+      return r
     }
     const configuredChatId = getConfig()?.lark?.chatId
     if (configuredChatId && ev.chatId !== String(configuredChatId)) {
       logger.warn?.(`[lark-bot] ignored card_action from other chat: ${ev.chatId}`)
-      // 跨群点的卡片：直接 undefined，让 Lark UI 不显 toast。也不报 200340，
-      // 因为我们返回的是合法的"空响应"。
-      return undefined
+      // 跨群点的卡片：返回最小合法响应（带个 info toast），避免 Lark UI 弹 200340 generic 错误
+      return { toast: { type: 'info', content: '已忽略（非本群）' } }
     }
     if (typeof wizard.handleCallback !== 'function') {
       logger.warn?.(`[lark-bot] wizard.handleCallback unavailable; dropping lark card action`)
       return adaptWizardResponseToLark({ toast: '⚠️ 服务未就绪', action: 'failed' })
     }
     try {
-      const r = await wizard.handleCallback({
+      const wizardR = await wizard.handleCallback({
         channel: 'lark',
         chatId: ev.chatId,
         threadId: ev.threadId,
@@ -473,7 +475,9 @@ export function createLarkBot({
         callbackData: ev.callbackData,
         fromUserId: ev.fromUserId,
       })
-      return adaptWizardResponseToLark(r)
+      const adapted = adaptWizardResponseToLark(wizardR)
+      logger.info?.(`[lark-bot] card action → wizard returned ${JSON.stringify(wizardR)} → Lark resp: ${JSON.stringify(adapted)}`)
+      return adapted
     } catch (e) {
       logger.warn?.(`[lark-bot] card action handler failed: ${e.message}`)
       return adaptWizardResponseToLark({ toast: `⚠️ 处理失败：${e.message}`, action: 'failed' })

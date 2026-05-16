@@ -972,7 +972,7 @@ describe('lark-bot card actions (interactive cards)', () => {
     })
   })
 
-  it('drops card.action.trigger from a different chat (returns undefined → Lark no toast)', async () => {
+  it('drops card.action.trigger from a different chat (returns a minimal info toast, not undefined)', async () => {
     const wizard = { handleInbound: vi.fn(), handleCallback: vi.fn() }
     const { bot } = makeBot({ wizard })
 
@@ -984,7 +984,8 @@ describe('lark-bot card actions (interactive cards)', () => {
       },
     })
 
-    expect(r).toBeUndefined()
+    // 跨群 click：必须返回合法 Lark 形态（不能是 undefined，否则 SDK 不写 data → Lark UI 弹 200340 generic）
+    expect(r).toEqual({ toast: { type: 'info', content: '已忽略（非本群）' } })
     expect(wizard.handleCallback).not.toHaveBeenCalled()
   })
 
