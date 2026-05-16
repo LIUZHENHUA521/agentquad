@@ -10,10 +10,6 @@ type StartAiSessionImpl = (todoId: string, tool: AiTool) => void
  *  TodoManage so the CommandPalette + topbar can drive it without prop chains). */
 export type BoardFilter = 'todo' | 'done' | 'all'
 
-/** Secondary filter by AI session state. ANDed with BoardFilter; null = no filter.
- *  Driven by the topbar Running/Idle/Pending pills. Session-scoped (not persisted). */
-export type AiStateFilter = 'running' | 'idle' | 'pending' | null
-
 interface DispatchState {
   // Drawer open flags (lifted from TodoManage local state)
   settings: boolean
@@ -31,10 +27,6 @@ interface DispatchState {
   /** Current board status filter — drives TodoManage's list query. */
   boardFilter: BoardFilter
   setBoardFilter: (filter: BoardFilter) => void
-
-  /** AI state filter from topbar pills (running/idle/pending). null = inactive. */
-  aiStateFilter: AiStateFilter
-  setAiStateFilter: (filter: AiStateFilter) => void
 
   // Action: open a drawer by name
   openDrawer: (key: DrawerKey) => void
@@ -85,9 +77,6 @@ export const useDispatchStore = create<DispatchState>((set, get) => ({
 
   boardFilter: 'todo' as BoardFilter,
   setBoardFilter: (filter) => set(() => ({ boardFilter: filter })),
-
-  aiStateFilter: null as AiStateFilter,
-  setAiStateFilter: (filter) => set(() => ({ aiStateFilter: filter })),
 
   openDrawer: (key) => set((s) => ({ ...s, [key]: true, palette: false })),
   closeDrawer: (key) => set(() => ({ [key]: false } as Partial<DispatchState>)),

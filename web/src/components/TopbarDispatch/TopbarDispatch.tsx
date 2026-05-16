@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next'
 import { StatPill } from '../StatPill'
 import { BoardFilterPill } from '../BoardFilterPill'
 import { ThemeToggle } from '../ThemeToggle'
-import { useDispatchStore, type AiStateFilter } from '../../store/dispatchStore'
+import { useDispatchStore } from '../../store/dispatchStore'
 import { useDispatchStats } from '../../design/useDispatchStats'
 import { useAiSessionStore } from '../../store/aiSessionStore'
 import { useUnreadStore, isSessionUnread } from '../../store/unreadStore'
@@ -49,24 +49,10 @@ export function TopbarDispatch({ unreadItems, onJump, onFocusSession, onStopSess
   const { runningCount, idleCount } = useDispatchStats()
   const openDrawer = useDispatchStore((s) => s.openDrawer)
   const togglePalette = useDispatchStore((s) => s.togglePalette)
-  const aiStateFilter = useDispatchStore((s) => s.aiStateFilter)
-  const setAiStateFilter = useDispatchStore((s) => s.setAiStateFilter)
   const [pendingOpen, setPendingOpen] = useState(false)
   const [runningOpen, setRunningOpen] = useState(false)
   const [idleOpen, setIdleOpen] = useState(false)
   const [stoppingId, setStoppingId] = useState<string | null>(null)
-
-  // Pill click toggles the AI-state filter only. Popover open/close is driven by
-  // hover (see <Popover trigger="hover" ...> below) so the two affordances are
-  // independent — click = filter, hover = peek at the session list.
-  // pending pill with count=0 is a no-op (filtering would just empty the board).
-  const handlePillClick = useCallback(
-    (state: NonNullable<AiStateFilter>, count: number) => {
-      if (state === 'pending' && count === 0 && aiStateFilter !== 'pending') return
-      setAiStateFilter(aiStateFilter === state ? null : state)
-    },
-    [aiStateFilter, setAiStateFilter],
-  )
 
   const sessions = useAiSessionStore((s) => s.sessions)
   const lastSeenMap = useUnreadStore((s) => s.lastSeenAt)
@@ -264,8 +250,6 @@ export function TopbarDispatch({ unreadItems, onJump, onFocusSession, onStopSess
             value={runningCount}
             label={t('topbar:statLabel.running')}
             data-testid="stat-running"
-            active={aiStateFilter === 'running'}
-            onClick={() => handlePillClick('running', runningCount)}
           />
         </span>
       </Popover>
@@ -287,8 +271,6 @@ export function TopbarDispatch({ unreadItems, onJump, onFocusSession, onStopSess
             value={idleCount}
             label={t('topbar:statLabel.idle')}
             data-testid="stat-idle"
-            active={aiStateFilter === 'idle'}
-            onClick={() => handlePillClick('idle', idleCount)}
           />
         </span>
       </Popover>
@@ -311,8 +293,6 @@ export function TopbarDispatch({ unreadItems, onJump, onFocusSession, onStopSess
             value={pendingCount}
             label={t('topbar:pendingLabel')}
             data-testid="stat-pending"
-            active={aiStateFilter === 'pending'}
-            onClick={() => handlePillClick('pending', pendingCount)}
           />
         </span>
       </Popover>

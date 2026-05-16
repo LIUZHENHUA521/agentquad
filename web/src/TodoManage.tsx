@@ -62,7 +62,6 @@ import { useUnreadStore } from './store/unreadStore'
 import { useDrawerStackStore } from './store/drawerStackStore'
 import { useDrawerStack } from './hooks/useDrawerStack'
 import { useDispatchStore } from './store/dispatchStore'
-import { useDispatchTodoSets } from './design/useDispatchStats'
 import { useAppConfigStore } from './store/appConfigStore'
 import { TopbarDispatch } from './components/TopbarDispatch'
 import { QuadrantBoard, QuadrantZone, QUADRANT_CONFIG } from './components/QuadrantBoard'
@@ -177,12 +176,6 @@ export default function TodoManage() {
   const setBoardFilter = useDispatchStore((s) => s.setBoardFilter)
   const filterStatus: 'todo' | 'done' | '' = filterStatusRaw === 'all' ? '' : filterStatusRaw
   const setFilterStatus = (next: 'todo' | 'done' | '') => setBoardFilter(next === '' ? 'all' : next)
-  // AI-state filter from the topbar Running/Idle/Pending pills. Live derivation —
-  // todos drop out the moment their session leaves the matching state (e.g. user
-  // stops a running session, the card disappears from the 'running' view).
-  const aiStateFilter = useDispatchStore((s) => s.aiStateFilter)
-  const setAiStateFilter = useDispatchStore((s) => s.setAiStateFilter)
-  const aiStateTodoSets = useDispatchTodoSets()
   const [keyword, setKeyword] = useState('')
 
   // Drawer
@@ -378,16 +371,13 @@ export default function TodoManage() {
     // done todo while filter is 'todo'). Widen to 'all' and let this effect retry
     // once the refetched list renders. Bail out if we're already on 'all'/'done'
     // and still can't find it, to avoid an infinite loop.
-    // Also clear the topbar AI-state filter — a deliberate jump should always reach
-    // the target, even if the user left a Running/Idle/Pending pill active.
-    if (aiStateFilter) setAiStateFilter(null)
     if (lastFetchedFilter !== filterStatus) return
     if (filterStatus === 'todo') {
       setFilterStatus('')
       return
     }
     setJumpTo(null)
-  }, [jumpToTodoId, todos, filterStatus, lastFetchedFilter, setJumpTo, aiStateFilter, setAiStateFilter])
+  }, [jumpToTodoId, todos, filterStatus, lastFetchedFilter, setJumpTo])
 
   useEffect(() => {
     if (!newTodoSignal) return
@@ -568,19 +558,8 @@ export default function TodoManage() {
 
   const todosByQuadrant = useMemo(() => {
     const groups: Record<number, Todo[]> = { 1: [], 2: [], 3: [], 4: [] }
-    // When the topbar AI-state filter is active, a parent stays visible if itself
-    // or any of its children matches — so a running subtodo still surfaces its
-    // parent card (which is the only place the user can expand to reach it).
-    const aiSet = aiStateFilter ? aiStateTodoSets[aiStateFilter] : null
-    const matches = (t: Todo): boolean => {
-      if (!aiSet) return true
-      if (aiSet.has(t.id)) return true
-      const kids = childrenByParentId[t.id]
-      return !!kids && kids.some((c) => aiSet.has(c.id))
-    }
     for (const t of todos) {
       if (t.parentId) continue
-      if (!matches(t)) continue
       const q = t.quadrant || 4
       if (groups[q]) groups[q].push(t)
     }
@@ -606,7 +585,7 @@ export default function TodoManage() {
       }
     }
     return groups
-  }, [todos, aiStateFilter, aiStateTodoSets, childrenByParentId, filterStatus])
+  }, [todos, filterStatus])
 
   // ─── 按优先级扁平化（用于「优先级」视图） ───
   const priorityList = useMemo(() => {
@@ -1187,36 +1166,6 @@ export default function TodoManage() {
         <TelegramSyncButton />
       </div>
 
-      {aiStateFilter && (
-        <div className={`ai-state-filter-banner ai-state-filter-banner--${aiStateFilter}`}>
-          <span className="ai-state-filter-banner__dot" />
-          <span className="ai-state-filter-banner__text">
-            {t('todo:board.aiFilterActive', {
-              label: t(
-                aiStateFilter === 'pending'
-                  ? 'topbar:pendingLabel'
-                  : aiStateFilter === 'idle'
-                  ? 'topbar:statLabel.idle'
-                  : 'topbar:statLabel.running',
-              ),
-              count:
-                aiStateFilter === 'running'
-                  ? aiStateTodoSets.running.size
-                  : aiStateFilter === 'idle'
-                  ? aiStateTodoSets.idle.size
-                  : aiStateTodoSets.pending.size,
-            })}
-          </span>
-          <button
-            type="button"
-            className="ai-state-filter-banner__clear"
-            onClick={() => setAiStateFilter(null)}
-            data-testid="ai-state-filter-clear"
-          >
-            {t('todo:board.clearFilter')}
-          </button>
-        </div>
-      )}
 
       {viewMode === 'priority' ? (
         <Spin spinning={loading}>

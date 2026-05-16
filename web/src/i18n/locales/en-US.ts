@@ -156,8 +156,6 @@ const en = {
       menu: 'Menu',
       menuTooltip: 'More',
       emptyPlaceholder: 'No todos',
-      aiFilterActive: 'Showing only "{{label}}" ({{count}})',
-      clearFilter: 'Clear filter',
     },
     mobileMenu: {
       title: 'Menu',

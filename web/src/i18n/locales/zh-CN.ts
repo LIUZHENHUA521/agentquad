@@ -153,8 +153,6 @@ const zh = {
       menu: '菜单',
       menuTooltip: '更多',
       emptyPlaceholder: '暂无待办',
-      aiFilterActive: '仅显示「{{label}}」（{{count}}）',
-      clearFilter: '清除筛选',
     },
     mobileMenu: {
       title: '菜单',
