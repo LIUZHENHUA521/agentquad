@@ -1619,6 +1619,29 @@ describe('routes/ai-terminal', () => {
     expect(ctx.ait.markPendingConfirm('not-a-session', { source: 'x' })).toBe(false)
   })
 
+  // 实战回归（cursor 卡"待确认"出不来）：cursor-hooks 把 cursor 的 beforeSubmitPrompt
+  // ("我要把 prompt 发给 AI 了") 映射成 notification 事件，handleClaude 看见 notification
+  // 就调 markPendingConfirm → cursor 每次发消息都被卡进"待确认"。语义错配，必须拒。
+  it('markPendingConfirm 对 cursor session 一律拒绝（cursor 的 notification 语义不是权限请求）', async () => {
+    const todo = ctx.db.createTodo({ title: 'T', quadrant: 1 })
+    const { body } = await request(ctx.app).post('/api/ai-terminal/exec')
+      .send({ todoId: todo.id, prompt: 'hi', tool: 'cursor' })
+    const sess = ctx.ait.sessions.get(body.sessionId)
+    sess.status = 'running'   // cursor session 在 running 状态
+
+    // 即便走 PTY detector 兜底 (allowIdleFlip=true) 也拒
+    expect(ctx.ait.markPendingConfirm(body.sessionId, {
+      source: 'claude-notification',
+    })).toBe(false)
+    expect(ctx.ait.markPendingConfirm(body.sessionId, {
+      source: 'claude-pty-detector',
+      promptText: 'Do you want to proceed?\n1. Yes\n2. No',
+      allowIdleFlip: true,
+    })).toBe(false)
+    expect(ctx.ait.sessions.get(body.sessionId).status).toBe('running')
+    expect(ctx.ait.sessions.get(body.sessionId).permissionPrompt).toBeFalsy()
+  })
+
   it('markPendingConfirm 在 status=idle 下拒绝翻转（idle Notification 视为提醒,非权限）', async () => {
     const todo = ctx.db.createTodo({ title: 'T', quadrant: 1 })
     const { body } = await request(ctx.app).post('/api/ai-terminal/exec')

@@ -207,6 +207,14 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
     const session = sessions.get(sessionId)
     if (!session) return false
     if (!LIVE_AI_STATUSES.has(session.status)) return false
+    // Cursor 的 notification 语义跟 Claude 完全不一样：cursor-hooks 把 cursor 的
+    // `beforeSubmitPrompt`（"我要把 prompt 发给 AI 了"）映射成 notification 事件，
+    // 它**不是**权限请求。如果照旧翻 pending_confirm，cursor session 在 acceptEdits
+    // (--force) 模式下每次用户发消息都被卡进"待确认"状态出不来。
+    // 现阶段 cursor 没有"真权限请求"的可靠信号（cursor-prompt-detector 不存在，
+    // cursor TUI 也没像 Claude 那样的 Esc to cancel 页脚），所以直接拒所有 cursor
+    // 的 pending_confirm 翻转。如果将来加 cursor 专用 detector，再放开。
+    if (session.tool === 'cursor') return false
     const wasPending = session.status === 'pending_confirm'
     const wasIdle = session.status === 'idle'
     if (!wasPending && session.status !== 'running' && !(wasIdle && allowIdleFlip)) return false
