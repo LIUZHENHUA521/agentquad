@@ -67,6 +67,37 @@
     padding: 8px;
   }
 
+  /* ── 禁用 iOS Safari focus 时的自动放大 ──
+     原理：iOS 只要 input/textarea 的 computed font-size < 16px，
+     focus 时就会把页面放大并卡住，导致部分按钮点不到。
+     这里给所有文本输入控件强制 ≥16px（不改 viewport user-scalable，保留双指缩放无障碍能力）。
+     ⚠️ 重要：项目里有不少组件（如 .tv-composer .ant-mentions textarea）用 `font-size: 13px !important`
+     压字号，必须用高于它的选择器特异性 + !important 才能覆盖。下面 .tv-composer / .xterm-helper-textarea
+     的两条规则就是为此显式加上的，新增类似 `!important` 的输入控件请同样在此追加覆写。 */
+  input,
+  textarea,
+  select,
+  .ant-input,
+  .ant-input-affix-wrapper input,
+  .ant-input-number-input,
+  .ant-select-selection-search-input,
+  .ant-picker-input > input {
+    font-size: 16px !important;
+  }
+  /* 会话输入框（AntD Mentions）— 覆盖 TranscriptView.css 里 13px!important 的设定。
+     双写 .ant-mentions 拉高 specificity 到 0,3,x，确保压过那条 0,2,x 的样式
+     （两边都是 !important 时，最终由特异性 + 源序决定；mobile.css 在 bundle 里位置不确定，
+     所以靠特异性兜底，最稳）。 */
+  .tv-composer .ant-mentions.ant-mentions,
+  .tv-composer .ant-mentions.ant-mentions textarea,
+  .tv-composer .ant-mentions.ant-mentions textarea::placeholder {
+    font-size: 16px !important;
+  }
+  /* xterm 隐藏的 helper textarea — 防止点击终端时 iOS 把整页放大 */
+  .xterm-helper-textarea {
+    font-size: 16px !important;
+  }
+
   /* ── 触摸目标 ≥44×44（WCAG + iOS HIG） ── */
   .ant-btn-sm,
   .ant-btn {
@@ -119,6 +150,28 @@
   .todo-sticky-header .ant-input {
     width: 100% !important;
     min-width: 0;
+  }
+
+  /* ── 移动端顶部工具行：BoardFilterPill + 桌面风格图标按钮（新建 / 菜单） ── */
+  .todo-mobile-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .todo-mobile-toolbar .topbar-icon-btn {
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
+    color: var(--text-primary);
+    border: 1px solid var(--border-default);
+    background: var(--surface-2);
+  }
+  .todo-mobile-toolbar .topbar-icon-btn:hover,
+  .todo-mobile-toolbar .topbar-icon-btn:active {
+    background: var(--surface-3);
+    border-color: var(--accent-electric);
+    color: var(--accent-electric);
   }
 
   /* ── iOS Safari 的 100vh 问题：避免底部抽屉被地址栏遮挡 ── */

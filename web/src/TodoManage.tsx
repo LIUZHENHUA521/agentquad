@@ -15,6 +15,7 @@ import {
   BookOutlined, LineChartOutlined, TrophyOutlined,
   MenuOutlined, WarningOutlined,
 } from '@ant-design/icons'
+import { Plus as PlusIcon, Menu as MenuIcon } from 'lucide-react'
 import { useIsMobile } from './hooks/useIsMobile'
 import { useComments } from './hooks/useComments'
 import { useRecurringRule } from './hooks/useRecurringRule'
@@ -64,6 +65,7 @@ import { useDrawerStack } from './hooks/useDrawerStack'
 import { useDispatchStore } from './store/dispatchStore'
 import { useAppConfigStore } from './store/appConfigStore'
 import { TopbarDispatch } from './components/TopbarDispatch'
+import { BoardFilterPill } from './components/BoardFilterPill/BoardFilterPill'
 import { QuadrantBoard, QuadrantZone, QUADRANT_CONFIG } from './components/QuadrantBoard'
 import { SortableTodoCard } from './components/TodoCard'
 import { StageTagChip } from './components/StageTagChip'
@@ -1123,40 +1125,33 @@ export default function TodoManage() {
       )}
       {isMobile && (
         <div className="todo-sticky-header">
-          {/* 工具栏 + 筛选（同一行） — mobile only. Desktop relies on
-              TopbarDispatch + ⌘K palette + N shortcut for these actions. */}
-          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-            <Radio.Group
-              size="small"
-              value={filterStatus}
-              onChange={(e) => setFilterStatus(e.target.value)}
-              options={[
-                { label: t('todo:board.filterTodo'), value: 'todo' },
-                { label: t('todo:board.filterDone'), value: 'done' },
-                { label: t('todo:board.filterAll'), value: '' },
-              ]}
-              optionType="button"
-            />
-            <Input
-              placeholder={t('todo:board.searchPlaceholder')}
-              size="small"
-              style={{ width: 200 }}
-              prefix={<SearchOutlined />}
-              value={keyword}
-              onChange={(e) => setKeyword(e.target.value)}
-              onPressEnter={() => fetchTodos()}
-              allowClear
-            />
+          {/* 顶部工具行：BoardFilterPill 复用桌面下拉筛选 + 新建/菜单图标按钮。
+              移动端不再提供搜索框，搜索请用桌面端 ⌘K 命令面板。 */}
+          <div className="todo-mobile-toolbar">
+            <BoardFilterPill />
             <div style={{ flex: 1 }} />
-            <Button type="primary" icon={<PlusOutlined />} size="small" onClick={handleCreate}>
-              {t('todo:board.create')}
-            </Button>
-            <Button
-              icon={<MenuOutlined />}
-              size="small"
-              onClick={() => setMobileMenuOpen(true)}
-              title={t('todo:board.menuTooltip')}
-            >{t('todo:board.menu')}</Button>
+            <Tooltip title={t('todo:board.create')}>
+              <button
+                type="button"
+                className="topbar-icon-btn"
+                onClick={handleCreate}
+                aria-label={t('todo:board.create')}
+                data-testid="mobile-new-btn"
+              >
+                <PlusIcon size={18} />
+              </button>
+            </Tooltip>
+            <Tooltip title={t('todo:board.menuTooltip')}>
+              <button
+                type="button"
+                className="topbar-icon-btn"
+                onClick={() => setMobileMenuOpen(true)}
+                aria-label={t('todo:board.menu')}
+                data-testid="mobile-menu-btn"
+              >
+                <MenuIcon size={18} />
+              </button>
+            </Tooltip>
           </div>
         </div>
       )}
