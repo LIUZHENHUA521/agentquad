@@ -355,7 +355,7 @@ export default function TodoManage() {
     const defaultIds = resolveDefaultAppliedTemplateIds()
     const defaultAutoStart = useAppConfigStore.getState().defaultAutoStartAi
     form.setFieldsValue({
-      quadrant: parent?.quadrant ?? 1,
+      // quadrant 已退役；不再写入 form 初值
       workDir: parent?.workDir || undefined,
       recurring: false,
       recurringFrequency: 'daily',
@@ -624,7 +624,7 @@ export default function TodoManage() {
     form.setFieldsValue({
       title: todo.title,
       description: todo.description,
-      quadrant: todo.quadrant,
+      // quadrant 已退役：不读 / 不写
       dueDate: todo.dueDate ? dayjs(todo.dueDate) : null,
       workDir: todo.workDir || undefined,
       brainstorm: !!todo.brainstorm,
@@ -648,7 +648,6 @@ export default function TodoManage() {
       const data = {
         title: values.title,
         description: values.description || '',
-        quadrant: values.quadrant as Quadrant,
         dueDate: values.dueDate ? values.dueDate.valueOf() : null,
         workDir: values.workDir || null,
         brainstorm: !!values.brainstorm,
@@ -676,7 +675,7 @@ export default function TodoManage() {
         await createRecurringRule({
           title: data.title,
           description: data.description,
-          quadrant: data.quadrant,
+          // quadrant 已退役：让后端用默认值
           workDir: data.workDir,
           brainstorm: data.brainstorm,
           appliedTemplateIds: data.appliedTemplateIds,
@@ -1417,15 +1416,7 @@ export default function TodoManage() {
               />
             </div>
           </Form.Item>
-          <Form.Item name="quadrant" label={t('todo:form.quadrantLabel')}>
-            <Radio.Group disabled={!!parentForCreate}>
-              {QUADRANT_CONFIG.map(c => (
-                <Radio.Button key={c.q} value={c.q} style={{ fontSize: 12 }}>
-                  {t(c.labelKey)}
-                </Radio.Button>
-              ))}
-            </Radio.Group>
-          </Form.Item>
+          {/* 象限选项已退役：UI 不再展示，新建走 db 默认值 */}
           {!editingTodo && !parentForCreate && (
             <>
               <Form.Item

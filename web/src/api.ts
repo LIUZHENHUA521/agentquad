@@ -77,7 +77,8 @@ export interface RecurringRule {
 export interface CreateRecurringRuleInput {
   title: string
   description?: string
-  quadrant: Quadrant
+  /** @deprecated 象限已退役；保留以兼容旧调用方 */
+  quadrant?: Quadrant
   workDir?: string | null
   brainstorm?: boolean
   appliedTemplateIds?: string[]
@@ -311,7 +312,8 @@ export async function listTodos(params: {
 export async function createTodo(data: {
   title: string
   description?: string
-  quadrant: Quadrant
+  /** @deprecated 象限已退役；保留参数以兼容老调用方，传入会被后端忽略 */
+  quadrant?: Quadrant
   dueDate?: number | null
   workDir?: string | null
   brainstorm?: boolean
