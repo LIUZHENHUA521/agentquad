@@ -4,6 +4,8 @@ import { Bot } from 'lucide-react'
 import dayjs from 'dayjs'
 import { useTranslation } from 'react-i18next'
 import type { AiSession, Todo, AiTool, PromptTemplate } from '../../api'
+import { useAiSessionStore } from '../../store/aiSessionStore'
+import { TokenChip } from '../TokenChip'
 
 const TOOL_COLOR: Record<AiTool, string> = {
   claude: '#d97706',
@@ -52,6 +54,9 @@ export function SessionCard({
   onOpen, onOpenParent, onCancel, onConfirm, onClose, onReopen,
 }: SessionCardProps) {
   const { t } = useTranslation(['common', 'todo'])
+
+  // 取 live session 的 usage（in-memory，最新）；session 已死时为 undefined → TokenChip 自然不渲染
+  const liveUsage = useAiSessionStore(s => s.sessions.get(session.sessionId)?.usage) ?? null
 
   // session.agentName 是派活那一刻的快照，最权威；缺失时退回到 parent 当前绑定的 agent。
   const agentLabel = useMemo(() => {
@@ -129,6 +134,7 @@ export function SessionCard({
           {statusLabel}
         </span>
         <span>· {t('todo:session.elapsedTotal', { ago: formatElapsed(session), defaultValue: 'Total {{ago}}' })}</span>
+        <TokenChip tool={session.tool} usage={liveUsage} />
       </div>
 
       <div className="session-card-actions">

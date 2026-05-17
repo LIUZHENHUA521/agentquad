@@ -792,35 +792,8 @@ body {
   50%      { box-shadow: 0 0 0 4px color-mix(in srgb, currentColor 0%,  transparent); }
 }
 
-/* Token 用量 tag —— 跟在「已运行 X」/「上次活跃 X 前」后面。
-   ≥ 80% context 时换橙色背景作为压缩临近的视觉警示；具体 % 在 tooltip 里。
-   tool=cursor 时显示 N/A 占位（视觉对齐，不让人误以为漏字段）。 */
-.todo-history-tokens {
-  display: inline-flex;
-  align-items: center;
-  font-size: 11px;
-  line-height: 1;
-  color: var(--text-tertiary);
-  flex-shrink: 0;
-  font-variant-numeric: tabular-nums;
-}
-
-.todo-history-tokens-tag {
-  padding: 3px 6px;
-  border-radius: 4px;
-  background: color-mix(in srgb, var(--text-tertiary) 14%, transparent);
-}
-
-.todo-history-tokens-tag.is-warn {
-  color: var(--ai-pending-confirm);
-  background: color-mix(in srgb, var(--ai-pending-confirm) 16%, transparent);
-}
-
-.todo-history-tokens-na {
-  font-style: italic;
-  opacity: 0.65;
-}
-
+/* Token 用量 tag 已抽到共享组件 ../components/TokenChip/TokenChip.css，
+   这里只保留 link hover：跟 token tag 的旧位置毫无关系，不要一起删。 */
 .todo-history-link:hover {
   color: color-mix(in srgb, var(--accent-electric) 80%, var(--text-primary));
 }
