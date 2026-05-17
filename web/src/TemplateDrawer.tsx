@@ -210,7 +210,7 @@ export default function TemplateDrawer({ open, onClose, onChanged }: Props) {
           </Form.Item>
           <Form.Item label={<Space><EyeOutlined />{t('settings:template.previewLabel')}</Space>}>
             <div style={{
-              padding: 8, borderRadius: 4,
+              padding: 8, borderRadius: 0,
               background: 'var(--surface-2)',
               border: '1px solid var(--border-default)',
               color: 'var(--text-primary)',

@@ -290,7 +290,7 @@ export default function TranscriptSearchDrawer({ open, onClose, preselectTodoId,
                   const boundTodo = f.bound_todo_id ? todos.find(td => td.id === f.bound_todo_id) : null
                   const boundTodoTitle = boundTodo ? t('transcript:searchDrawer.boundTo', { title: boundTodo.title }) : ''
                   return (
-                    <div key={f.id} style={{ border: '1px solid var(--border-subtle)', borderRadius: 6, padding: 10, minWidth: 0 }}>
+                    <div key={f.id} style={{ border: '1px solid var(--border-subtle)', borderRadius: 0, padding: 10, minWidth: 0 }}>
                       <div style={resultHeaderStyle}>
                         <Tag style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                           <AgentIcon tool={f.tool as AiTool} />

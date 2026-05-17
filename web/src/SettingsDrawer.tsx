@@ -859,7 +859,7 @@ export default function SettingsDrawer({ open, onClose }: Props) {
                 padding: '10px 14px',
                 background: 'var(--surface-2)',
                 border: '1px solid var(--border-subtle)',
-                borderRadius: 6,
+                borderRadius: 0,
                 fontSize: 13,
                 lineHeight: 1.65,
               }}
@@ -1249,7 +1249,7 @@ export default function SettingsDrawer({ open, onClose }: Props) {
                     style={{
                       padding: 10,
                       border: '1px solid var(--border-subtle)',
-                      borderRadius: 6,
+                      borderRadius: 0,
                       marginBottom: 8,
                       background: 'var(--surface-2)',
                     }}

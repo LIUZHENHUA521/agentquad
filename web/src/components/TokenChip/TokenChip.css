@@ -15,7 +15,7 @@
 
 .token-chip-tag {
   padding: 1px 6px;
-  border-radius: 4px;
+  border-radius: 0;
   background: color-mix(in srgb, var(--text-tertiary) 14%, transparent);
 }
 

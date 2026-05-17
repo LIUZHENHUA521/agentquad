@@ -18,7 +18,7 @@
   flex-direction: column;
   gap: var(--space-3);
   padding: 18px 20px 14px;
-  border-radius: var(--radius-xl);
+  border-radius: 0;
   background: linear-gradient(
     135deg,
     color-mix(in srgb, var(--accent-electric) 10%, var(--surface-1)) 0%,
@@ -82,7 +82,7 @@
   align-items: center;
   gap: var(--space-2);
   padding: 6px 12px;
-  border-radius: var(--radius-full);
+  border-radius: 0;
   font-size: var(--text-sm);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
@@ -152,7 +152,7 @@
 .stats-card {
   background: var(--surface-1);
   border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
+  border-radius: 0;
   padding: 14px 16px;
   position: relative;
   overflow: hidden;
@@ -171,7 +171,7 @@
   left: 0;
   width: 2px;
   height: 16px;
-  border-radius: 0 2px 2px 0;
+  border-radius: 0;
   background: var(--stats-card-accent, var(--accent-electric));
 }
 
@@ -210,7 +210,7 @@
 .stats-table-card {
   background: var(--surface-1);
   border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
+  border-radius: 0;
   padding: 14px 16px 10px;
 }
 

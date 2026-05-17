@@ -100,7 +100,7 @@ export const spacing = {
 } as const
 
 export const radius = {
-  sm: 4, md: 6, lg: 8, xl: 12, full: 999,
+  sm: 0, md: 0, lg: 0, xl: 0, full: 0,
 } as const
 
 export const fontFamily = {

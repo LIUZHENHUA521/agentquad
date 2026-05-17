@@ -3,7 +3,7 @@
   display: flex;
   flex-direction: column;
   background: var(--surface-2);
-  border-radius: 8px;
+  border-radius: 0;
   overflow: hidden;
   /* 自动填满 TopbarDispatch 之下的剩余视口高度，待办少时也撑满屏幕 */
   min-height: calc(100vh - var(--topbar-dispatch-h, 52px));
@@ -34,7 +34,7 @@
   content: '';
   width: 2px;
   height: 24px;
-  border-radius: 1px;
+  border-radius: 0;
   background: var(--text-tertiary);
 }
 .todo-divider-v:hover::after,
@@ -61,7 +61,7 @@
   content: '';
   width: 24px;
   height: 2px;
-  border-radius: 1px;
+  border-radius: 0;
   background: var(--text-tertiary);
 }
 .todo-divider-h:hover::after,

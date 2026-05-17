@@ -43,10 +43,12 @@ export function getAntdTheme(mode: ThemeMode): ThemeConfig {
       fontSizeSM: fontSize.sm,
       fontSizeLG: fontSize.lg,
 
-      // Geometry
+      // Geometry — flat: every AntD radius forced to 0
       borderRadius: radius.md,
       borderRadiusSM: radius.sm,
       borderRadiusLG: radius.lg,
+      borderRadiusXS: 0,
+      borderRadiusOuter: 0,
 
       // Motion
       motionDurationFast: '120ms',

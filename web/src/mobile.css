@@ -327,7 +327,7 @@
   background: color-mix(in srgb, var(--surface-3) 78%, transparent);
   border: 1px solid var(--border-strong);
   color: var(--text-primary);
-  border-radius: 8px;
+  border-radius: 0;
   font-size: 16px;
   display: flex;
   align-items: center;
@@ -407,7 +407,7 @@
     font-size: 13px;
     font-weight: 700;
     padding: 4px 10px;
-    border-radius: 999px;
+    border-radius: 0;
     background: color-mix(in srgb, currentColor 14%, transparent);
     line-height: 1.2;
     white-space: nowrap;

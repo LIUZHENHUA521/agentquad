@@ -1541,7 +1541,7 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
                 label: (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <span style={{
-                      display: 'inline-block', width: 14, height: 14, borderRadius: 3,
+                      display: 'inline-block', width: 14, height: 14, borderRadius: 0,
                       border: '1px solid rgba(128,128,128,0.3)',
                       background: `linear-gradient(135deg, ${TERMINAL_PRESETS[name].background} 50%, ${TERMINAL_PRESETS[name].foreground} 50%)`,
                     }} />
@@ -1556,7 +1556,7 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
                   label: (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%' }}>
                       <span style={{
-                        display: 'inline-block', width: 14, height: 14, borderRadius: 3,
+                        display: 'inline-block', width: 14, height: 14, borderRadius: 0,
                         border: '1px solid rgba(128,128,128,0.3)',
                         background: `linear-gradient(135deg, ${themeColors.background} 50%, ${themeColors.foreground} 50%)`,
                       }} />
@@ -1642,7 +1642,7 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
       {/* tool_missing 修复卡片：424 时弹出，告诉用户跑哪条命令装回 claude/codex */}
       {toolMissing && (
         <div style={{
-          border: '1px solid #d9d9d9', borderRadius: 6, padding: 12, margin: 12,
+          border: '1px solid #d9d9d9', borderRadius: 0, padding: 12, margin: 12,
           background: '#fffbe6',
         }}>
           <div style={{ fontWeight: 600, marginBottom: 8 }}>
@@ -1653,7 +1653,7 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
           </div>
           <div style={{
             fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-            background: '#f5f5f5', padding: 8, borderRadius: 4, marginBottom: 10,
+            background: '#f5f5f5', padding: 8, borderRadius: 0, marginBottom: 10,
             fontSize: 12, userSelect: 'all',
           }}>
             {toolMissing.fix}
@@ -1725,7 +1725,7 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
             borderTop: `1px solid ${chrome.border}`,
           }}
         >
-          <div style={{ width: 30, height: 2, borderRadius: 1, background: chrome.mutedText }} />
+          <div style={{ width: 30, height: 2, borderRadius: 0, background: chrome.mutedText }} />
         </div>
       )}
       {fullscreen && (

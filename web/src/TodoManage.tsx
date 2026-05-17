@@ -1802,7 +1802,7 @@ export default function TodoManage() {
               fontFamily: 'ui-monospace, monospace',
               background: '#f5f5f5',
               padding: 12,
-              borderRadius: 4,
+              borderRadius: 0,
               userSelect: 'all',
             }}>{toolMissing.fix}</pre>
           </>

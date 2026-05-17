@@ -236,7 +236,7 @@
   margin: 0 0 10px;
   padding: 3px 10px 3px 8px;
   max-width: 100%;
-  border-radius: 999px;
+  border-radius: 0;
   background: var(--accent-electric-soft);
   color: var(--text-primary);
   font-size: 11.5px;
@@ -343,7 +343,7 @@
   background: var(--ant-color-bg-elevated);
   border: 1px solid var(--ant-color-border-secondary);
   padding: 2px 7px;
-  border-radius: 10px;
+  border-radius: 0;
   font-family: var(--font-mono);
   font-size: 10px;
   color: var(--ant-color-text-tertiary);

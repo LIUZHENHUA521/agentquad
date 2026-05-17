@@ -39,7 +39,7 @@
   position: relative;
 }
 .tv-body::-webkit-scrollbar { width: 8px; height: 8px; }
-.tv-body::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 4px; }
+.tv-body::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 0; }
 .tv-body::-webkit-scrollbar-thumb:hover { background: color-mix(in srgb, var(--text-primary) 25%, transparent); }
 
 /* ---------- 行（时间轴布局） ---------- */
@@ -95,7 +95,7 @@
 .tv-row-fork {
   background: none; border: none; padding: 2px 4px; cursor: pointer;
   color: var(--text-tertiary); font-size: 12px;
-  border-radius: 4px;
+  border-radius: 0;
 }
 .tv-row-fork:hover { color: var(--accent-electric); background: color-mix(in srgb, var(--accent-electric) 10%, transparent); }
 
@@ -137,7 +137,7 @@
 .tv-row-assistant .tv-row-content {
   padding: 4px 10px 4px 10px;
   border-left: 2px solid transparent;
-  border-radius: 0 4px 4px 0;
+  border-radius: 0;
 }
 .tv-row-user .tv-row-content {
   border-left-color: color-mix(in srgb, var(--accent-electric) 60%, transparent);
@@ -154,7 +154,7 @@
   display: inline-flex; align-items: baseline; gap: 6px;
   font-family: inherit;
   color: var(--text-secondary);
-  border-radius: 4px;
+  border-radius: 0;
   transition: color 0.12s ease;
 }
 .tv-tool-sig-button:hover { color: var(--text-primary); }
@@ -204,7 +204,7 @@
   font-size: 10px;
   padding: 0 6px;
   height: 16px; line-height: 16px;
-  border-radius: 3px;
+  border-radius: 0;
   background: color-mix(in srgb, var(--ai-pending-confirm) 18%, transparent);
   color: var(--ai-pending-confirm);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -217,7 +217,7 @@
   padding: 6px 0;
   background: var(--surface-2);
   border: 1px solid var(--border-subtle);
-  border-radius: 6px;
+  border-radius: 0;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 12px;
   line-height: 1.55;
@@ -277,7 +277,7 @@
   padding: 8px 10px;
   background: var(--surface-2);
   border: 1px solid var(--border-subtle);
-  border-radius: 6px;
+  border-radius: 0;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 11.5px; line-height: 1.5;
   white-space: pre-wrap;
@@ -291,7 +291,7 @@
 .tv-thinking-pill {
   display: inline-flex; align-items: center; gap: 6px;
   padding: 2px 10px;
-  border-radius: 999px;
+  border-radius: 0;
   border: 1px solid color-mix(in srgb, var(--ai-running) 35%, transparent);
   color: var(--ai-running);
   font-size: 11.5px;
@@ -306,7 +306,7 @@
 
 /* 原始 PTY */
 .tv-raw-pre {
-  background: var(--surface-2); border-radius: 6px;
+  background: var(--surface-2); border-radius: 0;
   padding: 8px 10px;
   font-size: 11.5px; line-height: 1.5;
   white-space: pre-wrap;
@@ -321,7 +321,7 @@
 /* 搜索高亮 */
 .tv-highlight {
   background: color-mix(in srgb, var(--ai-pending-confirm) 60%, transparent);
-  padding: 0 1px; border-radius: 2px;
+  padding: 0 1px; border-radius: 0;
 }
 
 /* ---------- TodoWrite checklist ---------- */
@@ -352,7 +352,7 @@
   font-size: 11.5px;
   color: var(--text-tertiary);
 }
-.tv-turn-tag { margin: 0 !important; font-size: 10.5px !important; height: 18px !important; line-height: 18px !important; padding: 0 6px !important; border-radius: 4px !important; }
+.tv-turn-tag { margin: 0 !important; font-size: 10.5px !important; height: 18px !important; line-height: 18px !important; padding: 0 6px !important; border-radius: 0; }
 
 .tv-thinking {
   grid-column: 2 / -1;
@@ -360,7 +360,7 @@
   align-self: flex-start;
   display: inline-flex; align-items: center; gap: 8px;
   padding: 4px 12px;
-  border-radius: 999px;
+  border-radius: 0;
   border: 1px solid color-mix(in srgb, var(--ai-running) 35%, transparent);
   color: var(--ai-running);
   font-size: 12px;
@@ -413,7 +413,7 @@
   background: none; border: none; padding: 2px 8px;
   color: var(--text-tertiary);
   font: inherit; cursor: pointer;
-  border-radius: 4px;
+  border-radius: 0;
   display: inline-flex; align-items: center; gap: 4px;
 }
 .tv-statusbar-btn:not(:disabled):hover { color: var(--text-primary); background: color-mix(in srgb, var(--text-primary) 8%, transparent); }
@@ -456,7 +456,7 @@
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 11.5px;
   padding: 3px 12px;
-  border-radius: 4px;
+  border-radius: 0;
   cursor: pointer;
   margin-top: 2px;
   flex-shrink: 0;
@@ -496,7 +496,7 @@
   padding: 3px 6px;
   background: var(--surface-0);
   border: 1px solid var(--border-subtle);
-  border-radius: 4px;
+  border-radius: 0;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 12px;
   color: var(--text-primary);
@@ -504,7 +504,7 @@
 .tv-queue-badge {
   flex-shrink: 0;
   padding: 1px 6px;
-  border-radius: 3px;
+  border-radius: 0;
   background: color-mix(in srgb, var(--ai-running) 16%, transparent);
   color: var(--ai-running);
   font-size: 10.5px; font-weight: 600;
@@ -521,7 +521,7 @@
   color: var(--text-tertiary);
   font-size: 14px; line-height: 1;
   padding: 2px 6px;
-  border-radius: 3px;
+  border-radius: 0;
   cursor: pointer;
   transition: all 0.12s ease;
 }
@@ -558,7 +558,7 @@
   max-height: 160px; overflow: auto;
   background: var(--surface-0);
   border: 1px solid var(--border-subtle);
-  border-radius: 4px;
+  border-radius: 0;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 11.5px;
   line-height: 1.5;
@@ -575,7 +575,7 @@
   color: var(--text-primary);
   font: inherit; font-size: 12px;
   padding: 4px 12px;
-  border-radius: 4px;
+  border-radius: 0;
   cursor: pointer;
   transition: all 0.12s ease;
   display: inline-flex; align-items: center; gap: 4px;
@@ -627,12 +627,12 @@
   transition: background 0.15s ease;
 }
 .tv-resize-handle:hover { background: var(--surface-3); }
-.tv-resize-grip { width: 28px; height: 2px; border-radius: 2px; background: var(--text-disabled); }
+.tv-resize-grip { width: 28px; height: 2px; border-radius: 0; background: var(--text-disabled); }
 
 /* ---------- 未读 pill ---------- */
 .tv-unread-pill {
   position: absolute; right: 16px; bottom: 100px;
-  padding: 5px 14px; border-radius: 999px;
+  padding: 5px 14px; border-radius: 0;
   background: var(--accent-electric); color: var(--surface-0);
   border: none; font-size: 11.5px; font-weight: 500;
   cursor: pointer;

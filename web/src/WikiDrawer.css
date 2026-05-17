@@ -6,7 +6,7 @@
 .wiki-tree-section { margin-bottom: 12px; }
 .wiki-tree-section-title { font-weight: 600; font-size: 12px; color: var(--text-tertiary); margin-bottom: 4px; text-transform: uppercase; }
 .wiki-tree-item {
-  padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 13px;
+  padding: 4px 8px; border-radius: 0; cursor: pointer; font-size: 13px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .wiki-tree-item:hover { background: var(--surface-2); }
@@ -14,10 +14,10 @@
 
 .wiki-content-pane { flex: 1; overflow: auto; padding: 0 8px; }
 .wiki-content-empty { color: var(--text-disabled); padding: 24px 0; text-align: center; }
-.wiki-content-md pre { background: var(--surface-2); padding: 12px; border-radius: 4px; overflow: auto; }
-.wiki-content-md code { background: var(--surface-2); padding: 2px 4px; border-radius: 3px; font-size: 90%; }
+.wiki-content-md pre { background: var(--surface-2); padding: 12px; border-radius: 0; overflow: auto; }
+.wiki-content-md code { background: var(--surface-2); padding: 2px 4px; border-radius: 0; font-size: 90%; }
 
-.wiki-pending-section { margin-bottom: 12px; border: 1px solid var(--border-subtle); border-radius: 4px; padding: 8px; }
+.wiki-pending-section { margin-bottom: 12px; border: 1px solid var(--border-subtle); border-radius: 0; padding: 8px; }
 .wiki-pending-title { font-weight: 600; margin-bottom: 8px; }
 .wiki-pending-row { padding: 4px 0; border-top: 1px solid var(--border-subtle); }
 .wiki-pending-row:first-child { border-top: none; }

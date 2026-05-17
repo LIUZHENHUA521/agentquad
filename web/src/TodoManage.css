@@ -57,7 +57,7 @@ body {
   /* token-exception: badge text needs hard-white contrast on saturated quadrant backgrounds in both themes */
   color: #ffffff;
   padding: 2px 8px;
-  border-radius: 3px;
+  border-radius: 0;
   font-size: 11px;
   font-weight: 600;
 }
@@ -71,7 +71,7 @@ body {
 .todo-quadrant-header .count-badge {
   margin-left: auto;
   padding: 1px 6px;
-  border-radius: 10px;
+  border-radius: 0;
   font-size: 10px;
 }
 
@@ -180,7 +180,7 @@ body {
 /* ─── 拖拽占位 ─── */
 .todo-drop-placeholder {
   border: 2px dashed var(--border-default);
-  border-radius: 4px;
+  border-radius: 0;
   padding: 12px;
   text-align: center;
   color: var(--text-tertiary);
@@ -195,7 +195,7 @@ body {
 /* ─── 优先级视图（单列流） ─── */
 .todo-priority-board {
   background: var(--surface-2);
-  border-radius: 8px;
+  border-radius: 0;
   padding: 12px;
   /* 与四象限视图保持一致：填满 TopbarDispatch 之下的剩余视口高度 */
   min-height: calc(100vh - var(--topbar-dispatch-h, 52px));
@@ -203,7 +203,7 @@ body {
 
 .todo-priority-list {
   background: var(--surface-1);
-  border-radius: 6px;
+  border-radius: 0;
   padding: 12px;
   min-height: 60px;
 }
@@ -217,7 +217,7 @@ body {
   top: 8px;
   right: 10px;
   padding: 1px 6px;
-  border-radius: 3px;
+  border-radius: 0;
   font-size: 10px;
   font-weight: 700;
   /* token-exception: P0-P3 badge text needs hard-white contrast on saturated quadrant backgrounds in both themes */
@@ -275,7 +275,7 @@ body {
 .subtodo-card {
   background: var(--surface-1);
   border-left-width: 2px;
-  border-radius: 8px;
+  border-radius: 0;
   margin-bottom: 0;
   box-shadow: inset 0 0 0 1px var(--border-subtle);
 }
@@ -616,7 +616,7 @@ body {
   align-items: center;
   gap: 3px;
   padding: 1px 6px;
-  border-radius: var(--radius-sm);
+  border-radius: 0;
   font-size: 10px;
   line-height: 1.4;
   color: var(--accent-electric);
@@ -926,7 +926,7 @@ body {
   align-items: center;
   gap: 6px;
   padding: 4px 10px;
-  border-radius: 999px;
+  border-radius: 0;
   background: var(--surface-2);
   border: 1px solid var(--surface-2);
   font-size: 12px;
@@ -982,7 +982,7 @@ button.todo-detail-chip:hover { background: var(--surface-2); }
   padding: 10px 14px;
   background: color-mix(in srgb, var(--ai-running) 12%, var(--surface-1));
   border: 1px solid color-mix(in srgb, var(--ai-running) 40%, var(--surface-1));
-  border-radius: 8px;
+  border-radius: 0;
 }
 .todo-detail-recurring__text { font-size: 13px; color: var(--text-secondary); }
 
@@ -991,7 +991,7 @@ button.todo-detail-chip:hover { background: var(--surface-2); }
   padding: 14px 16px;
   background: var(--surface-2);
   border: 1px solid var(--border-default);
-  border-radius: 10px;
+  border-radius: 0;
 }
 .todo-detail-description__empty {
   color: var(--text-tertiary);
@@ -1016,7 +1016,7 @@ button.todo-detail-chip:hover { background: var(--surface-2); }
   width: 100%;
   height: 140px;
   object-fit: cover;
-  border-radius: 8px;
+  border-radius: 0;
   border: 1px solid var(--border-default);
 }
 
@@ -1048,7 +1048,7 @@ button.todo-detail-chip:hover { background: var(--surface-2); }
   padding: 10px 12px;
   background: var(--surface-1);
   border: 1px solid var(--border-default);
-  border-radius: 10px;
+  border-radius: 0;
 }
 .todo-detail-comment__avatar {
   width: 28px; height: 28px; flex-shrink: 0;
@@ -1098,7 +1098,7 @@ button.todo-detail-chip:hover { background: var(--surface-2); }
 .todo-ai-tag {
   background: var(--surface-3);
   padding: 1px 6px;
-  border-radius: var(--radius-sm);
+  border-radius: 0;
   color: var(--text-tertiary);
   border: 1px solid var(--border-subtle);
   font-size: 10px;
