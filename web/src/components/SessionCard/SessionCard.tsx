@@ -33,6 +33,8 @@ export interface SessionCardProps {
   live?: boolean
   /** 当前列对应的 status 类别 */
   columnStatus: 'running' | 'pending_confirm' | 'idle'
+  /** FLIP 跨列动画注册 —— StatusBoard 传 `register(key, el)` */
+  flipRegister?: (sessionId: string, el: HTMLElement | null) => void
   onOpen?: (s: AiSession, parent: Todo) => void
   onOpenParent?: (parent: Todo) => void
   onCancel?: (s: AiSession, parent: Todo) => void
@@ -42,7 +44,7 @@ export interface SessionCardProps {
 }
 
 export function SessionCard({
-  session, parent, columnStatus,
+  session, parent, columnStatus, flipRegister,
   onOpen, onOpenParent, onCancel, onConfirm, onClose, onReopen,
 }: SessionCardProps) {
   const { t } = useTranslation(['common', 'todo'])
@@ -76,7 +78,11 @@ export function SessionCard({
   }
 
   return (
-    <article className={className} onClick={handleCardClick}>
+    <article
+      className={className}
+      onClick={handleCardClick}
+      ref={(el) => flipRegister?.(session.sessionId, el)}
+    >
       <div
         className="session-card-parent"
         onClick={(e) => { e.stopPropagation(); onOpenParent?.(parent) }}

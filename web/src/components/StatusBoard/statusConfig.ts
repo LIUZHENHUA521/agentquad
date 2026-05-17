@@ -1,4 +1,4 @@
-import type { AiStatus, AiSession, Todo } from '../../api'
+import type { AiStatus, AiSession, LiveSession, Todo } from '../../api'
 
 /**
  * 状态看板的列定义。
@@ -74,12 +74,16 @@ export function flattenSessions(todos: Todo[]): SessionEntry[] {
 /**
  * 把所有 sessions 拍到 4 列里。
  * @param entries 拍平后的 (session, parent todo) 列表
- * @param isUnread 注入的未读判定（依赖外部 unreadStore）；不传则视为全部已读，
- *                 此时 idle session 全部归入 idle 列（兼容老行为）。
+ * @param isUnread 注入的未读判定（依赖外部 unreadStore）；不传则视为全部已读
+ * @param liveSessions 当前 WebSocket / 3s-poll 维护的 live session map（aiSessionStore）。
+ *                     如果某条 entry 在 live map 里能找到，用 live 的 status / effectiveStatus /
+ *                     lastTurnDoneAt 覆盖 snapshot —— 这是状态变化时看板不用刷新页面就能
+ *                     重新分桶的关键。
  */
 export function sessionsByColumn(
   entries: SessionEntry[],
   isUnread: (s: AiSession) => boolean = () => false,
+  liveSessions?: Map<string, LiveSession>,
 ): Record<StatusColumnId, SessionEntry[]> {
   const out: Record<StatusColumnId, SessionEntry[]> = {
     backlog: [],
@@ -88,15 +92,28 @@ export function sessionsByColumn(
     idle: [],
   }
   for (const entry of entries) {
-    const col = deriveColumnFor(entry.session, isUnread(entry.session))
+    const effective = mergeLiveSession(entry.session, liveSessions?.get(entry.session.sessionId))
+    const col = deriveColumnFor(effective, isUnread(effective))
     if (col === null) continue                  // 终态：不入板
-    out[col].push(entry)
+    out[col].push({ session: effective, todo: entry.todo })
   }
   // 同一列按 startedAt desc（最新在上）
   for (const k of Object.keys(out) as StatusColumnId[]) {
     out[k].sort((a, b) => (b.session.startedAt || 0) - (a.session.startedAt || 0))
   }
   return out
+}
+
+/** snapshot session + 可选 live session → 合并版（优先 live.effectiveStatus，其次 live.status，再退 snapshot）。 */
+export function mergeLiveSession(snapshot: AiSession, live?: LiveSession): AiSession {
+  if (!live) return snapshot
+  const status = live.effectiveStatus || live.status || snapshot.status
+  return {
+    ...snapshot,
+    status,
+    lastTurnDoneAt: live.lastTurnDoneAt ?? snapshot.lastTurnDoneAt ?? null,
+    completedAt: live.completedAt ?? snapshot.completedAt,
+  }
 }
 
 export function activeSessionCount(t: Todo): { active: number; total: number } {

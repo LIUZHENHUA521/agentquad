@@ -115,7 +115,27 @@
   padding: 12px;
   cursor: pointer;
   position: relative;
-  transition: border-color 0.15s, background 0.15s, transform 0.15s;
+  /* hover / FLIP 用 transform；FLIP hook 搬家时会临时覆盖 transition: transform */
+  transition: border-color 0.15s, background 0.15s, box-shadow 0.4s;
+  will-change: transform;
+}
+
+/* "刚搬到这一列" 的瞬时高亮：用所在列 accent 色描一圈，700ms 后由 hook 摘掉 class */
+.session-card.sb-card-arrived {
+  animation: sb-arrive-pulse 700ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  border-color: var(--col-accent);
+}
+@keyframes sb-arrive-pulse {
+  0% {
+    box-shadow:
+      0 0 0 1px var(--col-accent),
+      0 0 24px color-mix(in srgb, var(--col-accent) 55%, transparent);
+  }
+  100% {
+    box-shadow:
+      0 0 0 0 transparent,
+      0 0 0 transparent;
+  }
 }
 .session-card:hover {
   border-color: var(--ant-color-primary-border, #58a6ff);

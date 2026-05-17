@@ -1255,11 +1255,16 @@ export default function TodoManage() {
             const dndIds = backlogSorted.map((x) => todoDndId(x))
 
             // 右 3 列：从（已经按 agent 过滤过的）todos 拍平 sessions。
-            // 注入 unread 判定：idle + 用户还没看过 = 进"需确认"列；idle + 已读 = 进"已空闲"列。
-            // unreadStore 用 lastTurnDoneAt（服务端） vs lastSeenAt（本地）比较。
+            // - 注入 liveSessionsMap：让 WebSocket / 3s-poll 推过来的 status 实时
+            //   覆盖 REST 拉到的 snapshot，状态变化无需刷新页面也会重新分桶。
+            // - 注入 unread 判定：idle + 用户还没看 = 留"需确认"；idle + 已读 = 进"已空闲"。
             const isUnreadPred = (s: import('./api').AiSession) =>
               isSessionUnread(s.lastTurnDoneAt, lastSeenMap.get(s.sessionId))
-            const sessionsCol = sessionsByColumn(flattenSessions(sessionSourceTodos), isUnreadPred)
+            const sessionsCol = sessionsByColumn(
+              flattenSessions(sessionSourceTodos),
+              isUnreadPred,
+              liveSessionsMap,
+            )
 
             const renderBacklogTodo = (todo: Todo) => (
               <SortableTodoCard

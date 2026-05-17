@@ -4,6 +4,7 @@ import { useDroppable } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import type { Todo, AiSession } from '../../api'
 import { STATUS_COLUMNS, type StatusColumnId, type SessionEntry } from './statusConfig'
+import { useFlipTransition } from './useFlipTransition'
 import { SessionCard } from '../SessionCard'
 import './StatusBoard.css'
 
@@ -33,6 +34,9 @@ export function StatusBoard(props: StatusBoardProps) {
     onCloseIdle, onReopenIdle,
   } = props
 
+  // 跨列 FLIP 跟踪：所有 SessionCard 共享同一份 register，跨列搬家时按 sessionId 反查旧位置
+  const flip = useFlipTransition({ duration: 320 })
+
   return (
     <div className="status-board">
       {STATUS_COLUMNS.map((col) => {
@@ -57,6 +61,7 @@ export function StatusBoard(props: StatusBoardProps) {
               <SessionColumnBody
                 entries={sessions[col.id] || []}
                 columnStatus={col.id === 'in_progress' ? 'running' : col.id === 'needs_input' ? 'pending_confirm' : 'idle'}
+                flipRegister={flip.register}
                 onOpenSession={onOpenSession}
                 onOpenParent={onOpenParent}
                 onCancelSession={onCancelSession}
@@ -124,11 +129,12 @@ function BacklogColumnBody({
 }
 
 function SessionColumnBody({
-  entries, columnStatus,
+  entries, columnStatus, flipRegister,
   onOpenSession, onOpenParent, onCancelSession, onConfirmSession, onCloseIdle, onReopenIdle,
 }: {
   entries: SessionEntry[]
   columnStatus: 'running' | 'pending_confirm' | 'idle'
+  flipRegister?: (sessionId: string, el: HTMLElement | null) => void
   onOpenSession: (s: AiSession, parent: Todo) => void
   onOpenParent: (parent: Todo) => void
   onCancelSession: (s: AiSession, parent: Todo) => void
@@ -158,6 +164,7 @@ function SessionColumnBody({
           session={session}
           parent={todo}
           columnStatus={columnStatus}
+          flipRegister={flipRegister}
           onOpen={onOpenSession}
           onOpenParent={onOpenParent}
           onCancel={onCancelSession}
