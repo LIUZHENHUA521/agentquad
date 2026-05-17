@@ -233,6 +233,9 @@ export function TopbarDispatch({ unreadItems, onJump, onFocusSession, onStopSess
         <span>AgentQuad</span>
       </div>
 
+      {/* 只看待办 / 全部 / 已完成 筛选 —— 紧挨着 logo 放，让看板状态意图一眼可见 */}
+      <BoardFilterPill />
+
       {/* 运行中 / 空闲 / 待确认 三个 StatPill 已退役 —— StatusBoard 的 4 列
           列头已经带了同样的计数；topbar 上再放一份就是冗余。
           Popover content（runningPopoverContent / idlePopoverContent /
@@ -240,8 +243,6 @@ export function TopbarDispatch({ unreadItems, onJump, onFocusSession, onStopSess
           / 快捷键路径可能还引用，等下次清理再扫除。 */}
 
       <div className="topbar-spacer" />
-
-      <BoardFilterPill />
 
       <button className="topbar-cmdk-btn" onClick={togglePalette} data-testid="topbar-cmdk-btn">
         <span className="topbar-cmdk-prefix">⌘</span>
