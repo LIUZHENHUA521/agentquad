@@ -5,7 +5,8 @@ import { useSortable, SortableContext, verticalListSortingStrategy } from '@dnd-
 import { CSS } from '@dnd-kit/utilities'
 import dayjs from 'dayjs'
 import { useTranslation } from 'react-i18next'
-import { updateTodo, type Todo, type AiTool, type StageTag, type LiveSession, type SessionUsage } from '../../api'
+import { updateTodo, type Todo, type AiTool, type StageTag, type LiveSession, type SessionUsage, type PromptTemplate } from '../../api'
+import { useAppConfigStore } from '../../store/appConfigStore'
 import { StageTagChip } from '../StageTagChip'
 import { AgentIcon } from '../AgentIcon'
 import { useAppMessages } from '../../design/useAppMessages'
@@ -43,6 +44,8 @@ export interface SortableTodoCardProps {
   children?: Todo[]
   childHitIds?: Set<string>
   isSubtodo?: boolean
+  /** 可选派活的 agent 列表（来自 templates store） */
+  agents?: PromptTemplate[]
   onCreateSubtodo?: (todo: Todo) => void
   onClick: (t: Todo) => void
   onToggleDone: (t: Todo) => void
@@ -64,7 +67,7 @@ export interface SortableTodoCardProps {
 // 避免 running / pending_confirm 期间因为 nativeId 还没到位而误报。
 const TERMINAL_AI_STATUSES = new Set<string>(['done', 'failed', 'stopped'])
 
-export function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo = false, onCreateSubtodo, onClick, onToggleDone, onAiExec, onDeleteAiSession, onUpdateSessionLabel, onDelete, onOpenTrae, onOpenTerminal, onOpenNativeResume, onExport, isNarrow, onRequestFork, onRefresh, highlightTodoId }: SortableTodoCardProps) {
+export function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo = false, agents = [], onCreateSubtodo, onClick, onToggleDone, onAiExec, onDeleteAiSession, onUpdateSessionLabel, onDelete, onOpenTrae, onOpenTerminal, onOpenNativeResume, onExport, isNarrow, onRequestFork, onRefresh, highlightTodoId }: SortableTodoCardProps) {
   const { message } = useAppMessages()
   const { t } = useTranslation(['todo', 'errors', 'session'])
   const [editingLabelSessionId, setEditingLabelSessionId] = useState<string | null>(null)
@@ -84,11 +87,38 @@ export function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo =
   const lastSeenMap = useUnreadStore(s => s.lastSeenAt)
   const liveSessionsMap = useAiSessionStore(s => s.sessions)
 
-  const aiMenuItems = [
-    { key: 'start:claude', icon: <AgentIcon tool="claude" />, label: t('todo:card.startClaude') },
-    { key: 'start:codex', icon: <AgentIcon tool="codex" />, label: t('todo:card.startCodex') },
-    { key: 'start:cursor', icon: <AgentIcon tool="cursor" />, label: t('todo:card.startCursor') },
-  ]
+  // 派活下拉菜单：列出所有 agents（templates），+ "No agent / 自由模式" 兜底；
+  // 工具固定走 settings 里的 default AI tool —— 用户不再每次都需要选工具。
+  const defaultTool = (useAppConfigStore((s) => s.defaultAiTool) || 'claude') as AiTool
+  const currentAgentId = (todo.appliedTemplateIds || [])[0] || null
+  const NO_AGENT_KEY = '__noAgent__'
+  const aiMenuItems = (() => {
+    const items: { key: string; icon?: React.ReactNode; label: React.ReactNode }[] = []
+    items.push({
+      key: NO_AGENT_KEY,
+      label: (
+        <span style={{ opacity: currentAgentId ? 0.7 : 1, fontStyle: 'italic' }}>
+          {t('todo:card.dispatchNoAgent', { defaultValue: '自由模式（不指派 agent）' })}
+        </span>
+      ),
+    })
+    for (const tpl of agents) {
+      items.push({
+        key: tpl.id,
+        label: (
+          <span>
+            {tpl.name}
+            {tpl.id === currentAgentId ? (
+              <span style={{ marginLeft: 6, fontSize: 10, color: 'var(--ant-color-primary)' }}>
+                {t('todo:card.dispatchCurrentMark', { defaultValue: '· 当前' })}
+              </span>
+            ) : null}
+          </span>
+        ),
+      })
+    }
+    return items
+  })()
 
   const handleStageTagChange = async (next: StageTag | null) => {
     try {
@@ -179,16 +209,29 @@ export function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo =
           <Dropdown
             menu={{
               items: aiMenuItems,
-              onClick: ({ key }) => {
-                const [action, value] = key.split(':')
-                if (action === 'start') {
-                  onAiExec(todo, value as AiTool)
+              onClick: async ({ key }) => {
+                const agentId = key === NO_AGENT_KEY ? null : key
+                // 跟当前已绑定的不一样 → 先把 todo.appliedTemplateIds 更新，再启动；
+                // 完全一致就直接启动（保持现有 agent 不动）。
+                try {
+                  if ((currentAgentId || null) !== (agentId || null)) {
+                    await updateTodo(todo.id, { appliedTemplateIds: agentId ? [agentId] : [] })
+                  }
+                } catch (e: any) {
+                  message.error(e?.message || t('errors:stageTagUpdateFailed'))
+                  return
                 }
+                onAiExec(todo, defaultTool)
               },
             }}
             trigger={['click']}
+            disabled={agents.length === 0}
           >
-            <Button size="small" icon={<Play size={13} />} className="todo-primary-action">{t('todo:card.aiTerminal')}</Button>
+            <Tooltip title={agents.length === 0 ? t('todo:card.dispatchNoAgentTooltip', { defaultValue: '还没招过 agent，去抽屉创建一个' }) : ''}>
+              <Button size="small" icon={<Play size={13} />} className="todo-primary-action">
+                {t('todo:card.dispatch', { defaultValue: '派活' })}
+              </Button>
+            </Tooltip>
           </Dropdown>
           {/* 子待办创建入口已退役（DB parent_id 字段保留；存量子待办在 StatusBoard 里平铺显示） */}
           <Popconfirm

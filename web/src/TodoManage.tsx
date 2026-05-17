@@ -1159,6 +1159,7 @@ export default function TodoManage() {
                       todo={t}
                       children={childrenByParentId[t.id] || []}
                       childHitIds={childHitIdsByParentId[t.id]}
+                      agents={templates}
                       onCreateSubtodo={handleCreateSubtodo}
                       onClick={openDetail}
                       onToggleDone={handleToggleDone}
@@ -1239,6 +1240,7 @@ export default function TodoManage() {
                 todo={todo}
                 children={childrenByParentId[todo.id] || []}
                 childHitIds={childHitIdsByParentId[todo.id]}
+                agents={templates}
                 onCreateSubtodo={handleCreateSubtodo}
                 onClick={openDetail}
                 onToggleDone={handleToggleDone}

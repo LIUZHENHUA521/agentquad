@@ -191,10 +191,17 @@ const en = {
       sessionCount: '{{count}} sessions',
       openEditorTooltip: 'Open in editor',
       openEditorLabel: 'Open editor',
-      aiTerminal: 'AI Terminal',
-      startClaude: '▶ Start Claude',
-      startCodex: '▶ Start Codex',
-      startCursor: '▶ Start Cursor',
+      // Dispatch: replaces the old "AI Terminal" + tool dropdown — tool comes from
+      // Settings → Default AI tool, the menu now picks an agent.
+      dispatch: '▶ Dispatch',
+      dispatchNoAgent: 'Free mode (no agent)',
+      dispatchCurrentMark: '· current',
+      dispatchNoAgentTooltip: 'No agents yet — open the Agents drawer to hire one',
+      // Legacy fallbacks
+      aiTerminal: 'Dispatch',
+      startClaude: 'Start Claude',
+      startCodex: 'Start Codex',
+      startCursor: 'Start Cursor',
       addSubtodo: 'Add subtodo',
       deleteConfirm: 'Delete?',
       sessionLabelPlaceholder: 'Enter session title...',
