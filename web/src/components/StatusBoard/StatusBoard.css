@@ -283,10 +283,13 @@
   font-size: 12px;
   letter-spacing: 0.02em;
   border-radius: 0;
+  color: var(--ant-color-text-secondary);
+  border-color: var(--ant-color-border-secondary);
+  background: transparent;
 }
 .session-card-actions .ant-btn-dangerous {
   color: var(--ant-color-text-secondary);
-  border-color: var(--ant-color-border);
+  border-color: var(--ant-color-border-secondary);
   background: transparent;
 }
 .session-card-actions .ant-btn-dangerous:hover,
