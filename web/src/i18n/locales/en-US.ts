@@ -27,10 +27,8 @@ const en = {
       commandPalette: 'Command Palette',
     },
     placeholder: 'Type a command or search a todo...',
-    placeholderAi: 'Search a todo to start AI session ({{tool}})...',
     empty: {
       noResults: 'No results.',
-      noTodos: 'No todos available — create one first.',
     },
     groups: {
       quickActions: 'Quick actions',
@@ -39,12 +37,9 @@ const en = {
       drawers: 'Drawers',
       view: 'View',
       system: 'System',
-      recentTodos: 'Recent / Active todos',
     },
     actions: {
       createTodo: 'Create new todo',
-      startAi: 'Start AI session ({{tool}}) →',
-      pickTodoForAi: 'Start AI session — pick a todo ({{tool}})',
       focusLabel: 'Focus: {{title}}',
       restoreToTodo: 'Restore to todo: {{label}}',
       openStatsReports: 'Open Stats & Reports',

@@ -24,10 +24,8 @@ const zh = {
       commandPalette: '命令面板',
     },
     placeholder: '输入命令或搜索待办…',
-    placeholderAi: '搜索一个待办来启动 AI 会话（{{tool}}）…',
     empty: {
       noResults: '无匹配结果。',
-      noTodos: '没有可用的待办 — 请先创建一个。',
     },
     groups: {
       quickActions: '快捷操作',
@@ -36,12 +34,9 @@ const zh = {
       drawers: '功能面板',
       view: '视图',
       system: '系统',
-      recentTodos: '最近 / 活跃的待办',
     },
     actions: {
       createTodo: '新建待办',
-      startAi: '启动 AI 会话（{{tool}}） →',
-      pickTodoForAi: '启动 AI 会话 — 选择一个待办（{{tool}}）',
       focusLabel: '专注：{{title}}',
       restoreToTodo: '恢复到待办：{{label}}',
       openStatsReports: '打开统计与报告',
