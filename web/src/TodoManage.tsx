@@ -1314,6 +1314,7 @@ export default function TodoManage() {
                 backlogDndIds={dndIds}
                 renderBacklogItem={renderBacklogTodo}
                 sessions={sessionsCol}
+                agents={templates}
                 onOpenSession={(s, parent) => handleOpenTerminalInDock(parent, s.sessionId)}
                 onOpenParent={(parent) => openDetail(parent)}
                 onCancelSession={(s) => { handleStopSession(s.sessionId).catch(() => {}) }}

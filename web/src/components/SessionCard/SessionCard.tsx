@@ -1,8 +1,9 @@
 import React, { useMemo } from 'react'
 import { Button, Popconfirm } from 'antd'
+import { Bot } from 'lucide-react'
 import dayjs from 'dayjs'
 import { useTranslation } from 'react-i18next'
-import type { AiSession, Todo, AiTool } from '../../api'
+import type { AiSession, Todo, AiTool, PromptTemplate } from '../../api'
 
 const TOOL_COLOR: Record<AiTool, string> = {
   claude: '#d97706',
@@ -29,6 +30,8 @@ function formatElapsed(s: AiSession): string {
 export interface SessionCardProps {
   session: AiSession
   parent: Todo
+  /** 用作 session.agentName 缺失（老会话）时的回退：从 parent.appliedTemplateIds[0] 反查 */
+  agents?: PromptTemplate[]
   /** 当前 PTY 是否还活着（用于决定 Cancel/Close 行为） */
   live?: boolean
   /** 当前列对应的 status 类别 */
@@ -45,10 +48,18 @@ export interface SessionCardProps {
 }
 
 export function SessionCard({
-  session, parent, columnStatus, flipRegister,
+  session, parent, agents, columnStatus, flipRegister,
   onOpen, onOpenParent, onCancel, onConfirm, onClose, onReopen,
 }: SessionCardProps) {
   const { t } = useTranslation(['common', 'todo'])
+
+  // session.agentName 是派活那一刻的快照，最权威；缺失时退回到 parent 当前绑定的 agent。
+  const agentLabel = useMemo(() => {
+    if (session.agentName) return session.agentName
+    const fallbackId = (parent.appliedTemplateIds || [])[0]
+    if (!fallbackId || !agents?.length) return null
+    return agents.find(a => a.id === fallbackId)?.name || null
+  }, [session.agentName, parent.appliedTemplateIds, agents])
 
   const statusColor = useMemo(() => {
     switch (columnStatus) {
@@ -89,6 +100,13 @@ export function SessionCard({
       <div className="session-card-parent" title={parent.title}>
         <span className="parent-title">{parent.title}</span>
       </div>
+
+      {agentLabel && (
+        <div className="session-card-agent" title={agentLabel}>
+          <Bot size={11} aria-hidden />
+          <span className="session-card-agent-name">{agentLabel}</span>
+        </div>
+      )}
 
       <div className="session-card-meta-row" style={{ ['--status-color' as any]: statusColor }}>
         <span

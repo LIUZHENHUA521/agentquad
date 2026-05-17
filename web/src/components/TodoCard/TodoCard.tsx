@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Button, Tooltip, Dropdown, Popconfirm, Tag, Input } from 'antd'
-import { Plus, Trash2, Clock, Play, Code, Pencil, ChevronDown, ChevronRight, CornerDownLeft, AlertTriangle, CheckCircle2, RotateCcw } from 'lucide-react'
+import { Plus, Trash2, Clock, Play, Code, Pencil, ChevronDown, ChevronRight, CornerDownLeft, AlertTriangle, CheckCircle2, RotateCcw, Bot } from 'lucide-react'
 import { useSortable, SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import dayjs from 'dayjs'
@@ -347,6 +347,19 @@ export function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo =
                           <AgentIcon tool={session.tool} />
                           {toolDisplayName(session.tool)}
                         </span>
+                        {(() => {
+                          // session.agentName 是派活那一刻的快照；老会话没有就退回 todo 当前绑定 agent
+                          const fallbackId = (todo.appliedTemplateIds || [])[0]
+                          const name = session.agentName
+                            || (fallbackId ? agents.find(a => a.id === fallbackId)?.name : null)
+                          if (!name) return null
+                          return (
+                            <span className="todo-history-agent" title={name}>
+                              <Bot size={11} aria-hidden />
+                              <span className="todo-history-agent-name">{name}</span>
+                            </span>
+                          )
+                        })()}
                         <span className="todo-history-time">{formatSessionTime(session.startedAt || session.completedAt)}</span>
                         {!sessionClosed && (sessionState !== 'idle' || liveSession) && (
                           <span className={`todo-ai-state todo-ai-state-${sessionState}`}>{AI_STATE_ICON[sessionState]()}{' '}{t(AI_STATE_LABEL_KEY[sessionState])}</span>

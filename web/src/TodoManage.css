@@ -641,6 +641,26 @@ body {
   color: var(--text-primary);
 }
 
+.todo-history-agent {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 180px;
+  padding: 1px 7px;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--ant-color-primary) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ant-color-primary) 32%, transparent);
+  color: var(--ant-color-primary);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.todo-history-agent-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .todo-history-native-id,
 .todo-history-command {
   min-width: 0;

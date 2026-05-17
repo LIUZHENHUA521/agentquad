@@ -667,6 +667,20 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
         // resume 路径上面已经 set 过；新会话首次得到 nativeId 时补一次。
         nativeSessionMap.set(`${tool}:${presetNativeId}`, sessionId)
       }
+      // Agent 身份快照：派活那一刻 todo.appliedTemplateIds[0] 就是这次的 agent。
+      // 写到 session 上，UI 不用反查 templates、用户改 todo agent 也不会改写历史会话归属。
+      let agentTemplateId = null
+      let agentName = null
+      const firstTemplateId = (todo.appliedTemplateIds || [])[0] || null
+      if (firstTemplateId) {
+        try {
+          const tpl = db.getTemplate(firstTemplateId)
+          if (tpl) {
+            agentTemplateId = tpl.id
+            agentName = tpl.name
+          }
+        } catch { /* 模板查不到就当无 agent */ }
+      }
       // 3. 一次性把 nativeSessionId 写进 DB（搬进 try 内：失败时不留脏 DB）。
       db.updateTodo(todoId, {
         status: 'ai_running',
@@ -680,6 +694,7 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
           completedAt: null,
           prompt,
           permissionMode: effectivePermissionMode,
+          ...(agentTemplateId ? { agentTemplateId, agentName } : {}),
           ...(label ? { label } : {}),
         }),
       })
