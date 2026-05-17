@@ -157,12 +157,6 @@
   margin: 0 2px;
 }
 
-.report-day-quad-counts {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-}
-
 .report-day-body {
   padding: 6px 0;
 }
@@ -193,13 +187,6 @@
   font-variant-numeric: tabular-nums;
   font-size: 12px;
   color: var(--text-tertiary);
-}
-
-.report-quadrant-dot {
-  flex-shrink: 0;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
 }
 
 .report-todo-title {

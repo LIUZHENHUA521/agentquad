@@ -1,19 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Segmented, DatePicker, Empty, Spin, Tag } from 'antd'
+import { Segmented, DatePicker, Empty, Spin } from 'antd'
 import { useTranslation } from 'react-i18next'
 import dayjs, { Dayjs } from 'dayjs'
-import { getDoneReport, DoneReport, Todo, Quadrant } from '../../api'
+import { getDoneReport, DoneReport, Todo } from '../../api'
 import './ReportPanel.css'
 
 type RangeKey = 'today' | 'yesterday' | 'thisWeek' | 'lastWeek' | 'custom'
-
-const QUADRANT_CONFIG: { q: Quadrant; color: string }[] = [
-  { q: 1, color: '#ff4d4f' },
-  { q: 2, color: '#faad14' },
-  { q: 3, color: '#1677ff' },
-  { q: 4, color: '#52c41a' },
-]
-const QUAD_META = new Map(QUADRANT_CONFIG.map(c => [c.q, c]))
 
 function resolveRange(
   key: RangeKey,
@@ -93,7 +85,6 @@ interface DayGroup {
   parents: Todo[]
   childrenByParent: Map<string, Todo[]>
   orphanSubtasks: Todo[]
-  countsByQuadrant: Map<Quadrant, number>
   total: number
 }
 
@@ -130,25 +121,19 @@ function groupByDay(list: Todo[], dayLabels: { today: (d: string) => string; yes
     for (const [, arr] of childrenByParent) {
       arr.sort((a, b) => (a.completedAt || 0) - (b.completedAt || 0))
     }
-    const countsByQuadrant = new Map<Quadrant, number>()
-    for (const t of dayTodos) {
-      countsByQuadrant.set(t.quadrant, (countsByQuadrant.get(t.quadrant) || 0) + 1)
-    }
     const today = dayjs().format('YYYY-MM-DD')
     const yesterday = dayjs().subtract(1, 'day').format('YYYY-MM-DD')
     const label = date === today ? dayLabels.today(date) : date === yesterday ? dayLabels.yesterday(date) : date
-    groups.push({ date, label, parents, childrenByParent, orphanSubtasks, countsByQuadrant, total: dayTodos.length })
+    groups.push({ date, label, parents, childrenByParent, orphanSubtasks, total: dayTodos.length })
   }
   return groups
 }
 
 function TodoRow({ todo, indent }: { todo: Todo; indent?: boolean }) {
-  const q = QUAD_META.get(todo.quadrant)
   const time = todo.completedAt ? dayjs(todo.completedAt).format('HH:mm') : ''
   return (
     <div className={`report-todo-row${indent ? ' report-todo-row-sub' : ''}`}>
       <span className="report-todo-time">{time}</span>
-      <span className="report-quadrant-dot" style={{ background: q?.color || 'var(--border-default)' }} />
       <span className="report-todo-title">{todo.title}</span>
       {todo.description ? (
         <span className="report-todo-desc" title={todo.description}>{todo.description}</span>
@@ -164,18 +149,6 @@ function DayBlock({ group }: { group: DayGroup }) {
       <div className="report-day-head">
         <span className="report-day-label">{group.label}</span>
         <span className="report-day-count">{t('settings:report.dayDone')} <b>{group.total}</b> {t('settings:report.dayDoneSuffix')}</span>
-        <div style={{ flex: 1 }} />
-        <div className="report-day-quad-counts">
-          {QUADRANT_CONFIG.map(c => {
-            const n = group.countsByQuadrant.get(c.q) || 0
-            if (!n) return null
-            return (
-              <Tag key={c.q} color={c.color} style={{ marginRight: 4 }}>
-                Q{c.q} × {n}
-              </Tag>
-            )
-          })}
-        </div>
       </div>
       <div className="report-day-body">
         {group.parents.map(p => (

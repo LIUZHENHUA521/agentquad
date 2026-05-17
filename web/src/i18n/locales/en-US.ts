@@ -1017,12 +1017,6 @@ const en = {
       },
     },
     report: {
-      quadrant: {
-        q1: 'Q1 - Important & urgent',
-        q2: 'Q2 - Important, not urgent',
-        q3: 'Q3 - Urgent, not important',
-        q4: 'Q4 - Neither important nor urgent',
-      },
       range: {
         today: 'Today',
         yesterday: 'Yesterday',

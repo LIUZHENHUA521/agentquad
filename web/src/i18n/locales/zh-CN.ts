@@ -1013,12 +1013,6 @@ const zh = {
       },
     },
     report: {
-      quadrant: {
-        q1: 'Q1 · 重要且紧急',
-        q2: 'Q2 · 重要不紧急',
-        q3: 'Q3 · 紧急不重要',
-        q4: 'Q4 · 不重要不紧急',
-      },
       range: {
         today: '今日',
         yesterday: '昨日',
