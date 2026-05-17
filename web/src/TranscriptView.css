@@ -604,10 +604,6 @@
   color: var(--ai-error);
 }
 .tv-permission-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-.tv-permission-btn--ghost {
-  border-style: dashed;
-  color: var(--text-tertiary);
-}
 .tv-permission-hint {
   font-size: 11px;
   color: var(--text-tertiary);

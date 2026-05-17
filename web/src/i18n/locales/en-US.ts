@@ -521,8 +521,6 @@ const en = {
       title: 'AI is waiting for authorization',
       allow: 'Allow (Enter)',
       deny: 'Deny (Esc)',
-      custom: 'Custom reply',
-      customHint: 'Hide the card and type a free-form reply below',
       noPromptText: '(Prompt text unavailable — switch to Live tab to inspect)',
       sent: 'Sent: {{label}}',
       timeoutWarn: 'Sent "{{label}}" but the session is still pending — check Live tab',
