@@ -885,23 +885,22 @@ export function openDb(file = ':memory:') {
     if (unboundOnly) where.push('tf.bound_todo_id IS NULL')
 
     if (q && ftsAvailable) {
-      // trigram tokenizer 要求 ≥3 字才能走 MATCH；<3 字用 LIKE 兜底扫 FTS 的 content 列
+      // trigram tokenizer 要求 ≥3 字才能走 MATCH；<3 字没有 FTS 索引可用，必须 LIKE 全表扫。
+      // 扫 transcript_fts.content（每轮一行，几万行）在大库上要 5s 级；这里只扫 transcript_files.first_user_prompt
+      // (每会话一行，~1500 行，100x 体量缩水) — 短查询场景里用户基本只关心首轮命中，可以接受漏掉 turn 内的匹配。
       if (q.length < 3) {
         const like = `%${q.replace(/[\\%_]/g, s => '\\' + s)}%`
-        where.push(`tf.id IN (SELECT file_id FROM transcript_fts WHERE content LIKE ? ESCAPE '\\')`)
+        where.push(`tf.first_user_prompt LIKE ? ESCAPE '\\'`)
         params.push(like)
         const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
         const total = db.prepare(`SELECT COUNT(*) AS n FROM transcript_files tf ${whereSql}`).get(...params).n
         const rows = db.prepare(`
-          SELECT tf.*, (
-            SELECT SUBSTR(content, MAX(1, INSTR(content, ?) - 16), 64)
-            FROM transcript_fts WHERE file_id = tf.id AND content LIKE ? ESCAPE '\\' LIMIT 1
-          ) AS snippet
+          SELECT tf.*, SUBSTR(tf.first_user_prompt, MAX(1, INSTR(tf.first_user_prompt, ?) - 16), 64) AS snippet
           FROM transcript_files tf
           ${whereSql}
           ORDER BY tf.started_at DESC
           LIMIT ? OFFSET ?
-        `).all(q, like, ...params, limit, offset)
+        `).all(q, ...params, limit, offset)
         // SQLite FTS 的 snippet() 只能走 MATCH，<3 字路径没法用它包裹高亮，这里在 JS 里手工补 <mark>，
         // 让前端 dangerouslySetInnerHTML 渲染出和长查询一致的高亮效果。
         const markRe = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi')
