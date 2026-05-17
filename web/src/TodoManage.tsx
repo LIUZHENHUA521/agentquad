@@ -452,6 +452,44 @@ export default function TodoManage() {
     useDispatchStore.getState().signal('refreshTodos')
   }, [])
 
+  /**
+   * "× Close" idle session：
+   *   1) 乐观更新 —— 立刻把 live store 里这条 session 翻到 'done' 状态，
+   *      StatusBoard 的派生算法会马上把它从板上移除，用户点完没延迟感。
+   *   2) 后端 stop 同步发出（不 await，让 PTY 异步死掉就行）。
+   *   3) 弹个简洁的 Modal.confirm：要不要顺手把关联的待办也勾完成？
+   *      —— 勾了的话走 updateTodo({status:'done'})，后端会把那个 todo
+   *         下还活着的其它 session 一并关掉（routes/todos.js 已有逻辑）。
+   */
+  const handleCloseIdleSession = useCallback((session: Todo['aiSessions'][number], parent: Todo) => {
+    // 1. 乐观：先翻 live store 状态，board 立刻反应
+    try {
+      useAiSessionStore.getState().updateSessionStatus(session.sessionId, 'done', Date.now())
+    } catch { /* live store 没这条记录也没关系，后端 done 事件会兜底 */ }
+    // 2. 后端 stop —— 失败 toast 提示，但不回滚乐观状态（用户已经看到关闭了）
+    stopAiExec(session.sessionId).catch((e: any) => {
+      message.warning(`关闭失败：${e?.message || 'unknown'}`)
+    })
+    useDispatchStore.getState().signal('refreshTodos')
+    // 3. 顺便问一句"待办也完成？"
+    if (parent.status === 'done' || parent.status === 'missed') return  // 待办本来就已完成 / missed，不弹
+    modal.confirm({
+      title: '同时把待办标记为完成？',
+      content: parent.title,
+      okText: '完成待办',
+      cancelText: '只关 session',
+      okButtonProps: { type: 'primary' },
+      onOk: async () => {
+        try {
+          await updateTodo(parent.id, { status: 'done' })
+          useDispatchStore.getState().signal('refreshTodos')
+        } catch (e: any) {
+          message.error(`标记完成失败：${e?.message || 'unknown'}`)
+        }
+      },
+    })
+  }, [message, modal])
+
   const handleOpenAttentionItem = useCallback((item: UnreadSessionItem) => {
     setKeyword('')
     setFilterStatus('todo')
@@ -1263,7 +1301,7 @@ export default function TodoManage() {
                 onOpenParent={(parent) => openDetail(parent)}
                 onCancelSession={(s) => { handleStopSession(s.sessionId).catch(() => {}) }}
                 onConfirmSession={(s, parent) => handleOpenTerminalInDock(parent, s.sessionId)}
-                onCloseIdle={(s) => { handleStopSession(s.sessionId).catch(() => {}) }}
+                onCloseIdle={(s, parent) => handleCloseIdleSession(s, parent)}
                 onReopenIdle={(s, parent) => handleOpenTerminalInDock(parent, s.sessionId)}
               />
             )
