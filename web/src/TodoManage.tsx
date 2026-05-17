@@ -67,7 +67,7 @@ import { useDispatchStore } from './store/dispatchStore'
 import { useAppConfigStore } from './store/appConfigStore'
 import { TopbarDispatch } from './components/TopbarDispatch'
 import { BoardFilterPill } from './components/BoardFilterPill/BoardFilterPill'
-import { QuadrantBoard, QuadrantZone, QUADRANT_CONFIG } from './components/QuadrantBoard'
+import { QuadrantBoard, QuadrantZone } from './components/QuadrantBoard'
 import {
   StatusBoard,
   backlogTodos as filterBacklogTodos,
@@ -75,8 +75,6 @@ import {
   sessionsByColumn,
 } from './components/StatusBoard'
 import { SortableTodoCard } from './components/TodoCard'
-import { StageTagChip } from './components/StageTagChip'
-import type { StageTag } from './api'
 import './TodoManage.css'
 
 const { TextArea } = Input
@@ -1475,7 +1473,6 @@ export default function TodoManage() {
         }
       >
         {detailTodo && (() => {
-          const quad = QUADRANT_CONFIG.find(c => c.q === detailTodo.quadrant)
           const due = formatDueDate(detailTodo.dueDate)
           const status = currentStatusLabel(detailTodo.status)
           const segments = parseDescription(detailTodo.description)
@@ -1495,13 +1492,6 @@ export default function TodoManage() {
             <div className="todo-detail">
               {/* Section A — meta chips */}
               <div className="todo-detail-meta">
-                <Tooltip title={t('todo:detail.quadrantTooltip')}>
-                  <button type="button" className="todo-detail-chip todo-detail-chip--quadrant" onClick={handleChipClick}>
-                    <span className="todo-detail-chip__dot" style={{ background: quad?.color }} />
-                    <span className="todo-detail-chip__label">{t('todo:detail.quadrantLabel')}</span>
-                    <span className="todo-detail-chip__value">{quad ? t(quad.labelKey) : ''}</span>
-                  </button>
-                </Tooltip>
                 <span className={`todo-detail-chip todo-detail-chip--status ${status.className}`}>
                   <span className="todo-detail-chip__label">{t('todo:detail.statusLabel')}</span>
                   <span className="todo-detail-chip__value">{t(`todo:status.${status.key}`)}</span>
@@ -1509,20 +1499,6 @@ export default function TodoManage() {
                 <span className="todo-detail-chip todo-detail-chip--level">
                   <span className="todo-detail-chip__label">{t('todo:detail.levelLabel')}</span>
                   <span className="todo-detail-chip__value">{detailTodo.parentId ? t('todo:detail.levelSubtodo') : t('todo:detail.levelTop')}</span>
-                </span>
-                <span className="todo-detail-chip todo-detail-chip--stage" onClick={(e) => e.stopPropagation()}>
-                  <span className="todo-detail-chip__label">{t('todo:detail.stageLabel')}</span>
-                  <StageTagChip
-                    value={detailTodo.stageTag}
-                    onChange={async (next: StageTag | null) => {
-                      try {
-                        await updateTodo(detailTodo.id, { stageTag: next })
-                        await fetchTodos()
-                      } catch (e: any) {
-                        message.error(e?.message || t('errors:stageTagUpdateFailed'))
-                      }
-                    }}
-                  />
                 </span>
                 <Tooltip title={t('todo:detail.dueTooltip')}>
                   <button
