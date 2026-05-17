@@ -479,13 +479,6 @@ body {
   border-color: color-mix(in srgb, #eb5757 35%, transparent);
 }
 
-/* keep detail-panel chip alignment consistent with other meta chips */
-.todo-detail-chip--stage {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
 .todo-meta-pill {
   display: inline-flex;
   align-items: center;
