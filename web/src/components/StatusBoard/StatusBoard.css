@@ -1,13 +1,18 @@
 /**
- * StatusBoard 横向 4 列布局。
- * 主题：工业控制台风格 —— 锐角、深底、电柠檬绿主色调。
- * 颜色变量在 :root 层定义，方便日后接入主题系统。
+ * StatusBoard 4 列布局。
+ *
+ * 颜色策略：完全跟随项目主题（tokens.css → `--ai-running` / `--ai-pending-confirm`
+ * / `--ai-idle` 等），不再硬编码"电柠檬绿"。CSS 变量 :root 那块切到主题语义层即可
+ * 同时支持 light / dark：tokens.css 已经在 [data-theme="light"] 下覆盖了同名变量。
+ *
+ * 字体走主题：`--font-sans` / `--font-mono`。
  */
 :root {
-  --sb-idle: #5a6171;        /* backlog */
-  --sb-running: #d4ff3a;     /* in progress · 电柠檬绿 */
-  --sb-warn: #ff8a3d;        /* needs input · amber */
-  --sb-calm: #6ce5b6;        /* idle session · jade */
+  /* 把"列 accent"语义映射到现成的主题色，保证 light/dark 都对得上 */
+  --sb-idle: var(--text-tertiary, #6b7280);          /* backlog：中性灰 */
+  --sb-running: var(--ai-running, #4ade80);          /* in progress：绿 */
+  --sb-warn: var(--ai-pending-confirm, #f97316);     /* needs input：橘 */
+  --sb-calm: var(--ai-idle, #facc15);                /* idle：黄 */
 }
 
 .status-board {
@@ -24,7 +29,7 @@
   min-width: 220px;
   display: flex;
   flex-direction: column;
-  border-right: 1px solid var(--ant-color-border-secondary, #303030);
+  border-right: 1px solid var(--ant-color-border-secondary);
   background: var(--ant-color-bg-container, transparent);
   position: relative;
   min-height: 0;
@@ -33,7 +38,7 @@
 
 .status-board-col-head {
   padding: 14px 16px 12px;
-  border-bottom: 1px solid var(--ant-color-border-secondary, #303030);
+  border-bottom: 1px solid var(--ant-color-border-secondary);
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
@@ -46,7 +51,7 @@
   left: 16px; right: 16px; bottom: -1px;
   height: 1px;
   background: var(--col-accent);
-  opacity: 0.45;
+  opacity: 0.4;
 }
 
 .status-board-col-label {
@@ -56,12 +61,12 @@
   min-width: 0;
 }
 .status-board-col-tag {
-  font-family: 'JetBrains Mono', SF Mono, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 10px;
-  font-weight: 700;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.16em;
-  color: var(--ant-color-text-tertiary, #888);
+  letter-spacing: 0.14em;
+  color: var(--ant-color-text-tertiary);
   display: flex;
   align-items: center;
   gap: 6px;
@@ -76,16 +81,17 @@
 .status-board-col-name {
   font-size: 14px;
   font-weight: 600;
-  color: var(--ant-color-text, #fff);
+  color: var(--ant-color-text);
   letter-spacing: -0.01em;
 }
 .status-board-col-count {
-  font-family: 'Instrument Serif', 'Times New Roman', serif;
-  font-style: italic;
-  font-size: 32px;
-  line-height: 0.85;
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 22px;
+  line-height: 1;
   color: var(--col-accent);
   flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
 }
 
 .status-board-col-body {
@@ -100,48 +106,41 @@
 
 .status-board-empty {
   font-size: 12px;
-  color: var(--ant-color-text-tertiary, #888);
+  color: var(--ant-color-text-tertiary);
   text-align: center;
   padding: 18px 0;
   font-style: italic;
   opacity: 0.6;
 }
 
-/* ====== Session card style ====== */
+/* ====== Session card ====== */
 .session-card {
-  background: var(--ant-color-bg-elevated, #1a1a1a);
-  border: 1px solid var(--ant-color-border-secondary, #303030);
-  border-radius: 4px;
+  background: var(--ant-color-bg-elevated);
+  border: 1px solid var(--ant-color-border-secondary);
+  border-radius: var(--ant-border-radius, 6px);
   padding: 12px;
   cursor: pointer;
   position: relative;
-  /* hover / FLIP 用 transform；FLIP hook 搬家时会临时覆盖 transition: transform */
+  /* FLIP hook 会在搬家时临时注入 transition: transform；hover 等也需要平滑 */
   transition: border-color 0.15s, background 0.15s, box-shadow 0.4s;
   will-change: transform;
 }
+.session-card:hover {
+  border-color: var(--ant-color-primary-border, var(--accent-electric));
+  background: var(--ant-color-bg-container);
+  transform: translateY(-1px);
+}
 
-/* "刚搬到这一列" 的瞬时高亮：用所在列 accent 色描一圈，700ms 后由 hook 摘掉 class */
+/* "刚搬到这一列" 的瞬时高亮 */
 .session-card.sb-card-arrived {
   animation: sb-arrive-pulse 700ms cubic-bezier(0.2, 0.8, 0.2, 1);
   border-color: var(--col-accent);
 }
 @keyframes sb-arrive-pulse {
-  0% {
-    box-shadow:
-      0 0 0 1px var(--col-accent),
-      0 0 24px color-mix(in srgb, var(--col-accent) 55%, transparent);
-  }
-  100% {
-    box-shadow:
-      0 0 0 0 transparent,
-      0 0 0 transparent;
-  }
+  0%   { box-shadow: 0 0 0 1px var(--col-accent), 0 0 22px color-mix(in srgb, var(--col-accent) 50%, transparent); }
+  100% { box-shadow: 0 0 0 0 transparent, 0 0 0 transparent; }
 }
-.session-card:hover {
-  border-color: var(--ant-color-primary-border, #58a6ff);
-  background: var(--ant-color-bg-container, #1f1f1f);
-  transform: translateY(-1px);
-}
+
 .session-card.is-needs-input {
   border-left: 3px solid var(--sb-warn);
 }
@@ -150,7 +149,7 @@
   position: absolute;
   top: 10px; right: 12px;
   color: var(--sb-warn);
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   animation: sb-blink 1.8s ease-in-out infinite;
 }
@@ -160,12 +159,12 @@
 }
 
 .session-card-parent {
-  font-family: 'JetBrains Mono', SF Mono, monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
-  color: var(--ant-color-text-tertiary, #888);
+  color: var(--ant-color-text-tertiary);
   margin-bottom: 8px;
   padding-bottom: 6px;
-  border-bottom: 1px solid var(--ant-color-border-secondary, #303030);
+  border-bottom: 1px solid var(--ant-color-border-secondary);
   display: flex;
   align-items: center;
   gap: 6px;
@@ -178,10 +177,10 @@
   content: "↩";
   flex-shrink: 0;
 }
-.session-card-parent:hover { color: var(--sb-running); }
+.session-card-parent:hover { color: var(--ant-color-primary); }
 .session-card-parent .parent-title {
-  color: var(--ant-color-text-secondary, #ccc);
-  font-family: inherit;
+  color: var(--ant-color-text-secondary);
+  font-family: var(--font-sans);
   font-weight: 500;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -191,7 +190,7 @@
   font-size: 13px;
   font-weight: 500;
   margin-bottom: 8px;
-  color: var(--ant-color-text, #eee);
+  color: var(--ant-color-text);
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -204,13 +203,13 @@
   gap: 8px;
   flex-wrap: wrap;
   margin-bottom: 10px;
-  font-family: 'JetBrains Mono', SF Mono, monospace;
+  font-family: var(--font-mono);
   font-size: 10px;
-  color: var(--ant-color-text-tertiary, #888);
+  color: var(--ant-color-text-tertiary);
   letter-spacing: 0.02em;
 }
 .session-card-meta-row .tool {
-  color: var(--ant-color-text, #ddd);
+  color: var(--ant-color-text);
   font-weight: 600;
   text-transform: capitalize;
 }
@@ -231,7 +230,7 @@
 }
 @keyframes sb-pulse {
   0%, 100% { box-shadow: 0 0 0 0 var(--status-color); }
-  50% { box-shadow: 0 0 0 4px transparent; }
+  50%      { box-shadow: 0 0 0 4px transparent; }
 }
 
 .session-card-actions {
@@ -240,10 +239,8 @@
 }
 .session-card-actions .ant-btn {
   flex: 1;
-  font-family: 'JetBrains Mono', SF Mono, monospace;
-  font-size: 10px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  font-size: 12px;
+  letter-spacing: 0.02em;
 }
 
 /* ====== Backlog TodoCard 增强 ====== */
@@ -251,13 +248,13 @@
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  background: var(--ant-color-bg-elevated, #232323);
-  border: 1px solid var(--ant-color-border-secondary, #303030);
+  background: var(--ant-color-bg-elevated);
+  border: 1px solid var(--ant-color-border-secondary);
   padding: 2px 7px;
   border-radius: 10px;
-  font-family: 'JetBrains Mono', SF Mono, monospace;
+  font-family: var(--font-mono);
   font-size: 10px;
-  color: var(--ant-color-text-tertiary, #888);
+  color: var(--ant-color-text-tertiary);
   cursor: pointer;
   transition: border-color 0.15s, color 0.15s;
 }
@@ -266,15 +263,15 @@
   margin-right: 2px;
 }
 .todo-card-history-chip:hover {
-  border-color: var(--sb-running);
-  color: var(--sb-running);
+  border-color: var(--ant-color-primary);
+  color: var(--ant-color-primary);
 }
 .todo-card-history-chip .active-count {
-  color: var(--sb-running);
+  color: var(--ant-color-primary);
   font-weight: 700;
 }
 
-/* ====== Mobile fallback：单列 + 横向滑动列切换 ====== */
+/* ====== Mobile：单列 + 横向滚动 ====== */
 @media (max-width: 768px) {
   .status-board {
     overflow-x: auto;
