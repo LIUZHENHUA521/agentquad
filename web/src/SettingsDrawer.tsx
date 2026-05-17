@@ -173,8 +173,8 @@ export default function SettingsDrawer({ open, onClose }: Props) {
           defaultPermissionMode: result.config.defaultPermissionMode || 'default',
           defaultAutoStartAi: !!result.config.defaultAutoStartAi,
           defaultAppliedTemplateIds: Array.isArray(result.config.defaultAppliedTemplateIds)
-            ? result.config.defaultAppliedTemplateIds
-            : [],
+            ? (result.config.defaultAppliedTemplateIds.find((x) => typeof x === 'string') ?? undefined)
+            : undefined,
           defaultAiTool: result.config.defaultAiTool || 'claude',
           claudeCommand: joinCommandLine(result.config.tools.claude.command, result.config.tools.claude.args),
           // 表单 bin 字段绑定 configuredBin（用户字面存的值），不绑定 effectiveBin —
@@ -254,9 +254,10 @@ export default function SettingsDrawer({ open, onClose }: Props) {
         defaultCwd: values.defaultCwd,
         defaultPermissionMode: values.defaultPermissionMode || 'default',
         defaultAutoStartAi: !!values.defaultAutoStartAi,
-        defaultAppliedTemplateIds: Array.isArray(values.defaultAppliedTemplateIds)
-          ? values.defaultAppliedTemplateIds.filter((x: unknown): x is string => typeof x === 'string')
-          : [],
+        defaultAppliedTemplateIds:
+          typeof values.defaultAppliedTemplateIds === 'string' && values.defaultAppliedTemplateIds
+            ? [values.defaultAppliedTemplateIds]
+            : [],
         defaultAiTool: (values.defaultAiTool as 'claude' | 'codex' | 'cursor') || 'claude',
         tools: {
           claude: buildToolPatch('claude', values.claudeCommand || '', values.claudeBin || ''),
@@ -613,7 +614,6 @@ export default function SettingsDrawer({ open, onClose }: Props) {
             extra={t('settings:general.defaultTemplatesExtra')}
           >
             <Select
-              mode="multiple"
               allowClear
               placeholder={t('settings:general.defaultTemplatesPlaceholder')}
               options={templates.map((tpl) => ({
@@ -621,6 +621,7 @@ export default function SettingsDrawer({ open, onClose }: Props) {
                 label: tpl.builtin ? t('settings:general.defaultTemplatesBuiltinLabel', { name: tpl.name }) : tpl.name,
               }))}
               optionFilterProp="label"
+              showSearch
             />
           </Form.Item>
 
