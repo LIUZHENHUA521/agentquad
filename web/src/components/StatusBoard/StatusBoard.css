@@ -139,6 +139,20 @@
   transform: translateY(-1px);
   box-shadow: var(--shadow-subtle);
 }
+/* hover 边框跟状态对齐：进行中→绿、需确认→橘、已空闲→黄。
+   跟左边 3px 的 status rail + 顶栏 dot 三处颜色保持一致。 */
+.session-card.is-running:hover {
+  border-color: var(--sb-running);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--sb-running) 35%, transparent), var(--shadow-subtle);
+}
+.session-card.is-needs-input:hover {
+  border-color: var(--sb-warn);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--sb-warn) 35%, transparent), var(--shadow-subtle);
+}
+.session-card.is-idle:hover {
+  border-color: var(--sb-calm);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--sb-calm) 35%, transparent), var(--shadow-subtle);
+}
 
 /* "刚搬到这一列" 的瞬时高亮 */
 .session-card.sb-card-arrived {
