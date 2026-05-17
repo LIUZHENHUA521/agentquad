@@ -102,7 +102,7 @@ export function SessionCard({
           <span className="dot" />
           {statusLabel}
         </span>
-        <span>· {formatElapsed(session)}</span>
+        <span>· {t('todo:session.elapsedTotal', { ago: formatElapsed(session), defaultValue: 'Total {{ago}}' })}</span>
       </div>
 
       <div className="session-card-actions">

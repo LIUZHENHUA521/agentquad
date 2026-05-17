@@ -134,6 +134,7 @@ const en = {
       statusRunning: 'Running',
       statusNeedsInput: 'Needs Input',
       statusIdle: 'Idle',
+      elapsedTotal: 'Total {{ago}}',
     },
     // agentSidebar.* keys retired (sidebar removed)
     dropPlaceholder: 'Drop tasks here',
@@ -205,7 +206,7 @@ const en = {
       editLabelTooltip: 'Edit title',
       localResumedTooltip: 'Resumed in local terminal at: {{time}}',
       localResumedShort: 'Local resumed · {{time}}',
-      liveRunningElapsed: 'Running {{ago}}',
+      liveRunningElapsed: 'Turn {{ago}}',
       liveWaiting: 'Waiting {{ago}}',
       liveLastActive: 'Last active {{ago}} ago',
       tokenNA: 'tokens N/A',

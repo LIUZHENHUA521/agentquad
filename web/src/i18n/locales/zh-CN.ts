@@ -132,6 +132,7 @@ const zh = {
       statusRunning: '运行中',
       statusNeedsInput: '需确认',
       statusIdle: '已空闲',
+      elapsedTotal: '共 {{ago}}',
     },
     // agentSidebar.* 键已退役（侧栏已删）；翻译可在下次清理时一并扫除
     dropPlaceholder: '拖拽任务到此处',
@@ -202,7 +203,7 @@ const zh = {
       editLabelTooltip: '编辑标题',
       localResumedTooltip: '已在本地 Terminal 继续：{{time}}',
       localResumedShort: '已本地继续 · {{time}}',
-      liveRunningElapsed: '已运行 {{ago}}',
+      liveRunningElapsed: '本轮 {{ago}}',
       liveWaiting: '等待 {{ago}}',
       liveLastActive: '上次活跃 {{ago}} 前',
       tokenNA: 'token 暂无',
