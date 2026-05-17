@@ -73,6 +73,7 @@ import {
   flattenSessions,
   sessionsByColumn,
 } from './components/StatusBoard'
+import { AgentSidebar, applyAgentFilter } from './components/AgentSidebar'
 import { SortableTodoCard } from './components/TodoCard'
 import { StageTagChip } from './components/StageTagChip'
 import type { StageTag } from './api'
@@ -175,6 +176,8 @@ export default function TodoManage() {
     try { setTemplates(await listTemplates()) } catch { /* ignore */ }
   }, [])
   useEffect(() => { refreshTemplates() }, [refreshTemplates])
+  /** AgentSidebar 选中的 agent (template id) 用于过滤右侧看板；null = 不过滤 */
+  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null)
 
   // 视图
   // Board filter lives in dispatchStore so the CommandPalette / topbar can
@@ -1230,12 +1233,17 @@ export default function TodoManage() {
           onDragEnd={handleDragEnd}
         >
           {(() => {
-            // 新版 StatusBoard：左 Backlog（TodoCard），右 3 列按 session.status 分组（SessionCard）
+            // 新版 StatusBoard：左 AgentSidebar + 4 列看板
+            //   Backlog（TodoCard）—— 手动 Done 才离开
+            //   In Progress / Needs Input / Idle（SessionCard）—— 按 session.status 派生
             const showDone = filterStatus === 'done' || filterStatus === ''
-            const backlog = filterBacklogTodos(todos, showDone)
+            const backlogAll = filterBacklogTodos(todos, showDone)
+            // 应用 AgentSidebar 选中的 agent 过滤（null 时不过滤）
+            const backlogFiltered = applyAgentFilter(backlogAll, selectedAgentId)
+            const sessionSourceTodos = applyAgentFilter(todos, selectedAgentId)
             // Backlog 列内按 sortOrder（'todo' filter）或 completedAt desc（'done' filter）排序
             const doneRank = (x: Todo) => x.completedAt || x.updatedAt || 0
-            const backlogSorted = [...backlog].sort((a, b) => {
+            const backlogSorted = [...backlogFiltered].sort((a, b) => {
               if (filterStatus === 'done') return doneRank(b) - doneRank(a)
               if (filterStatus === 'todo') return (a.sortOrder || 0) - (b.sortOrder || 0)
               const aDone = a.status === 'done' ? 1 : 0
@@ -1246,8 +1254,8 @@ export default function TodoManage() {
             })
             const dndIds = backlogSorted.map((x) => todoDndId(x))
 
-            // 右 3 列：拍平所有 sessions
-            const sessionsCol = sessionsByColumn(flattenSessions(todos))
+            // 右 3 列：从（已经按 agent 过滤过的）todos 拍平 sessions
+            const sessionsCol = sessionsByColumn(flattenSessions(sessionSourceTodos))
 
             const renderBacklogTodo = (todo: Todo) => (
               <SortableTodoCard
@@ -1273,18 +1281,28 @@ export default function TodoManage() {
             )
 
             return (
-              <StatusBoard
-                backlogTodos={backlogSorted}
-                backlogDndIds={dndIds}
-                renderBacklogItem={renderBacklogTodo}
-                sessions={sessionsCol}
-                onOpenSession={(s, parent) => handleOpenTerminalInDock(parent, s.sessionId)}
-                onOpenParent={(parent) => openDetail(parent)}
-                onCancelSession={(s) => { handleStopSession(s.sessionId).catch(() => {}) }}
-                onConfirmSession={(s, parent) => handleOpenTerminalInDock(parent, s.sessionId)}
-                onCloseIdle={(s) => { handleStopSession(s.sessionId).catch(() => {}) }}
-                onReopenIdle={(s, parent) => handleOpenTerminalInDock(parent, s.sessionId)}
-              />
+              <div className="status-board-layout" style={{ display: 'flex', flex: 1, minHeight: 0, minWidth: 0 }}>
+                <AgentSidebar
+                  templates={templates}
+                  todos={todos}
+                  selectedAgentId={selectedAgentId}
+                  onSelectAgent={setSelectedAgentId}
+                  onCreateAgent={() => openDrawer('template')}
+                  onEditAgent={() => openDrawer('template')}
+                />
+                <StatusBoard
+                  backlogTodos={backlogSorted}
+                  backlogDndIds={dndIds}
+                  renderBacklogItem={renderBacklogTodo}
+                  sessions={sessionsCol}
+                  onOpenSession={(s, parent) => handleOpenTerminalInDock(parent, s.sessionId)}
+                  onOpenParent={(parent) => openDetail(parent)}
+                  onCancelSession={(s) => { handleStopSession(s.sessionId).catch(() => {}) }}
+                  onConfirmSession={(s, parent) => handleOpenTerminalInDock(parent, s.sessionId)}
+                  onCloseIdle={(s) => { handleStopSession(s.sessionId).catch(() => {}) }}
+                  onReopenIdle={(s, parent) => handleOpenTerminalInDock(parent, s.sessionId)}
+                />
+              </div>
             )
           })()}
           <DragOverlay>

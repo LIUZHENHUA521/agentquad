@@ -133,6 +133,10 @@ const zh = {
       statusNeedsInput: '需确认',
       statusIdle: '已空闲',
     },
+    agentSidebar: {
+      title: '员工档案 — Roster',
+      newAgentBtn: '+ 招新员工',
+    },
     dropPlaceholder: '拖拽任务到此处',
     workDirPrompt: '选择待办工作目录',
     recurring: {
