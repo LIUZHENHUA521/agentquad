@@ -69,6 +69,25 @@ function roleStyle(role: string): { color: string; tagColor?: string } {
   }
 }
 
+// first_user_prompt 走纯文本渲染，没法复用后端 snippet 的 <mark>，这里用 React 在 FE 拆词补高亮，
+// 与后端 LIKE/FTS 搜索一致地用 case-insensitive 匹配。
+function HighlightText({ text, query }: { text: string; query: string }) {
+  const q = query.trim()
+  if (!q) return <>{text}</>
+  const re = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi')
+  const parts: React.ReactNode[] = []
+  let last = 0
+  let m: RegExpExecArray | null
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) parts.push(text.slice(last, m.index))
+    parts.push(<mark key={`${m.index}-${parts.length}`}>{m[0]}</mark>)
+    last = m.index + m[0].length
+    if (m[0].length === 0) re.lastIndex++
+  }
+  if (last < text.length) parts.push(text.slice(last))
+  return <>{parts}</>
+}
+
 export default function TranscriptSearchDrawer({ open, onClose, preselectTodoId, initialQuery, initialCwd, onBindingChanged }: Props) {
   const { t } = useTranslation(['transcript', 'common', 'errors'])
   const { message, modal } = useAppMessages()
@@ -313,7 +332,12 @@ export default function TranscriptSearchDrawer({ open, onClose, preselectTodoId,
                         cwd: {f.cwd || '-'}
                       </div>
                       <div style={{ marginTop: 6, fontSize: 13, color: 'var(--text-primary)' }}>
-                        {f.first_user_prompt ? (f.first_user_prompt.length > 140 ? f.first_user_prompt.slice(0, 140) + '...' : f.first_user_prompt) : <i>{t('transcript:searchDrawer.noFirstPrompt')}</i>}
+                        {f.first_user_prompt ? (
+                          <HighlightText
+                            text={f.first_user_prompt.length > 140 ? f.first_user_prompt.slice(0, 140) + '...' : f.first_user_prompt}
+                            query={q}
+                          />
+                        ) : <i>{t('transcript:searchDrawer.noFirstPrompt')}</i>}
                       </div>
                       {f.snippet && (
                         <div
