@@ -23,12 +23,14 @@ export function registerWriteTools(server, { db }) {
     'create_todo',
     {
       description:
-        '新建一条 todo。至少需要 title + quadrant。象限语义：1=重要且紧急，2=重要不紧急，3=紧急不重要，4=不重要不紧急。',
+        '新建一条 todo。只需 title。' +
+        '（quadrant 字段已退役但接口仍接受以兼容旧调用方；传入会被忽略，DB 写入默认值。）',
       inputSchema: {
         title: z.string().min(1).describe('标题，必填'),
-        quadrant: z.number().int().min(1).max(4).describe('1 / 2 / 3 / 4'),
+        quadrant: z.number().int().min(1).max(4).optional()
+          .describe('【已退役】象限概念已移除，传入会被忽略'),
         description: z.string().optional(),
-        parentId: z.string().optional().describe('如果是子任务，指定父 todo id（子任务会继承父的象限）'),
+        parentId: z.string().optional().describe('已退役：子任务概念已从 UI 移除；接口保留但不再分组展示'),
         dueDate: z.number().int().optional().describe('截止时间戳（毫秒 epoch）'),
         workDir: z.string().optional().describe('关联的代码仓路径'),
         brainstorm: z.boolean().optional(),
@@ -39,7 +41,7 @@ export function registerWriteTools(server, { db }) {
         if (!args.title?.trim()) return asError('title_required')
         const created = db.createTodo({
           title: args.title.trim(),
-          quadrant: args.quadrant,
+          // quadrant 不再透传 —— 让 db 层用默认值
           description: args.description || '',
           parentId: args.parentId,
           dueDate: args.dueDate,
@@ -63,7 +65,8 @@ export function registerWriteTools(server, { db }) {
         id: z.string().min(1),
         title: z.string().optional(),
         description: z.string().optional(),
-        quadrant: z.number().int().min(1).max(4).optional(),
+        quadrant: z.number().int().min(1).max(4).optional()
+          .describe('【已退役】象限概念已移除，传入会被忽略'),
         dueDate: z.number().int().nullable().optional().describe('传 null 显式清除'),
         workDir: z.string().nullable().optional(),
         parentId: z.string().nullable().optional().describe('传 null 升为顶层 todo'),
@@ -71,7 +74,7 @@ export function registerWriteTools(server, { db }) {
     },
     async (args) => {
       try {
-        const { id, ...patch } = args
+        const { id, quadrant: _ignored, ...patch } = args
         if (!id) return asError('id_required')
         // 禁止通过此工具改 status，status 变更有专用工具（complete/archive）
         const cleanPatch = {}

@@ -77,12 +77,12 @@ describe('mcp openclaw tools', () => {
     pending.stop()
   })
 
-  it('list_quadrants returns 4 entries with default Q2', async () => {
+  it('list_quadrants is now deprecated: returns empty list with deprecated marker', async () => {
     ctx = await makeMcp({ pending })
     const res = await ctx.client.callTool({ name: 'list_quadrants', arguments: {} })
     const data = parseText(res)
-    expect(data.quadrants).toHaveLength(4)
-    expect(data.quadrants.find((q) => q.isDefault)?.id).toBe(2)
+    expect(data.quadrants).toEqual([])
+    expect(data.deprecated).toBe(true)
   })
 
   it('list_templates returns builtin templates with content preview', async () => {

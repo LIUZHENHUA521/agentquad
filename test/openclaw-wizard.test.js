@@ -41,13 +41,6 @@ describe('openclaw-wizard parsers', () => {
     expect(internals.tryExtractWorkdir('帮我做 X')).toBeNull()
   })
 
-  it('tryExtractQuadrant picks 1-4', () => {
-    expect(internals.tryExtractQuadrant('象限 1')).toBe(1)
-    expect(internals.tryExtractQuadrant('Q3')).toBe(3)
-    expect(internals.tryExtractQuadrant('帮我做 X')).toBeNull()
-    expect(internals.tryExtractQuadrant('象限 9')).toBeNull()
-  })
-
   it('parseNumericChoice within range', () => {
     expect(internals.parseNumericChoice('1', 5)).toBe(0)
     expect(internals.parseNumericChoice('5', 5)).toBe(4)
@@ -80,21 +73,18 @@ describe('openclaw-wizard state machine', () => {
     expect(r.reply).toContain('/tmp/foo')
   })
 
-  it('full wizard flow: workdir → quadrant → template → done', async () => {
+  it('full wizard flow: workdir → agent → done', async () => {
     let r
     r = await wizard.handleInbound({ peer: 'u1', text: '帮我做 写个 demo' })
     expect(r.reply).toContain('📁')
 
     r = await wizard.handleInbound({ peer: 'u1', text: '1' })
-    expect(r.reply).toContain('🎯 选象限')
+    // quadrant 步骤已移除，workdir 后直接进 agent 选择
+    expect(r.reply).toContain('👤 派哪个 Agent')
 
-    r = await wizard.handleInbound({ peer: 'u1', text: '2' })
-    expect(r.reply).toContain('📋 选模板')
-
-    r = await wizard.handleInbound({ peer: 'u1', text: '6' }) // 自由模式
+    r = await wizard.handleInbound({ peer: 'u1', text: '1' }) // 自由模式（无 agent）
     expect(r.action).toBe('wizard_done')
     expect(r.reply).toContain('✅ todo')
-    expect(r.reply).toContain('Q2')
     expect(ai.sessions).toHaveLength(1)
     expect(bridge.routes.size).toBe(1)
   })
@@ -148,10 +138,8 @@ describe('openclaw-wizard state machine', () => {
     r = await wizard.handleInbound({ peer: 'u1', text: '帮我做 写个 demo', imagePaths: ['/tmp/a.jpg'] })
     expect(r.reply).toContain('📁')
     r = await wizard.handleInbound({ peer: 'u1', text: '1', imagePaths: ['/tmp/b.jpg'] })
-    expect(r.reply).toContain('🎯 选象限')
-    r = await wizard.handleInbound({ peer: 'u1', text: '2', imagePaths: ['/tmp/c.jpg'] })
-    expect(r.reply).toContain('📋 选模板')
-    r = await wizard.handleInbound({ peer: 'u1', text: '6' })
+    expect(r.reply).toContain('👤 派哪个 Agent')
+    r = await wizard.handleInbound({ peer: 'u1', text: '1', imagePaths: ['/tmp/c.jpg'] }) // 自由模式
     expect(r.action).toBe('wizard_done')
     const spawned = ai.sessions[0]
     expect(spawned.prompt).toMatch(/^@\/tmp\/a\.jpg @\/tmp\/b\.jpg @\/tmp\/c\.jpg/)
@@ -160,10 +148,9 @@ describe('openclaw-wizard state machine', () => {
   it('one-shot create skips all wizard steps', async () => {
     const r = await wizard.handleInbound({
       peer: 'u1',
-      text: '帮我做 修复 login，目录 /tmp/foo, 象限 1, Bug 修复 模板',
+      text: '帮我做 修复 login，目录 /tmp/foo, 用 Bug 修复 agent',
     })
     expect(r.action).toBe('wizard_done')
-    expect(r.reply).toContain('Q1')
     expect(r.reply).toContain('/tmp/foo')
     expect(r.reply).toContain('Bug 修复')
     expect(ai.sessions).toHaveLength(1)
@@ -217,16 +204,8 @@ describe('openclaw-wizard state machine', () => {
   it('custom path in workdir step accepted', async () => {
     await wizard.handleInbound({ peer: 'u1', text: '帮我做 X' })
     const r = await wizard.handleInbound({ peer: 'u1', text: '/some/where' })
-    expect(r.reply).toContain('🎯')
+    expect(r.reply).toContain('👤')
     expect(wizard._peek('u1').chosenWorkdir).toBe('/some/where')
-  })
-
-  it('quadrant default keyword resolves to Q2', async () => {
-    await wizard.handleInbound({ peer: 'u1', text: '帮我做 X' })
-    await wizard.handleInbound({ peer: 'u1', text: '1' })
-    const r = await wizard.handleInbound({ peer: 'u1', text: '默认' })
-    expect(r.reply).toContain('📋')
-    expect(wizard._peek('u1').chosenQuadrant).toBe(2)
   })
 
   it('routes ask_user reply when no wizard active', async () => {
@@ -1894,7 +1873,7 @@ describe('listWorkdirOptions: 默认目录 + 子目录', () => {
   it('选 2 = 第一个子目录 → 进入下一步', async () => {
     await wizard.handleInbound({ peer: 'u1', text: '帮我做 X' })
     const r = await wizard.handleInbound({ peer: 'u1', text: '2' })
-    expect(r.reply).toContain('🎯 选象限')
+    expect(r.reply).toContain('👤 派哪个 Agent')
     expect(wizard._peek('u1').chosenWorkdir).toBe(join(tmpRoot, 'projA'))
   })
 })
@@ -1904,7 +1883,7 @@ describe('listWorkdirOptions: 默认目录 + 子目录', () => {
 // 设计要点：
 //  - 数字回答路径完全保留（双轨）；现有"回 1/2/3"测试已经覆盖
 //  - callback 路径走 handleCallback({chatId, threadId, callbackData, ...})
-//  - 每个非终态 prompt（workdir / quadrant / template）都同时返回 reply + replyMarkup
+//  - 每个非终态 prompt（workdir / template）都同时返回 reply + replyMarkup
 //  - 自定义路径走子态 awaitingCustomWorkdir：下一条任意非空文本都当路径
 describe('openclaw-wizard inline keyboard (callback_query)', () => {
   let db, wizard, ai, bridge, pending
@@ -1934,39 +1913,39 @@ describe('openclaw-wizard inline keyboard (callback_query)', () => {
     expect(lastRow[0].callback_data).toBe('qt:wd:custom')
   })
 
-  it('full callback flow: pick wd → q → t → todo created', async () => {
+  it('full callback flow: pick wd → agent → todo created', async () => {
     // step 0: trigger wizard
     const start = await wizard.handleInbound({ chatId: '-100', threadId: null, text: '帮我做 callback demo' })
     expect(start.action).toBe('wizard_started')
 
-    // step 1: 点目录第一个
+    // step 1: 点目录第一个 → 直接跳到 agent 选择（已无 quadrant 步）
     const r1 = await wizard.handleCallback({
       chatId: '-100', threadId: null,
       callbackData: 'qt:wd:0', callbackMessageId: 11,
     })
     expect(r1.action).toBe('wizard_step')
     expect(r1.chosenLabel).toBeTruthy()
-    expect(r1.reply).toContain('🎯 选象限')
-    expect(r1.replyMarkup.inline_keyboard).toHaveLength(2)
+    expect(r1.reply).toContain('👤 派哪个 Agent')
 
-    // step 2: 点 Q1
+    // step 2: 自由模式 (no agent)
     const r2 = await wizard.handleCallback({
-      chatId: '-100', threadId: null,
-      callbackData: 'qt:q:1', callbackMessageId: 12,
-    })
-    expect(r2.action).toBe('wizard_step')
-    expect(r2.chosenLabel).toMatch(/^Q1/)
-    expect(r2.reply).toContain('📋 选模板')
-
-    // step 3: 自由模式
-    const r3 = await wizard.handleCallback({
       chatId: '-100', threadId: null,
       callbackData: 'qt:t:none', callbackMessageId: 13,
     })
-    expect(r3.action).toBe('wizard_done')
-    expect(r3.chosenLabel).toBe('自由模式')
-    expect(r3.reply).toContain('✅ todo')
+    expect(r2.action).toBe('wizard_done')
+    expect(r2.chosenLabel).toBe('自由模式')
+    expect(r2.reply).toContain('✅ todo')
     expect(ai.sessions).toHaveLength(1)
+  })
+
+  it('legacy qt:q (quadrant) callback returns deprecated toast', async () => {
+    await wizard.handleInbound({ chatId: '-100', threadId: null, text: '帮我做 X' })
+    const r = await wizard.handleCallback({
+      chatId: '-100', threadId: null,
+      callbackData: 'qt:q:1', callbackMessageId: 99,
+    })
+    expect(r.action).toBe('deprecated_quadrant')
+    expect(r.toast).toContain('象限步骤已移除')
   })
 
   it('callback "qt:wd:custom" enters awaiting subtate; next text becomes path', async () => {
@@ -1982,20 +1961,20 @@ describe('openclaw-wizard inline keyboard (callback_query)', () => {
     // 子态：下一条任意文本（不再要求 / 或 ~ 开头）
     const r = await wizard.handleInbound({ chatId: '-100', threadId: null, text: 'my-folder' })
     expect(r.action).toBe('wizard_step')
-    expect(r.reply).toContain('🎯 选象限')
+    expect(r.reply).toContain('👤 派哪个 Agent')
     expect(r.replyMarkup).toBeTruthy()
     expect(wizard._peek(`-100:general`).chosenWorkdir).toBe('my-folder')
     expect(wizard._peek(`-100:general`).awaitingCustomWorkdir).toBe(false)
   })
 
-  it('callback for wrong step: returns toast, does NOT advance wizard', async () => {
+  it('legacy quadrant callback (qt:q:N) is gracefully deprecated', async () => {
     await wizard.handleInbound({ chatId: '-100', threadId: null, text: '帮我做 X' })
-    // 处于 STEP_WORKDIR，却收到 quadrant callback
+    // 处于 STEP_WORKDIR，收到老飞书/Telegram 卡片的 quadrant callback → 软退役提示
     const r = await wizard.handleCallback({
       chatId: '-100', threadId: null,
       callbackData: 'qt:q:1', callbackMessageId: 33,
     })
-    expect(r.action).toBe('invalid')
+    expect(r.action).toBe('deprecated_quadrant')
     expect(r.toast).toBeTruthy()
     expect(wizard._peek('-100:general').step).toBe('workdir')
   })
@@ -2278,25 +2257,15 @@ describe('openclaw-wizard inline keyboard (callback_query)', () => {
 
   it('mixed flow: button for step 1, number reply for step 2 — both work', async () => {
     await wizard.handleInbound({ chatId: '-100', threadId: null, text: '帮我做 hybrid' })
-    // 按按钮选目录
+    // 按按钮选目录 → 直接进 agent 选择
     await wizard.handleCallback({
       chatId: '-100', threadId: null,
       callbackData: 'qt:wd:0', callbackMessageId: 1,
     })
-    // 回数字选象限
-    const r = await wizard.handleInbound({ chatId: '-100', threadId: null, text: '2' })
-    expect(r.action).toBe('wizard_step')
-    expect(r.reply).toContain('📋 选模板')
-    expect(r.replyMarkup).toBeTruthy()
-  })
-
-  it('quadrant prompt has 2x2 layout with Q2 marked default', () => {
-    const markup = internals.buildQuadrantReplyMarkup()
-    expect(markup.inline_keyboard).toHaveLength(2)
-    expect(markup.inline_keyboard[0]).toHaveLength(2)
-    expect(markup.inline_keyboard[0][1].text).toContain('✓')   // Q2 默认
-    expect(markup.inline_keyboard[0][0].callback_data).toBe('qt:q:1')
-    expect(markup.inline_keyboard[1][1].callback_data).toBe('qt:q:4')
+    // 回数字选 agent (1 = 第一个模板) → finalize
+    const r = await wizard.handleInbound({ chatId: '-100', threadId: null, text: '1' })
+    expect(r.action).toBe('wizard_done')
+    expect(r.reply).toContain('✅ todo')
   })
 
   it('callback prefix is qt and all callback_data ≤ 64 bytes', async () => {
@@ -2358,7 +2327,7 @@ describe('openclaw-wizard /list /pending /stop slash commands', () => {
     expect(r.reply).toContain('暂无待办')
   })
 
-  it('/list in General: groups todos by quadrant; /pending is alias', async () => {
+  it('/list in General: lists todos flat (no quadrant grouping); /pending is alias', async () => {
     db.createTodo({ title: '紧急 bug', quadrant: 1, workDir: '/tmp/proj' })
     db.createTodo({ title: '重要功能', quadrant: 2, workDir: '/tmp/proj' })
     db.createTodo({ title: '杂事', quadrant: 4, workDir: '/tmp/foo' })
@@ -2367,10 +2336,9 @@ describe('openclaw-wizard /list /pending /stop slash commands', () => {
     expect(r1.action).toBe('slash_list')
     expect(r1.count).toBe(3)
     expect(r1.reply).toContain('待办 (3)')
-    expect(r1.reply).toContain('Q1 重要紧急')
     expect(r1.reply).toContain('紧急 bug')
-    expect(r1.reply).toContain('Q2 重要不紧急')
-    expect(r1.reply).toContain('Q4 不重要不紧急')
+    expect(r1.reply).toContain('重要功能')
+    expect(r1.reply).toContain('杂事')
     expect(r1.reply).toContain('proj')   // basename(workDir)
 
     const r2 = await wizard.handleInbound({ ...GENERAL, text: '/pending' })

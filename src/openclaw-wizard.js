@@ -5,7 +5,7 @@
  * 设计目标：
  *   - 一条 inbound 消息 → 一个完整的判断 → 一个 reply 字符串
  *   - 状态机存内存（重启丢失也无所谓，向导本来就是短生命周期）
- *   - 一句话直说能跳过任意向导步骤（"目录 X" / "象限 N" / "模板 Y"）
+ *   - 一句话直说能跳过任意向导步骤（"目录 X" / "Agent Y"）
  *   - 与 ask_user pending 共存：wizard 优先，wizard 完成后再吃 ask_user 答复
  *
  * 路由优先级（handleInbound 内）：
@@ -49,16 +49,8 @@ import { resolveTool } from './dispatch.js'
 const WIZARD_TIMEOUT_MS = 10 * 60 * 1000
 
 const STEP_WORKDIR = 'workdir'
-const STEP_QUADRANT = 'quadrant'
-const STEP_TEMPLATE = 'template'
+const STEP_TEMPLATE = 'template'   // 用户面叫 "Agent"；代码内部沿用 template key
 const STEP_DONE = 'done'
-
-const QUADRANTS = [
-  { id: 1, label: '重要紧急' },
-  { id: 2, label: '重要不紧急' },
-  { id: 3, label: '紧急不重要' },
-  { id: 4, label: '不重要不紧急' },
-]
 
 function telegramPermissionMode(cfg = {}) {
   const mode = cfg.telegram?.defaultPermissionMode
@@ -99,18 +91,12 @@ function tryExtractWorkdir(text) {
   return null
 }
 
-/** 解析"象限 N" / "quadrant N" / "Q1" 等；返回 1-4 或 null */
-function tryExtractQuadrant(text) {
-  const m1 = text.match(/(?:象限|quadrant|q)[:：=\s]*([1-4])\b/i)
-  if (m1) return Number(m1[1])
-  return null
-}
-
-/** 解析"模板 Bug" / "用 X 模板" 等；返回模板名 (string) 或 null */
+/** 解析"agent Bug" / "用 X agent" / "员工 X" 等；返回 agent 名 (string) 或 null。
+ * 也兼容历史的"模板 X"写法以免老用户失忆。 */
 function tryExtractTemplateHint(text) {
-  const m = text.match(/(?:用|使用)?\s*[「『"]?([^」』"\s,，；;]+)[」』"]?\s*模板/)
+  const m = text.match(/(?:用|使用)?\s*[「『"]?([^」』"\s,，；;]+)[」』"]?\s*(?:agent|员工|模板)/i)
   if (m) return m[1].trim()
-  const m2 = text.match(/模板[:：=\s]+([^\s,，；;]+)/)
+  const m2 = text.match(/(?:agent|员工|模板)[:：=\s]+([^\s,，；;]+)/i)
   if (m2) return m2[1].trim()
   return null
 }
@@ -143,11 +129,11 @@ function extractTitle(text) {
   s = s.replace(/^(新建|开个|开一?个|创建)\s*(任务|todo)?[:：\s]*/i, '')
   s = s.replace(/^任务[:：]\s*/, '')
   s = s.replace(/^(帮我|帮忙)\s*(做|搞|修|搞定|实现|写一?个|做一?个|修复|重构|调试|debug|加|开发)\s*[:：]?\s*/i, '')
-  // 剥后缀（目录 / 象限 / 模板）
+  // 剥后缀（目录 / agent / 兼容老用户的"象限 N"残余字符）
   s = s.replace(/[,，;；]?\s*(目录|路径|workdir|cwd|文件夹)[:：=\s]+[^\s,，；;]+/gi, '')
-  s = s.replace(/[,，;；]?\s*(象限|quadrant|q)[:：=\s]*[1-4]\b/gi, '')
-  s = s.replace(/[,，;；]?\s*(?:用|使用)?\s*[「『"]?[^」』"\s,，；;]+[」』"]?\s*模板/gi, '')
-  s = s.replace(/[,，;；]?\s*模板[:：=\s]+[^\s,，；;]+/gi, '')
+  s = s.replace(/[,，;；]?\s*(象限|quadrant|q)[:：=\s]*[1-4]\b/gi, '')   // 象限概念已移除，但清掉残留写法
+  s = s.replace(/[,，;；]?\s*(?:用|使用)?\s*[「『"]?[^」』"\s,，；;]+[」』"]?\s*(?:agent|员工|模板)/gi, '')
+  s = s.replace(/[,，;；]?\s*(?:agent|员工|模板)[:：=\s]+[^\s,，；;]+/gi, '')
   return s.trim()
 }
 
@@ -165,20 +151,12 @@ function buildWorkdirMessage(options) {
   return lines.join('\n')
 }
 
-function buildQuadrantMessage() {
-  const lines = ['🎯 选象限：']
-  QUADRANTS.forEach((q) => {
-    lines.push(`${q.id}. ${q.label}${q.id === 2 ? ' ✓ 默认' : ''}`)
-  })
-  return lines.join('\n')
-}
-
 function buildTemplateMessage(templates) {
-  const lines = ['📋 选模板：']
+  const lines = ['👤 派哪个 Agent 干？']
   templates.forEach((t, i) => {
     lines.push(`${i + 1}. ${t.name}${t.description ? ' — ' + t.description : ''}`)
   })
-  lines.push(`${templates.length + 1}. 自由模式（不套模板）`)
+  lines.push(`${templates.length + 1}. 自由模式（不指派 agent）`)
   return lines.join('\n')
 }
 
@@ -186,8 +164,7 @@ function buildTemplateMessage(templates) {
 //
 // callback_data 编码（≤ 64 字节硬限）：
 //   workdir:    qt:wd:<idx>  / qt:wd:custom
-//   quadrant:   qt:q:<1..4>
-//   template:   qt:t:<idx>   / qt:t:none
+//   template:   qt:t:<idx>   / qt:t:none   （用户面叫 "agent"）
 //
 // 数字按钮 label 沿用 "1. xxx" 序号 —— 跟纯文本 prompt 保持一致，
 // 所以双轨用户（按按钮的 / 回数字的）看到的是同一个心智模型。
@@ -224,25 +201,8 @@ function buildWorkdirReplyMarkup(options) {
   return { inline_keyboard: rows }
 }
 
-function buildQuadrantReplyMarkup() {
-  // 2×2，Q2 默认勾上
-  const label = (q) => `Q${q.id} ${q.label}${q.id === 2 ? ' ✓' : ''}`
-  return {
-    inline_keyboard: [
-      [
-        { text: label(QUADRANTS[0]), callback_data: `${CALLBACK_PREFIX}:q:1` },
-        { text: label(QUADRANTS[1]), callback_data: `${CALLBACK_PREFIX}:q:2` },
-      ],
-      [
-        { text: label(QUADRANTS[2]), callback_data: `${CALLBACK_PREFIX}:q:3` },
-        { text: label(QUADRANTS[3]), callback_data: `${CALLBACK_PREFIX}:q:4` },
-      ],
-    ],
-  }
-}
-
 function buildTemplateReplyMarkup(templates) {
-  // 模板名也可能带描述 → 每行 1 个稳妥
+  // 名称可能带描述 → 每行 1 个稳妥
   const rows = templates.map((t, i) => [{
     text: `${i + 1}. ${ellipsisLabel(t.name, 48)}`,
     callback_data: `${CALLBACK_PREFIX}:t:${i}`,
@@ -256,10 +216,6 @@ function buildTemplateReplyMarkup(templates) {
 
 function buildWorkdirPrompt(options) {
   return { text: buildWorkdirMessage(options), replyMarkup: buildWorkdirReplyMarkup(options) }
-}
-
-function buildQuadrantPrompt() {
-  return { text: buildQuadrantMessage(), replyMarkup: buildQuadrantReplyMarkup() }
 }
 
 function buildTemplatePrompt(templates) {
@@ -419,7 +375,6 @@ export function createOpenClawWizard({
     const routeKey = makeRouteKey(channel, chatId, threadId)
     const title = extractTitle(text) || '(未命名任务)'
     const workdirHint = tryExtractWorkdir(text)
-    const quadrantHint = tryExtractQuadrant(text)
     const templateHint = tryExtractTemplateHint(text)
 
     const w = {
@@ -435,23 +390,21 @@ export function createOpenClawWizard({
       title,
       workdirOptions: listWorkdirOptions(),
       chosenWorkdir: workdirHint || null,
-      chosenQuadrant: quadrantHint || null,
       chosenTemplate: null,
       step: STEP_WORKDIR,
       startedAt: Date.now(),
       updatedAt: Date.now(),
     }
 
-    // 模板 hint 解析
+    // agent (template) hint 解析
     if (templateHint) {
       const tpl = findTemplateByHint(db.listTemplates(), templateHint)
       if (tpl) w.chosenTemplate = { id: tpl.id, name: tpl.name }
     }
 
-    // 自动跳过已填字段
-    if (w.chosenWorkdir) w.step = STEP_QUADRANT
-    if (w.chosenWorkdir && w.chosenQuadrant) w.step = STEP_TEMPLATE
-    if (w.chosenWorkdir && w.chosenQuadrant && w.chosenTemplate) w.step = STEP_DONE
+    // 自动跳过已填字段（不再有 quadrant 步骤）
+    if (w.chosenWorkdir) w.step = STEP_TEMPLATE
+    if (w.chosenWorkdir && w.chosenTemplate) w.step = STEP_DONE
 
     wizards.set(routeKey, w)
     return w
@@ -480,8 +433,10 @@ export function createOpenClawWizard({
         if (!path) return { reply: '🖋 路径为空，请重发' }
         w.chosenWorkdir = path
         w.awaitingCustomWorkdir = false
-        w.step = STEP_QUADRANT
-        const prompt = buildQuadrantPrompt()
+        w.step = STEP_TEMPLATE
+        const templates = db.listTemplates()
+        w.cachedTemplates = templates
+        const prompt = buildTemplatePrompt(templates)
         return { reply: prompt.text, replyMarkup: prompt.replyMarkup }
       }
       // 数字选项？
@@ -489,8 +444,10 @@ export function createOpenClawWizard({
       if (idx !== null) {
         if (idx < w.workdirOptions.length) {
           w.chosenWorkdir = w.workdirOptions[idx].path
-          w.step = STEP_QUADRANT
-          const prompt = buildQuadrantPrompt()
+          w.step = STEP_TEMPLATE
+          const templates = db.listTemplates()
+          w.cachedTemplates = templates
+          const prompt = buildTemplatePrompt(templates)
           return { reply: prompt.text, replyMarkup: prompt.replyMarkup }
         } else {
           // 选了"自定义"
@@ -500,8 +457,10 @@ export function createOpenClawWizard({
       // 自定义路径（文本路径下的隐式触发，老行为）
       if (text.startsWith('/') || text.startsWith('~')) {
         w.chosenWorkdir = text.trim()
-        w.step = STEP_QUADRANT
-        const prompt = buildQuadrantPrompt()
+        w.step = STEP_TEMPLATE
+        const templates = db.listTemplates()
+        w.cachedTemplates = templates
+        const prompt = buildTemplatePrompt(templates)
         return { reply: prompt.text, replyMarkup: prompt.replyMarkup }
       }
       // 看不懂 → 重发提示（保留按钮）
@@ -512,28 +471,7 @@ export function createOpenClawWizard({
       }
     }
 
-    // ─── quadrant 步 ───
-    if (w.step === STEP_QUADRANT) {
-      const num = String(text).trim().match(/^([1-4])$/)
-      if (num) {
-        w.chosenQuadrant = Number(num[1])
-      } else if (/默认|default|^$/i.test(text.trim())) {
-        w.chosenQuadrant = 2
-      } else {
-        const prompt = buildQuadrantPrompt()
-        return {
-          reply: `🤔 请点按钮或回 1-4 选象限，回 "默认" 用 Q2。\n\n${prompt.text}`,
-          replyMarkup: prompt.replyMarkup,
-        }
-      }
-      w.step = STEP_TEMPLATE
-      const templates = db.listTemplates()
-      w.cachedTemplates = templates
-      const prompt = buildTemplatePrompt(templates)
-      return { reply: prompt.text, replyMarkup: prompt.replyMarkup }
-    }
-
-    // ─── template 步 ───
+    // ─── template (agent) 步 ───
     if (w.step === STEP_TEMPLATE) {
       const templates = w.cachedTemplates || db.listTemplates()
       const idx = parseNumericChoice(text, templates.length + 1)
@@ -554,7 +492,7 @@ export function createOpenClawWizard({
         } else {
           const prompt = buildTemplatePrompt(templates)
           return {
-            reply: `🤔 请点按钮 / 回数字 1-${templates.length + 1}，或模板名（自由/无）。\n\n${prompt.text}`,
+            reply: `🤔 请点按钮 / 回数字 1-${templates.length + 1}，或 agent 名字（自由/无）。\n\n${prompt.text}`,
             replyMarkup: prompt.replyMarkup,
           }
         }
@@ -568,10 +506,9 @@ export function createOpenClawWizard({
 
   async function finalizeWizard(w) {
     try {
-      // 创建 todo
+      // 创建 todo（quadrant 字段保留在 DB 里只是为了向后兼容；UI 不再展示）
       const todo = db.createTodo({
         title: w.title,
-        quadrant: w.chosenQuadrant || 2,
         description: '',
         workDir: w.chosenWorkdir || null,
         brainstorm: false,
@@ -621,7 +558,7 @@ export function createOpenClawWizard({
           `${topicName}`,
           `AI 已启动，后续输出会回复在这个话题里。`,
           ``,
-          `象限 Q${w.chosenQuadrant || 2} · 目录 ${w.chosenWorkdir || '默认'} · 模板 ${w.chosenTemplate?.name || '自由模式'}`,
+          `Agent ${w.chosenTemplate?.name || '自由模式'} · 目录 ${w.chosenWorkdir || '默认'}`,
         ].join('\n')
         // 复用用户当前所在话题 thread：把 intro 作为 thread reply 发进去，PTY 后续输出
         // 也用同一个 anchor 进同一话题，不再开新 thread。
@@ -770,7 +707,7 @@ export function createOpenClawWizard({
         const welcome = [
           `🤖 任务「${w.title}」AI 已启动 (${sessionInfo?.tool || 'claude'})`,
           ``,
-          `象限 Q${w.chosenQuadrant || 2} · 目录 ${w.chosenWorkdir || '默认'} · 模板 ${w.chosenTemplate?.name || '自由模式'}`,
+          `Agent ${w.chosenTemplate?.name || '自由模式'} · 目录 ${w.chosenWorkdir || '默认'}`,
           ``,
           `AI 一轮回话/卡住/结束会推到这里。直接回任意文本会写进 PTY stdin。`,
         ].join('\n')
@@ -787,13 +724,12 @@ export function createOpenClawWizard({
       const lines = []
       if (createdThreadId) {
         lines.push(`✅ todo #${shortCode} 已建 → 去 topic 「${topicName}」 看进度`)
-        lines.push(`   Q${w.chosenQuadrant || 2} · ${w.chosenWorkdir || '默认目录'} · ${w.chosenTemplate?.name || '自由模式'}`)
+        lines.push(`   Agent ${w.chosenTemplate?.name || '自由模式'} · ${w.chosenWorkdir || '默认目录'}`)
       } else {
         lines.push(`✅ todo #${shortCode} 已建`)
         lines.push(`   标题: ${w.title}`)
-        lines.push(`   象限: Q${w.chosenQuadrant || 2}`)
+        lines.push(`   Agent: ${w.chosenTemplate?.name || '自由模式'}`)
         lines.push(`   目录: ${w.chosenWorkdir || '默认'}`)
-        lines.push(`   模板: ${w.chosenTemplate?.name || '自由模式'}`)
         if (sessionInfo) {
           lines.push(`🤖 ${sessionInfo.tool} 终端已启动 (sessionId: ${sessionInfo.sessionId.slice(-8)})`)
         }
@@ -1466,15 +1402,11 @@ export function createOpenClawWizard({
         wizards.delete(routeKey)
         const w = startWizard({ channel, chatId, threadId, text: trimmed, messageId, rootMessageId, imagePaths, userId: fromUserId })
         if (w.step === STEP_DONE) return await finalizeWizard(w)
-        if (w.step === STEP_QUADRANT) {
-          const p = buildQuadrantPrompt()
-          return { reply: `（已重启向导，跳过目录步）\n${p.text}`, replyMarkup: p.replyMarkup }
-        }
         if (w.step === STEP_TEMPLATE) {
           const tpls = db.listTemplates()
           w.cachedTemplates = tpls
           const p = buildTemplatePrompt(tpls)
-          return { reply: `（已重启向导，跳过目录+象限步）\n${p.text}`, replyMarkup: p.replyMarkup }
+          return { reply: `（已重启向导，跳过目录步）\n${p.text}`, replyMarkup: p.replyMarkup }
         }
         const p = buildWorkdirPrompt(w.workdirOptions)
         return { reply: `（已重启向导）\n${p.text}`, replyMarkup: p.replyMarkup, action: 'wizard_started' }
@@ -1489,20 +1421,12 @@ export function createOpenClawWizard({
     if (newTaskGateOpen && NEW_TASK_TRIGGERS.some((re) => re.test(trimmed))) {
       const w = startWizard({ channel, chatId, threadId, text: trimmed, messageId, rootMessageId, imagePaths, userId: fromUserId })
       if (w.step === STEP_DONE) return await finalizeWizard(w)
-      if (w.step === STEP_QUADRANT) {
-        const p = buildQuadrantPrompt()
-        return {
-          reply: `任务: ${w.title}\n（目录已识别为 ${w.chosenWorkdir}）\n\n${p.text}`,
-          replyMarkup: p.replyMarkup,
-          action: 'wizard_started',
-        }
-      }
       if (w.step === STEP_TEMPLATE) {
         const tpls = db.listTemplates()
         w.cachedTemplates = tpls
         const p = buildTemplatePrompt(tpls)
         return {
-          reply: `任务: ${w.title}\n（目录+象限已识别）\n\n${p.text}`,
+          reply: `任务: ${w.title}\n（目录已识别为 ${w.chosenWorkdir || '默认'}）\n\n${p.text}`,
           replyMarkup: p.replyMarkup,
           action: 'wizard_started',
         }
@@ -1581,20 +1505,12 @@ export function createOpenClawWizard({
           logger.info?.(`[wizard] lark auto-create from non-prefix text (unbound thread): chatId=${chatId} thread=${threadId || '-'} title="${trimmed.slice(0, 80)}"`)
           const w = startWizard({ channel, chatId, threadId, text: trimmed, messageId, rootMessageId, imagePaths, userId: fromUserId })
           if (w.step === STEP_DONE) return await finalizeWizard(w)
-          if (w.step === STEP_QUADRANT) {
-            const p = buildQuadrantPrompt()
-            return {
-              reply: `任务: ${w.title}\n（目录已识别为 ${w.chosenWorkdir}）\n\n${p.text}`,
-              replyMarkup: p.replyMarkup,
-              action: 'wizard_started',
-            }
-          }
           if (w.step === STEP_TEMPLATE) {
             const tpls = db.listTemplates()
             w.cachedTemplates = tpls
             const p = buildTemplatePrompt(tpls)
             return {
-              reply: `任务: ${w.title}\n（目录+象限已识别）\n\n${p.text}`,
+              reply: `任务: ${w.title}\n（目录已识别为 ${w.chosenWorkdir || '默认'}）\n\n${p.text}`,
               replyMarkup: p.replyMarkup,
               action: 'wizard_started',
             }
@@ -1765,20 +1681,12 @@ export function createOpenClawWizard({
       logger.info?.(`[wizard] lark auto-create from non-prefix text: chatId=${chatId} thread=${threadId || '-'} title="${trimmed.slice(0, 80)}"`)
       const w = startWizard({ channel, chatId, threadId, text: trimmed, messageId, rootMessageId, imagePaths, userId: fromUserId })
       if (w.step === STEP_DONE) return await finalizeWizard(w)
-      if (w.step === STEP_QUADRANT) {
-        const p = buildQuadrantPrompt()
-        return {
-          reply: `任务: ${w.title}\n（目录已识别为 ${w.chosenWorkdir}）\n\n${p.text}`,
-          replyMarkup: p.replyMarkup,
-          action: 'wizard_started',
-        }
-      }
       if (w.step === STEP_TEMPLATE) {
         const tpls = db.listTemplates()
         w.cachedTemplates = tpls
         const p = buildTemplatePrompt(tpls)
         return {
-          reply: `任务: ${w.title}\n（目录+象限已识别）\n\n${p.text}`,
+          reply: `任务: ${w.title}\n（目录已识别为 ${w.chosenWorkdir || '默认'}）\n\n${p.text}`,
           replyMarkup: p.replyMarkup,
           action: 'wizard_started',
         }
@@ -1830,9 +1738,8 @@ export function createOpenClawWizard({
    * callback_data 协议：
    *   qt:wd:<idx>     工作目录（按 listWorkdirOptions 顺序）
    *   qt:wd:custom    自定义路径 → 进入 awaitingCustomWorkdir 子态，等下一条文本
-   *   qt:q:<1..4>     象限
-   *   qt:t:<idx>      模板
-   *   qt:t:none       自由模式（不套模板）
+   *   qt:t:<idx>      agent（template；保留 t 前缀以避免破坏老的飞书卡片）
+   *   qt:t:none       自由模式（不指派 agent）
    *
    * 安全：所有未知 / 不匹配当前 step 的 callback 都返回 toast，从不 throw —— 让
    * telegram-bot 始终能 answerCallbackQuery 关 loading。
@@ -1908,8 +1815,10 @@ export function createOpenClawWizard({
         return { toast: '选项无效', action: 'invalid' }
       }
       w.chosenWorkdir = w.workdirOptions[idx].path
-      w.step = STEP_QUADRANT
-      const prompt = buildQuadrantPrompt()
+      w.step = STEP_TEMPLATE
+      const templates = db.listTemplates()
+      w.cachedTemplates = templates
+      const prompt = buildTemplatePrompt(templates)
       return {
         chosenLabel: w.chosenWorkdir,
         reply: prompt.text,
@@ -1918,31 +1827,19 @@ export function createOpenClawWizard({
       }
     }
 
-    // ── quadrant step ─────────────────────────────
+    // ── 已退役：qt:q (quadrant) callback。老飞书/Telegram 卡片仍可能携带 → 友好提示 ──
     if (kind === 'q') {
-      if (w.step !== STEP_QUADRANT) {
-        return { toast: '当前步骤不接受象限选择', action: 'invalid' }
-      }
-      const q = Number(value)
-      if (![1, 2, 3, 4].includes(q)) return { toast: '象限无效', action: 'invalid' }
-      w.chosenQuadrant = q
-      w.step = STEP_TEMPLATE
-      const templates = db.listTemplates()
-      w.cachedTemplates = templates
-      const prompt = buildTemplatePrompt(templates)
-      const qLabel = QUADRANTS.find((x) => x.id === q)?.label || ''
       return {
-        chosenLabel: `Q${q} ${qLabel}`.trim(),
-        reply: prompt.text,
-        replyMarkup: prompt.replyMarkup,
-        action: 'wizard_step',
+        toast: '象限步骤已移除，直接选 agent 即可',
+        action: 'deprecated_quadrant',
+        editOriginal: true,
       }
     }
 
-    // ── template step ─────────────────────────────
+    // ── template step (用户面叫 agent) ─────────────────────────────
     if (kind === 't') {
       if (w.step !== STEP_TEMPLATE) {
-        return { toast: '当前步骤不接受模板选择', action: 'invalid' }
+        return { toast: '当前步骤不接受 agent 选择', action: 'invalid' }
       }
       const templates = w.cachedTemplates || db.listTemplates()
       let label
@@ -1952,7 +1849,7 @@ export function createOpenClawWizard({
       } else {
         const idx = Number(value)
         if (!Number.isInteger(idx) || idx < 0 || idx >= templates.length) {
-          return { toast: '模板无效', action: 'invalid' }
+          return { toast: 'agent 无效', action: 'invalid' }
         }
         w.chosenTemplate = { id: templates[idx].id, name: templates[idx].name }
         label = templates[idx].name
@@ -2209,7 +2106,7 @@ export function createOpenClawWizard({
 
   /**
    * 找到所有活跃 AI session（status=running / idle / pending_confirm），返回带 todo 上下文的列表：
-   *   [{ sid, short, status, lastOutputAt, todo: {id, title, workDir, quadrant} | null }]
+   *   [{ sid, short, status, lastOutputAt, todo: {id, title, workDir} | null }]
    *
    * 数据源：
    *  - aiTerminal.sessions (in-memory PTY session map) —— 状态最准
@@ -2247,7 +2144,6 @@ export function createOpenClawWizard({
           id: t.id,
           title: t.title || '(未命名)',
           workDir: t.workDir || '',
-          quadrant: t.quadrant || 2,
         }
       }
     }
@@ -2300,7 +2196,7 @@ export function createOpenClawWizard({
   }
 
   /**
-   * /list 或 /pending —— 列未完成 todos，按象限分组。
+   * /list 或 /pending —— 列未完成 todos（扁平显示，按 updated_at 倒序）。
    *
    * 输出限制：30 条；超出加"去 web 看"提示。
    * 状态显示：把 todo.aiSessions 里 running 的标 🟢，便于一眼看哪些任务在跑。
@@ -2320,29 +2216,18 @@ export function createOpenClawWizard({
     const activeSids = new Set(findActiveSessions().map((s) => s.sid))
     // dispatcher 排队信息：sid → queueSize（busy 期间累积的用户输入）
     const dispatcherDesc = sessionInputDispatcher?.describe?.() || { byId: {} }
-    const groups = new Map()
-    for (const q of QUADRANTS) groups.set(q.id, [])
-    for (const t of visible) {
-      const arr = groups.get(t.quadrant) || groups.get(2)
-      arr.push(t)
-    }
     const lines = [`📋 待办 (${todos.length}${todos.length > PAGE ? `, 仅显示前 ${PAGE}` : ''})`]
-    for (const q of QUADRANTS) {
-      const arr = groups.get(q.id)
-      if (!arr || arr.length === 0) continue
-      lines.push('')
-      lines.push(`Q${q.id} ${q.label}`)
-      for (const t of arr) {
-        const short = String(t.id).slice(0, 4)
-        const dirTag = t.workDir ? `· ${basename(t.workDir)}` : ''
-        const aiSessions = t.aiSessions || (t.aiSession ? [t.aiSession] : [])
-        const runningSid = aiSessions.find((s) => s?.sessionId && activeSids.has(s.sessionId))?.sessionId
-        const isRunning = !!runningSid
-        const statusTag = isRunning ? '🟢' : '·'
-        const queueSize = runningSid ? (dispatcherDesc.byId?.[runningSid]?.queueSize || 0) : 0
-        const queueTag = queueSize > 0 ? ` 📥${queueSize}` : ''
-        lines.push(`  ${statusTag} ${short}  ${t.title} ${dirTag}${queueTag}`)
-      }
+    lines.push('')
+    for (const t of visible) {
+      const short = String(t.id).slice(0, 4)
+      const dirTag = t.workDir ? `· ${basename(t.workDir)}` : ''
+      const aiSessions = t.aiSessions || (t.aiSession ? [t.aiSession] : [])
+      const runningSid = aiSessions.find((s) => s?.sessionId && activeSids.has(s.sessionId))?.sessionId
+      const isRunning = !!runningSid
+      const statusTag = isRunning ? '🟢' : '·'
+      const queueSize = runningSid ? (dispatcherDesc.byId?.[runningSid]?.queueSize || 0) : 0
+      const queueTag = queueSize > 0 ? ` 📥${queueSize}` : ''
+      lines.push(`  ${statusTag} ${short}  ${t.title} ${dirTag}${queueTag}`)
     }
     if (todos.length > PAGE) {
       const port = (getConfig?.()?.port) || 5677
@@ -2519,15 +2404,12 @@ export function createOpenClawWizard({
 export const __test__ = {
   extractTitle,
   tryExtractWorkdir,
-  tryExtractQuadrant,
   tryExtractTemplateHint,
   parseNumericChoice,
   findTemplateByHint,
   buildWorkdirMessage,
-  buildQuadrantMessage,
   buildTemplateMessage,
   buildWorkdirReplyMarkup,
-  buildQuadrantReplyMarkup,
   buildTemplateReplyMarkup,
   CALLBACK_PREFIX,
   isGeneralChannel,

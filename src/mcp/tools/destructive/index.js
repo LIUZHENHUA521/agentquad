@@ -195,12 +195,15 @@ export function registerDestructiveTools(server, { db, audit }) {
     'bulk_update',
     {
       description:
-        '对一组 todo id 批量 patch。允许字段：quadrant / status / archived / dueDate。默认 confirm:false 返回 preview（列出将要修改的 todos，最多 20 条）。',
+        '对一组 todo id 批量 patch。允许字段：status / archived / dueDate。' +
+        '（quadrant 字段保留接口以兼容旧调用方，传入会被忽略。）' +
+        '默认 confirm:false 返回 preview（列出将要修改的 todos，最多 20 条）。',
       inputSchema: {
         ids: z.array(z.string().min(1)).min(1),
         patch: z
           .object({
-            quadrant: z.number().int().min(1).max(4).optional(),
+            quadrant: z.number().int().min(1).max(4).optional()
+              .describe('【已退役】象限概念已移除，传入会被忽略'),
             status: z.enum(['todo', 'done']).optional(),
             archived: z.boolean().optional(),
             dueDate: z.number().int().nullable().optional(),
@@ -211,40 +214,43 @@ export function registerDestructiveTools(server, { db, audit }) {
       },
     },
     async (args) => {
+      // 剥掉退役字段，避免 db 层试图写 quadrant
+      const { quadrant: _ignored, ...effectivePatch } = args.patch || {}
+      const sanitizedArgs = { ...args, patch: effectivePatch }
       try {
         const preview = {
-          ids: args.ids,
-          patch: args.patch,
+          ids: sanitizedArgs.ids,
+          patch: sanitizedArgs.patch,
           affected: [],
           missing: [],
         }
-        for (const id of args.ids.slice(0, 20)) {
+        for (const id of sanitizedArgs.ids.slice(0, 20)) {
           const t = db.getTodo(id)
-          if (t) preview.affected.push({ id: t.id, title: t.title, quadrant: t.quadrant, status: t.status })
+          if (t) preview.affected.push({ id: t.id, title: t.title, status: t.status })
           else preview.missing.push(id)
         }
-        preview.totalTargeted = args.ids.length
-        preview.previewTruncated = args.ids.length > 20
-        if (!args.confirm) {
-          const patchKeys = Object.keys(args.patch).join(', ')
+        preview.totalTargeted = sanitizedArgs.ids.length
+        preview.previewTruncated = sanitizedArgs.ids.length > 20
+        if (!sanitizedArgs.confirm) {
+          const patchKeys = Object.keys(sanitizedArgs.patch).join(', ') || '(空 — quadrant 已退役)'
           return previewResponse({
             toolName: 'bulk_update',
-            summary: `将对 ${args.ids.length} 条 todo 批量 patch 以下字段：${patchKeys}。命中 ${preview.affected.length} 条、未找到 ${preview.missing.length} 条。`,
+            summary: `将对 ${sanitizedArgs.ids.length} 条 todo 批量 patch 以下字段：${patchKeys}。命中 ${preview.affected.length} 条、未找到 ${preview.missing.length} 条。`,
             impact: preview,
-            args,
+            args: sanitizedArgs,
           })
         }
-        const result = db.bulkUpdateTodos({ ids: args.ids, patch: args.patch })
+        const result = db.bulkUpdateTodos({ ids: sanitizedArgs.ids, patch: sanitizedArgs.patch })
         audit?.append({
           tool: 'bulk_update',
           ok: true,
-          args: { ids: args.ids, patch: args.patch },
+          args: { ids: sanitizedArgs.ids, patch: sanitizedArgs.patch },
           result: { changedCount: result.count, changedIds: result.changedIds },
-          confirmNote: args.confirmNote || null,
+          confirmNote: sanitizedArgs.confirmNote || null,
         })
         return asText({ ok: true, result })
       } catch (e) {
-        audit?.append({ tool: 'bulk_update', ok: false, args: { ids: args.ids, patch: args.patch }, error: e?.message })
+        audit?.append({ tool: 'bulk_update', ok: false, args: { ids: sanitizedArgs.ids, patch: sanitizedArgs.patch }, error: e?.message })
         return asError(e?.message || 'bulk_update_failed')
       }
     },

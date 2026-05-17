@@ -1,10 +1,3 @@
-const QUADRANT_LABEL = {
-  1: '重要且紧急',
-  2: '重要不紧急',
-  3: '紧急不重要',
-  4: '不重要不紧急',
-}
-
 export function buildVars(todo) {
   if (!todo) return {}
   const dueDate = todo.dueDate
@@ -14,7 +7,6 @@ export function buildVars(todo) {
     title: todo.title || '',
     description: todo.description || '',
     workDir: todo.workDir || '',
-    quadrant: todo.quadrant ? `Q${todo.quadrant}（${QUADRANT_LABEL[todo.quadrant] || ''}）` : '',
     dueDate,
   }
 }

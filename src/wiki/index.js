@@ -142,7 +142,7 @@ export function createWikiService({
   function pending() {
     return db.listUnappliedDoneTodos().map(t => ({
       id: t.id, title: t.title, workDir: t.workDir,
-      quadrant: t.quadrant, completedAt: t.updatedAt,
+      completedAt: t.updatedAt,
     }))
   }
 
