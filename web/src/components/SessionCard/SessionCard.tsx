@@ -33,8 +33,9 @@ export interface SessionCardProps {
   live?: boolean
   /** 当前列对应的 status 类别 */
   columnStatus: 'running' | 'pending_confirm' | 'idle'
-  /** FLIP 跨列动画注册 —— StatusBoard 传 `register(key, el)` */
-  flipRegister?: (sessionId: string, el: HTMLElement | null) => void
+  /** FLIP 跨列动画注册 —— StatusBoard 传 `register(key, columnId, el)`，
+   *  columnId 让 hook 区分"同列重渲（不动）"与"跨列搬家（FLIP）" */
+  flipRegister?: (sessionId: string, columnId: string, el: HTMLElement | null) => void
   onOpen?: (s: AiSession, parent: Todo) => void
   onOpenParent?: (parent: Todo) => void
   onCancel?: (s: AiSession, parent: Todo) => void
@@ -80,7 +81,7 @@ export function SessionCard({
     <article
       className={className}
       onClick={handleCardClick}
-      ref={(el) => flipRegister?.(session.sessionId, el)}
+      ref={(el) => flipRegister?.(session.sessionId, columnStatus, el)}
     >
       {/* Parent 链接：点击不再拦截，让事件冒泡到 article 走 reopen 逻辑 */}
       <div className="session-card-parent" title={parent.title}>

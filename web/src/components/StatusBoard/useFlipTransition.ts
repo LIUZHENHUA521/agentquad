@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 
 /**
  * 给一组「按稳定 key 标识」的 DOM 元素做 FLIP（First / Last / Invert / Play）跨容器动画。
@@ -30,9 +30,8 @@ export interface FlipTransitionOptions {
 }
 
 interface InternalState {
-  rects: Map<string, DOMRect>          // key → 最后一次见到时的 rect
-  pendingFlip: Map<string, DOMRect>    // key → 旧 rect（待 invert）
-  pendingHighlight: Set<string>        // key → mount 后要加 highlight class
+  rects: Map<string, DOMRect>            // key → 最后一次见到时的 rect
+  containers: Map<string, string>        // key → 上次所在的容器 id（列 id）
 }
 
 export function useFlipTransition(opts: FlipTransitionOptions = {}) {
@@ -45,58 +44,58 @@ export function useFlipTransition(opts: FlipTransitionOptions = {}) {
 
   const stateRef = useRef<InternalState>({
     rects: new Map(),
-    pendingFlip: new Map(),
-    pendingHighlight: new Set(),
+    containers: new Map(),
   })
 
-  const register = (key: string, el: HTMLElement | null) => {
+  /**
+   * 注册一张卡片。需要外部告知"所在容器"（列 id），这样 hook 才能区分：
+   *   - 同列内重渲（rect 可能因为内容微调飘几像素）→ 不动画，仅刷新 rect
+   *   - 跨列搬家（container 变了）→ FLIP 动画 + 入场高亮
+   *
+   * `useCallback` 让 register 引用稳定，避免父组件每次重渲都让 React
+   * 把 ref 函数当成"新的"导致 detach + reattach 抖动。
+   */
+  const register = useCallback((key: string, container: string, el: HTMLElement | null) => {
     const st = stateRef.current
-    if (el === null) {
-      // 旧实例被卸载（可能是因为搬家到别的列）。冻结它最后看到的 rect。
-      // rects 里保留这个 key 的最后一次 rect，作为新 mount 的 invert 基准。
-      // 不做 delete —— 留给新 mount 时计算 delta。
-      return
-    }
+    if (el === null) return                 // 卸载：保留 rects/containers 记录给下次 mount
 
-    // 新 mount 时：旧记录就是 "old rect"
     const prevRect = st.rects.get(key)
+    const prevContainer = st.containers.get(key)
     const newRect = el.getBoundingClientRect()
-    if (prevRect && (Math.abs(prevRect.left - newRect.left) > 0.5 || Math.abs(prevRect.top - newRect.top) > 0.5)) {
-      // 算出从 prev 飞到 new 需要的 invert transform
+    const containerChanged = prevContainer !== undefined && prevContainer !== container
+
+    if (containerChanged && prevRect) {
       const dx = prevRect.left - newRect.left
       const dy = prevRect.top - newRect.top
-      // 瞬间用 transform 把它"拉回旧位置"
-      el.style.transition = 'none'
-      el.style.transform = `translate(${dx}px, ${dy}px)`
-      // 下一帧清掉 transform，让浏览器把它 transition 回 (0,0)
-      requestAnimationFrame(() => {
-        el.style.transition = `transform ${duration}ms ${easing}`
-        el.style.transform = 'translate(0, 0)'
-        // 清理 inline transition，防止后续不相关重渲也吃这个 transition
-        const onEnd = () => {
-          el.style.transition = ''
-          el.style.transform = ''
-          el.removeEventListener('transitionend', onEnd)
+      // 跨列搬家才动 —— 同列内时间/token 变化导致的 ±1px 漂移直接忽略
+      if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
+        el.style.transition = 'none'
+        el.style.transform = `translate(${dx}px, ${dy}px)`
+        requestAnimationFrame(() => {
+          el.style.transition = `transform ${duration}ms ${easing}`
+          el.style.transform = 'translate(0, 0)'
+          const onEnd = () => {
+            el.style.transition = ''
+            el.style.transform = ''
+            el.removeEventListener('transitionend', onEnd)
+          }
+          el.addEventListener('transitionend', onEnd)
+        })
+        if (highlightClass) {
+          el.classList.add(highlightClass)
+          window.setTimeout(() => el.classList.remove(highlightClass), highlightMs)
         }
-        el.addEventListener('transitionend', onEnd)
-      })
-      // 加 arrived 高亮 class
-      if (highlightClass) {
-        el.classList.add(highlightClass)
-        window.setTimeout(() => el.classList.remove(highlightClass), highlightMs)
       }
     }
-    // 记录这次见到的 rect，为下次重渲做参照
-    st.rects.set(key, newRect)
-  }
 
-  // 每次组件提交后顺手刷新 rects 表 —— 没有移动的元素也要更新 rect，
-  // 否则下次 layout（侧栏宽度变化、columns 变化）会被误判成"移动了"。
-  // 这里用 useLayoutEffect 在 paint 前抓最终位置。
-  // 实际抓取在 register 调用时做了，本 effect 仅作"扫描死键"清理。
+    st.rects.set(key, newRect)
+    st.containers.set(key, container)
+  }, [duration, easing, highlightClass, highlightMs])
+
   useEffect(() => {
     return () => {
       stateRef.current.rects.clear()
+      stateRef.current.containers.clear()
     }
   }, [])
 

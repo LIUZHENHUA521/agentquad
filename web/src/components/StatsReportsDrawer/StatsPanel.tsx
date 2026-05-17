@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Segmented, DatePicker, Table, Collapse, Empty, Spin } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { useTheme } from '../../design/ThemeProvider'
-import { Line, Pie } from '@ant-design/charts'
+import { Line } from '@ant-design/charts'
 import dayjs, { Dayjs } from 'dayjs'
 import {
   readPalette, fillTimelineGaps, computeDelta, shiftRangeBackwards,
@@ -15,7 +15,7 @@ type Range = 'week' | 'month' | '30d' | 'custom'
 interface Cost { usd: number; cny: number }
 interface Tokens { input: number; output: number; cacheRead: number; cacheCreation: number; total?: number }
 interface TopTodo {
-  todoId: string; title: string; quadrant: number
+  todoId: string; title: string
   activeMs: number; wallClockMs: number
   tokens: Tokens; cost: Cost
   sessionCount: number; primaryModel: string | null
@@ -28,7 +28,7 @@ interface Report {
     sessionCount: number; todoCount: number; unboundSessionCount: number
   }
   topTodos: TopTodo[]
-  byTool: any[]; byQuadrant: any[]; byModel: any[]
+  byTool: any[]; byModel: any[]
   timeline: { t: number; wallClockMs: number; activeMs: number; tokens: Tokens; cost: Cost }[]
 }
 
@@ -169,7 +169,7 @@ function ReportBody({
 }) {
   const { t } = useTranslation(['settings'])
   const { mode } = useTheme()
-  const { summary, topTodos, byQuadrant, byModel, timeline } = report
+  const { summary, topTodos, byModel, timeline } = report
 
   // Re-read CSS palette whenever theme changes. Use a small tick to ensure the
   // [data-theme] attribute has been applied before computed style read.
@@ -195,9 +195,6 @@ function ReportBody({
     { date: dayjs(e.t).format('MM-DD'), type: t('settings:stats.legend.active'), value: e.activeMs / 3600_000 },
     { date: dayjs(e.t).format('MM-DD'), type: t('settings:stats.legend.wallClock'), value: e.wallClockMs / 3600_000 },
   ])
-
-  const pieData = byQuadrant.map((q: any) => ({ type: `Q${q.key}`, value: q.activeMs }))
-  const quadrantColors = [palette.q1, palette.q2, palette.q3, palette.q4]
 
   const activeDelta = computeDelta(summary.activeMs, prevReport?.summary.activeMs)
   const tokenDelta = computeDelta(
@@ -249,30 +246,6 @@ function ReportBody({
     tooltip: { items: [{ channel: 'y', valueFormatter: fmtChartHours }] },
   }
 
-  const pieConfig = {
-    data: pieData,
-    angleField: 'value',
-    colorField: 'type',
-    height: 220,
-    theme: mode === 'dark' ? 'classicDark' : 'classic',
-    innerRadius: 0.55,
-    scale: { color: { range: quadrantColors } },
-    label: {
-      text: 'type',
-      style: { fill: palette.textPrimary, fontSize: 12, fontWeight: 500 },
-    },
-    legend: {
-      color: {
-        itemLabelFill: palette.textSecondary,
-      },
-    },
-    tooltip: {
-      items: [
-        { channel: 'y', valueFormatter: (v: number) => fmtHours(v) },
-      ],
-    },
-  }
-
   return (
     <>
       {/* ---------- Hero ---------- */}
@@ -320,10 +293,6 @@ function ReportBody({
           <div className="stats-chart-title">{t('settings:stats.card.durationTrend')}</div>
           <Line key={chartKey + ':line'} {...lineConfig} />
         </div>
-        <div className="stats-chart-card">
-          <div className="stats-chart-title">{t('settings:stats.card.quadrantPie')}</div>
-          <Pie key={chartKey + ':pie'} {...pieConfig} />
-        </div>
       </div>
 
       {/* ---------- Top 10 ---------- */}
@@ -339,12 +308,6 @@ function ReportBody({
           columns={[
             { title: t('settings:stats.col.index'), render: (_, __, i) => i + 1, width: 40 },
             { title: t('settings:stats.col.task'), dataIndex: 'title', width: 220, ellipsis: true },
-            {
-              title: t('settings:stats.col.quadrant'),
-              dataIndex: 'quadrant',
-              width: 64,
-              render: (q: number) => <span className={`stats-quadrant-pill q-${q}`}>Q{q}</span>,
-            },
             { title: t('settings:stats.col.active'), render: r => fmtHours(r.activeMs), width: 70 },
             { title: t('settings:stats.col.wallClock'), render: r => fmtHours(r.wallClockMs), width: 70 },
             { title: t('settings:stats.col.token'), render: r => fmtTok(r.tokens.input + r.tokens.output), width: 80 },

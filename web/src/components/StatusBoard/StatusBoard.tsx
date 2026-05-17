@@ -134,7 +134,7 @@ function SessionColumnBody({
 }: {
   entries: SessionEntry[]
   columnStatus: 'running' | 'pending_confirm' | 'idle'
-  flipRegister?: (sessionId: string, el: HTMLElement | null) => void
+  flipRegister?: (sessionId: string, columnId: string, el: HTMLElement | null) => void
   onOpenSession: (s: AiSession, parent: Todo) => void
   onOpenParent: (parent: Todo) => void
   onCancelSession: (s: AiSession, parent: Todo) => void
