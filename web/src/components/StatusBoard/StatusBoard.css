@@ -279,13 +279,21 @@
   font-weight: 700;
 }
 
-/* ====== Mobile：单列 + 横向滚动 ====== */
+/* ====== Mobile：只显示「待办」一列 ======
+   小屏（手机）上把右侧 3 列（运行中 / 需确认 / 已空闲）藏起来，
+   让 backlog 列独占视口宽度。桌面端 (>768px) 仍是 4 列并排，不受影响。
+   注：StatusBoard 的数据计算（sessionsByColumn / FLIP 等）保持原样运行，
+       只是 DOM 中的非 backlog 列不可见，避免和桌面端逻辑分叉。 */
 @media (max-width: 768px) {
   .status-board {
-    overflow-x: auto;
+    overflow-x: hidden;
   }
   .status-board-col {
-    flex: 0 0 90vw;
-    min-width: 90vw;
+    flex: 1 1 100%;
+    min-width: 0;
+    border-right: none;
+  }
+  .status-board-col:not(.status-board-col-backlog) {
+    display: none;
   }
 }
