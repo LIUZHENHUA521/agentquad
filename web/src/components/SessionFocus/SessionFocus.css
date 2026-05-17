@@ -86,10 +86,6 @@
   font-weight: 500;
   color: var(--text-primary);
 }
-.focus-task-title .quad-dot {
-  width: 9px; height: 9px; border-radius: 50%;
-  flex-shrink: 0;
-}
 .focus-task-title__text {
   min-width: 0;
   overflow: hidden;

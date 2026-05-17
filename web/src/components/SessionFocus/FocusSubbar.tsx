@@ -51,7 +51,6 @@ export function FocusSubbar({
   const tool = session?.tool ?? fallbackTool ?? 'ai'
   const fullSessionId = session?.sessionId ?? null
   const sessionShortId = fullSessionId ? fullSessionId.slice(0, 8) : '—'
-  const quadrant = session?.quadrant ?? 0
 
   const lastSeen = useUnreadStore((s) =>
     session?.sessionId ? s.lastSeenAt.get(session.sessionId) : undefined,
@@ -66,8 +65,6 @@ export function FocusSubbar({
   const state = deriveAiState(effectiveStatus, unread, session?.awaitingReply ?? false)
   const statusLabel = sessionClosed ? t('session:focusSubbar.processEnded') : t(AI_STATE_PILL_LABEL_KEY[state])
 
-  const quadColor =
-    quadrant >= 1 && quadrant <= 4 ? `var(--q${quadrant})` : 'var(--text-tertiary)'
   const canConfirm = !!session?.sessionId && state === 'pending'
   const handleConfirm = () => {
     if (!session?.sessionId) return
@@ -159,10 +156,6 @@ export function FocusSubbar({
         <span>{t('session:focusSubbar.grid')}</span>
       </button>
       <div className="focus-task-title">
-        <span
-          className="quad-dot"
-          style={{ background: quadColor, boxShadow: `0 0 8px ${quadColor}` }}
-        />
         <Tooltip title={title} placement="bottomLeft" mouseEnterDelay={0.4}>
           <span className="focus-task-title__text">{title}</span>
         </Tooltip>
