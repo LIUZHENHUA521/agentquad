@@ -68,7 +68,9 @@ export function SessionCard({
 
   const className = [
     'session-card',
+    columnStatus === 'running' ? 'is-running' : '',
     columnStatus === 'pending_confirm' ? 'is-needs-input' : '',
+    columnStatus === 'idle' ? 'is-idle' : '',
   ].filter(Boolean).join(' ')
 
   const handleCardClick = (e: React.MouseEvent) => {

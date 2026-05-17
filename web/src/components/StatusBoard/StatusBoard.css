@@ -149,8 +149,14 @@
   100% { box-shadow: 0 0 0 0 transparent, 0 0 0 transparent; }
 }
 
+.session-card.is-running {
+  border-left: 3px solid var(--sb-running);
+}
 .session-card.is-needs-input {
   border-left: 3px solid var(--sb-warn);
+}
+.session-card.is-idle {
+  border-left: 3px solid var(--sb-calm);
 }
 .session-card.is-needs-input::after {
   content: "→";
