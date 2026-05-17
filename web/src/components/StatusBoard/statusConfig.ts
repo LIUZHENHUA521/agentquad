@@ -1,17 +1,23 @@
 import type { AiStatus, AiSession, LiveSession, Todo } from '../../api'
+import { deriveAiState, isClosedAiStatus } from '../../design/aiPresentationState'
 
 /**
  * 状态看板的列定义。
  *
- * Session → column 派生规则（重要：跟现有 unread badge 系统对齐）：
- *   - status=running                      → in_progress
- *   - status=pending_confirm              → needs_input  （PTY 检测到权限弹窗）
- *   - status=idle + 未读                  → needs_input  （AI 回完一轮，用户还没看 transcript）
- *   - status=idle + 已读                  → idle         （PTY 仍存活但已被确认）
- *   - status=done / stopped / failed      → 离开板，进 TodoCard 的 History
+ * Session → column 派生**直接走 deriveAiState**（三态权威推导，跟 TodoCard / 顶栏 pill
+ * / FocusSubbar 共享），保证全局一处口径：
  *
- * 未读判定：`session.lastTurnDoneAt > local lastSeenAt`，由 unreadStore 维护。
- * 这里通过 `isUnread(session)` 注入 sessionsByColumn，避免本模块依赖 zustand。
+ *   - deriveAiState === 'running'   → in_progress
+ *   - deriveAiState === 'pending'   → needs_input
+ *     （含 status=pending_confirm 权限弹窗 + status=idle 且 unread 的"AI 回完未读"）
+ *   - deriveAiState === 'idle'      → idle
+ *
+ * 终态（done / stopped / failed）即使被 deriveAiState 归为 idle，也单独离开看板，
+ * 改在 TodoCard 的 History 里查 —— 避免"30 分钟未清理的死 session"挤占 idle 列。
+ *
+ * ⚠️ 不要直接读 `live.effectiveStatus`：那是后端给 TodoCard 徽标做的 stickiness
+ *    兜底（PTY 还在喷尾巴就强制回 'running'），用它会让卡片错挤在"运行中"列；
+ *    `deriveAiState` 本身吃 status + awaitingReply 已经够准。
  */
 export type StatusColumnId = 'backlog' | 'in_progress' | 'needs_input' | 'idle'
 
@@ -29,17 +35,16 @@ export const STATUS_COLUMNS: StatusColumnConfig[] = [
   { id: 'idle',        labelKey: 'todo:column.idle',       fallbackLabel: '已空闲', accentVar: '--sb-calm' },
 ]
 
-/** 单个 session 应当归属哪一列；返回 null = 终态，不在板上 */
-export function deriveColumnFor(s: AiSession, unread: boolean): StatusColumnId | null {
-  switch (s.status) {
-    case 'running':           return 'in_progress'
-    case 'pending_confirm':   return 'needs_input'
-    case 'idle':              return unread ? 'needs_input' : 'idle'
-    case 'done':
-    case 'stopped':
-    case 'failed':            return null
-    default:                  return null
-  }
+/** 单个 session 应当归属哪一列；返回 null = 终态（done/stopped/failed），不在板上 */
+export function deriveColumnFor(
+  s: AiSession & { awaitingReply?: boolean },
+  unread: boolean,
+): StatusColumnId | null {
+  if (isClosedAiStatus(s.status)) return null
+  const state = deriveAiState(s.status, unread, !!s.awaitingReply)
+  if (state === 'running') return 'in_progress'
+  if (state === 'pending') return 'needs_input'
+  return 'idle'
 }
 
 export function backlogTodos(todos: Todo[], showDone: boolean): Todo[] {
@@ -104,15 +109,25 @@ export function sessionsByColumn(
   return out
 }
 
-/** snapshot session + 可选 live session → 合并版（优先 live.effectiveStatus，其次 live.status，再退 snapshot）。 */
-export function mergeLiveSession(snapshot: AiSession, live?: LiveSession): AiSession {
+/**
+ * snapshot session + 可选 live session → 合并版。
+ *
+ * 关键决策：**不**消费 `live.effectiveStatus`。effectiveStatus 是后端给 TodoCard
+ * 徽标设计的 stickiness 兜底（PTY 还在喷尾巴就强制 'running'），用它会让
+ * status='idle' 的会话错挤在「运行中」列。这里只取 live.status（真状态）+
+ * live.lastTurnDoneAt + live.awaitingReply，让 deriveAiState 自己拍板。
+ */
+export function mergeLiveSession(
+  snapshot: AiSession,
+  live?: LiveSession,
+): AiSession & { awaitingReply?: boolean } {
   if (!live) return snapshot
-  const status = live.effectiveStatus || live.status || snapshot.status
   return {
     ...snapshot,
-    status,
+    status: live.status || snapshot.status,
     lastTurnDoneAt: live.lastTurnDoneAt ?? snapshot.lastTurnDoneAt ?? null,
     completedAt: live.completedAt ?? snapshot.completedAt,
+    awaitingReply: live.awaitingReply,
   }
 }
 
