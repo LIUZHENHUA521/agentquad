@@ -902,6 +902,12 @@ export function openDb(file = ':memory:') {
           ORDER BY tf.started_at DESC
           LIMIT ? OFFSET ?
         `).all(q, like, ...params, limit, offset)
+        // SQLite FTS 的 snippet() 只能走 MATCH，<3 字路径没法用它包裹高亮，这里在 JS 里手工补 <mark>，
+        // 让前端 dangerouslySetInnerHTML 渲染出和长查询一致的高亮效果。
+        const markRe = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi')
+        for (const row of rows) {
+          if (row.snippet) row.snippet = row.snippet.replace(markRe, m => `<mark>${m}</mark>`)
+        }
         return { total, items: rows }
       }
       const ftsQuery = q.replace(/"/g, '""')

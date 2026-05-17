@@ -299,6 +299,15 @@ describe('transcripts service', () => {
     expect(r.items[0].snippet).toMatch(/<mark>/)
   })
 
+  it('search highlights short (<3 char) queries via LIKE fallback', async () => {
+    if (!db.ftsAvailable) return
+    writeClaudeFile(path.join(tmp, 'claude'), '/p')
+    await service.scanFull()
+    const r = service.search({ q: 'he' })
+    expect(r.total).toBeGreaterThan(0)
+    expect(r.items[0].snippet).toMatch(/<mark>he<\/mark>/i)
+  })
+
   it('bind returns 409-style conflict when reassigning, force=true moves', async () => {
     writeClaudeFile(path.join(tmp, 'claude'), '/p')
     const a = db.createTodo({ title: 'a', quadrant: 1 })
