@@ -18,7 +18,9 @@
 .status-board {
   flex: 1;
   display: flex;
-  min-height: 0;
+  /* 即使内容很少，整个看板也要撑满 topbar 下方剩余的可视高度，
+     让 4 列垂直分割线一路顶到屏幕底部 */
+  min-height: calc(100vh - var(--topbar-dispatch-h, 52px));
   min-width: 0;
   overflow: hidden;
   gap: 0;
