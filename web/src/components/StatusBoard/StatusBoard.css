@@ -212,6 +212,27 @@
   overflow: hidden;
 }
 
+.session-card-agent {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin: 0 0 8px;
+  padding: 2px 8px;
+  max-width: 100%;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--ant-color-primary) 14%, var(--surface-1));
+  border: 1px solid color-mix(in srgb, var(--ant-color-primary) 38%, transparent);
+  color: var(--ant-color-primary);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.session-card-agent-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .session-card-meta-row {
   display: flex;
   align-items: center;

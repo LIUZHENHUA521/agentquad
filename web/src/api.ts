@@ -18,6 +18,9 @@ export interface AiSession {
   completedAt: number | null
   prompt: string
   label?: string
+  /** 派活那一刻 todo.appliedTemplateIds[0] 的快照——之后改 todo 不影响历史归属 */
+  agentTemplateId?: string | null
+  agentName?: string | null
   /** 服务端记录的最近一次 turn_done 时间戳；客户端用本地 lastSeenAt 比对判断未读 */
   lastTurnDoneAt?: number | null
   telegramRoute?: {

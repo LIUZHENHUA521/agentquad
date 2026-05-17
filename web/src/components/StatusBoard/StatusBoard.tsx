@@ -2,7 +2,7 @@ import React, { type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useDroppable } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
-import type { Todo, AiSession } from '../../api'
+import type { Todo, AiSession, PromptTemplate } from '../../api'
 import { STATUS_COLUMNS, type StatusColumnId, type SessionEntry } from './statusConfig'
 import { useFlipTransition } from './useFlipTransition'
 import { SessionCard } from '../SessionCard'
@@ -16,6 +16,8 @@ export interface StatusBoardProps {
   /** Backlog 列的 dnd 配置 —— 复用现有 todoDndId */
   backlogDndIds?: string[]
   sessions: Record<StatusColumnId, SessionEntry[]>
+  /** 用作 session.agentName 缺失（老会话）时的 SessionCard 回退反查 */
+  agents?: PromptTemplate[]
   liveSessionMap?: Record<string, { status?: string } | undefined>
   onOpenSession: (s: AiSession, parent: Todo) => void
   onOpenParent: (parent: Todo) => void
@@ -29,7 +31,7 @@ export function StatusBoard(props: StatusBoardProps) {
   const { t } = useTranslation(['todo'])
   const {
     backlogTodos, renderBacklogItem, backlogDndIds,
-    sessions,
+    sessions, agents,
     onOpenSession, onOpenParent, onCancelSession, onConfirmSession,
     onCloseIdle, onReopenIdle,
   } = props
@@ -62,6 +64,7 @@ export function StatusBoard(props: StatusBoardProps) {
                 entries={sessions[col.id] || []}
                 columnStatus={col.id === 'in_progress' ? 'running' : col.id === 'needs_input' ? 'pending_confirm' : 'idle'}
                 flipRegister={flip.register}
+                agents={agents}
                 onOpenSession={onOpenSession}
                 onOpenParent={onOpenParent}
                 onCancelSession={onCancelSession}
@@ -129,12 +132,13 @@ function BacklogColumnBody({
 }
 
 function SessionColumnBody({
-  entries, columnStatus, flipRegister,
+  entries, columnStatus, flipRegister, agents,
   onOpenSession, onOpenParent, onCancelSession, onConfirmSession, onCloseIdle, onReopenIdle,
 }: {
   entries: SessionEntry[]
   columnStatus: 'running' | 'pending_confirm' | 'idle'
   flipRegister?: (sessionId: string, columnId: string, el: HTMLElement | null) => void
+  agents?: PromptTemplate[]
   onOpenSession: (s: AiSession, parent: Todo) => void
   onOpenParent: (parent: Todo) => void
   onCancelSession: (s: AiSession, parent: Todo) => void
@@ -163,6 +167,7 @@ function SessionColumnBody({
           key={session.sessionId}
           session={session}
           parent={todo}
+          agents={agents}
           columnStatus={columnStatus}
           flipRegister={flipRegister}
           onOpen={onOpenSession}
