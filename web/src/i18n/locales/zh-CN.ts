@@ -190,7 +190,7 @@ const zh = {
       openEditorTooltip: '选择编辑器打开',
       openEditorLabel: '编辑器打开',
       // 派活：旧的"AI 终端"按钮 + tool 多选下拉已退役 —— 工具走 settings 默认，点击只问 agent
-      dispatch: '▶ 派活',
+      dispatch: '派活',
       dispatchNoAgent: '自由模式（不指派 agent）',
       dispatchCurrentMark: '· 当前',
       dispatchNoAgentTooltip: '还没招过员工，去 Agent 抽屉创建一个先',

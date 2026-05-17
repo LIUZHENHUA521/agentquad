@@ -193,7 +193,7 @@ const en = {
       openEditorLabel: 'Open editor',
       // Dispatch: replaces the old "AI Terminal" + tool dropdown — tool comes from
       // Settings → Default AI tool, the menu now picks an agent.
-      dispatch: '▶ Dispatch',
+      dispatch: 'Dispatch',
       dispatchNoAgent: 'Free mode (no agent)',
       dispatchCurrentMark: '· current',
       dispatchNoAgentTooltip: 'No agents yet — open the Agents drawer to hire one',

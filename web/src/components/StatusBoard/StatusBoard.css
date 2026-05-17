@@ -114,9 +114,12 @@
 }
 
 /* ====== Session card ====== */
+/* 背景跟 TodoCard 保持一致：用 --surface-1 而不是 --ant-color-bg-elevated。
+   light 主题里 bg-elevated == #ffffff（白），跟列 body 一样白，会糊在一起；
+   surface-1 在 dark/light 两种模式下都是"卡片层"，跟 TodoCard 视觉对齐。 */
 .session-card {
-  background: var(--ant-color-bg-elevated);
-  border: 1px solid var(--ant-color-border-secondary);
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle);
   border-radius: var(--ant-border-radius, 6px);
   padding: 12px;
   cursor: pointer;
@@ -127,8 +130,9 @@
 }
 .session-card:hover {
   border-color: var(--ant-color-primary-border, var(--accent-electric));
-  background: var(--ant-color-bg-container);
+  background: var(--surface-2);
   transform: translateY(-1px);
+  box-shadow: var(--shadow-subtle);
 }
 
 /* "刚搬到这一列" 的瞬时高亮 */
