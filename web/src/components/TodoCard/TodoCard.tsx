@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Button, Tooltip, Dropdown, Popconfirm, Tag, Input } from 'antd'
-import { Plus, Trash2, Clock, Play, Code, Pencil, ChevronDown, ChevronRight, CornerDownLeft, AlertTriangle } from 'lucide-react'
+import { Plus, Trash2, Clock, Play, Code, Pencil, ChevronDown, ChevronRight, CornerDownLeft, AlertTriangle, CheckCircle2, RotateCcw } from 'lucide-react'
 import { useSortable, SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import dayjs from 'dayjs'
@@ -148,13 +148,7 @@ export function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo =
             onClick(todo)
           }}
         >
-          <input
-            type="checkbox"
-            checked={todo.status === 'done'}
-            onClick={(e) => e.stopPropagation()}
-            onChange={() => onToggleDone(todo)}
-            className="todo-card-checkbox"
-          />
+          {/* 完成态走 toolbar 里的 Done / Restore 按钮，不再用左上角 checkbox */}
           <div className="todo-card-main">
             <div className="todo-card-title-row">
               <div className="todo-card-title" title={todo.title}>{todo.title}</div>
@@ -234,6 +228,29 @@ export function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo =
             </Tooltip>
           </Dropdown>
           {/* 子待办创建入口已退役（DB parent_id 字段保留；存量子待办在 StatusBoard 里平铺显示） */}
+          {todo.status === 'done' ? (
+            <Tooltip title={t('todo:card.restoreTooltip', { defaultValue: '恢复为待办' })}>
+              <Button
+                size="small"
+                icon={<RotateCcw size={13} />}
+                onClick={(e) => { e.stopPropagation(); onToggleDone(todo) }}
+                className="todo-primary-action"
+              >
+                {t('todo:card.restore', { defaultValue: 'Restore' })}
+              </Button>
+            </Tooltip>
+          ) : (
+            <Tooltip title={t('todo:card.doneTooltip', { defaultValue: '标记为已完成' })}>
+              <Button
+                size="small"
+                icon={<CheckCircle2 size={13} />}
+                onClick={(e) => { e.stopPropagation(); onToggleDone(todo) }}
+                className="todo-primary-action"
+              >
+                {t('todo:card.done', { defaultValue: 'Done' })}
+              </Button>
+            </Tooltip>
+          )}
           <Popconfirm
             title={t('todo:card.deleteConfirm')}
             okButtonProps={{ danger: true }}
