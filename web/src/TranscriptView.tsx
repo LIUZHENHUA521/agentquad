@@ -6,7 +6,7 @@ import {
   ReloadOutlined, BranchesOutlined, SearchOutlined,
   StopOutlined, PoweroffOutlined,
 } from '@ant-design/icons'
-import { AlertTriangle, Check, X as XIcon, MessageSquare } from 'lucide-react'
+import { AlertTriangle, Check, X as XIcon } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { diffLines } from 'diff'
@@ -516,11 +516,9 @@ const MAX_HEIGHT = 1200
 function PermissionCard({
   sessionId,
   prompt,
-  onCustomize,
 }: {
   sessionId: string
   prompt: PermissionPrompt
-  onCustomize: () => void
 }) {
   const { t } = useTranslation(['transcript'])
   const { message } = useAppMessages()
@@ -609,15 +607,6 @@ function PermissionCard({
               </button>
             </>
           )}
-        <button
-          className="tv-permission-btn tv-permission-btn--ghost"
-          disabled={sending}
-          onClick={onCustomize}
-          title={t('transcript:permission.customHint')}
-        >
-          <MessageSquare size={14} aria-hidden />
-          {t('transcript:permission.custom')}
-        </button>
         {sentLabel
           ? <span className={'tv-permission-hint' + (warn ? ' tv-permission-hint--warn' : '')}>
               {warn
@@ -657,9 +646,6 @@ export default function TranscriptView({ todoId, sessionId, onFork, autoRefreshM
   const sawRunningSinceLastFlushRef = useRef(true)
   const lastFlushAtRef = useRef(0)
   const flushFallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  // 用户点了"自定义答复"折叠卡片后，记录被折叠的那一轮 permissionPrompt.createdAt。
-  // 后端再次广播同一轮（createdAt 没变）就保持折叠；新一轮（createdAt 变了）卡片重新出现。
-  const [permissionCardDismissedAt, setPermissionCardDismissedAt] = useState<number | null>(null)
   const composerRef = useRef<any>(null)
   // jsonl 只有消息收尾才落盘；服务端推来的 PTY 实时文本不再直接展示，
   // 这里只保留它作为"AI 正在生成"的信号。
@@ -1559,18 +1545,10 @@ export default function TranscriptView({ todoId, sessionId, onFork, autoRefreshM
         const liveBackedPending = liveStatus === 'pending_confirm' || data?.session.status === 'pending_confirm'
         const prompt = transcriptLiveSession?.permissionPrompt
         if (!liveBackedPending || !prompt) return null
-        if (permissionCardDismissedAt === prompt.createdAt) return null
         return (
           <PermissionCard
             sessionId={sessionId}
             prompt={prompt}
-            onCustomize={() => {
-              setPermissionCardDismissedAt(prompt.createdAt)
-              // 让用户立刻能开始打字
-              window.setTimeout(() => {
-                try { composerRef.current?.focus?.() } catch { /* ignore */ }
-              }, 0)
-            }}
           />
         )
       })()}

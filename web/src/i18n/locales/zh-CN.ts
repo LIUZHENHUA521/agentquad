@@ -518,8 +518,6 @@ const zh = {
       title: 'AI 等待授权',
       allow: '允许（Enter）',
       deny: '拒绝（Esc）',
-      custom: '自定义答复',
-      customHint: '隐藏卡片，在下方输入框自由回复',
       noPromptText: '（未取到 prompt 原文，可切到 Live tab 查看）',
       sent: '已发送：{{label}}',
       timeoutWarn: '发送了"{{label}}"但会话仍在等待，建议切 Live 检查',
