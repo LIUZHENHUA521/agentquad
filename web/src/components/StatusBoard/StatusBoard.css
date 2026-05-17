@@ -124,7 +124,8 @@
 .session-card {
   background: var(--surface-1);
   border: 1px solid var(--border-subtle);
-  border-radius: var(--ant-border-radius, 6px);
+  /* 锐角：跟看板列分隔线 + accent 左 rail 视觉对齐，不再用 6px 圆角 */
+  border-radius: 0;
   padding: 12px;
   cursor: pointer;
   position: relative;
