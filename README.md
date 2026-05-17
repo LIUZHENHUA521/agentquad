@@ -22,7 +22,7 @@ Local-first · MCP-ready · Telegram-friendly
 
 ## What is AgentQuad?
 
-AgentQuad is a **local-first task scheduler** built around the Eisenhower matrix. Each todo card can spin up an embedded **Claude Code** or **Codex** terminal session, so the work and the AI assistant live side-by-side instead of in two different tools.
+AgentQuad is a **local-first AI task scheduler**. A 4-lane status board (Backlog · In Progress · Needs Input · Idle) where every todo can be dispatched to an **agent** — a saved system prompt — and run inside an embedded **Claude Code**, **Codex**, or **Cursor** terminal session. The "Quad" is four columns now, not four Eisenhower quadrants — same idea of a 4-cell scheduler, different axis. Work and AI live side-by-side instead of in two different tools.
 
 - ❌ **Not Linear / Todoist** — they can't host AI terminals inside cards.
 - ❌ **Not Cursor / Aider** — they don't manage tasks or schedule work across projects.
@@ -74,8 +74,9 @@ agentquad doctor
 
 ## Features
 
-- **Eisenhower quadrant board** with drag-and-drop across Q1–Q4
-- **One Claude / Codex terminal per todo** — sessions persisted and resumable
+- **Status-driven 4-column board** — Backlog / In Progress / Needs Input / Idle, sessions auto-flow between lanes
+- **Named Agents** — save reusable system prompts (Coder, Reviewer, Researcher…) and dispatch them to any todo
+- **One terminal per session** — Claude / Codex / Cursor, persistent and resumable; multiple concurrent sessions per todo OK
 - **Searchable session logs** stored locally as JSONL; no cloud upload
 - **Weekly / monthly stats** with token cost estimation (model prices configurable)
 - **Local-first** — SQLite + filesystem, your data never leaves your laptop
