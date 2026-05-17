@@ -135,10 +135,7 @@ const en = {
       statusNeedsInput: 'Needs Input',
       statusIdle: 'Idle',
     },
-    agentSidebar: {
-      title: 'Roster',
-      newAgentBtn: '+ Hire agent',
-    },
+    // agentSidebar.* keys retired (sidebar removed)
     dropPlaceholder: 'Drop tasks here',
     workDirPrompt: 'Pick todo work directory',
     recurring: {
