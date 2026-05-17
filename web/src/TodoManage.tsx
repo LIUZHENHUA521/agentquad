@@ -30,7 +30,7 @@ import dayjs from 'dayjs'
 import {
   listTodos, createTodo, updateTodo, deleteTodo,
   startAiExec, deleteTodoAiSession,
-  openTraeCN, openTerminal, openNativeAiResume, updateSessionLabel,
+  openTraeCN, openTerminal, openNativeAiResume,
   listLiveSessions,
   listTemplates, PromptTemplate,
   createRecurringRule,
@@ -763,15 +763,6 @@ export default function TodoManage() {
     }
   }
 
-  const handleUpdateSessionLabel = useCallback(async (todo: Todo, session: Todo['aiSessions'][number], label: string) => {
-    try {
-      await updateSessionLabel(todo.id, session.sessionId, label)
-      fetchTodos()
-    } catch (e: any) {
-      message.error(e?.message || t('errors:updateTitleFailed'))
-    }
-  }, [fetchTodos, t])
-
   const handleDeleteAiSession = useCallback(async (todo: Todo, session: Todo['aiSessions'][number], currentSessionId?: string | null) => {
     try {
       const nextTodo = await deleteTodoAiSession(todo.id, session.sessionId)
@@ -1218,7 +1209,6 @@ export default function TodoManage() {
                       onAiExec={handleAiExec}
                       onRequestFork={handleRequestFork}
                       onDeleteAiSession={handleDeleteAiSession}
-                      onUpdateSessionLabel={handleUpdateSessionLabel}
                       onDelete={handleDelete}
                       onOpenTrae={handleOpenTrae}
                       onOpenTerminal={handleOpenTerminal}
@@ -1296,7 +1286,6 @@ export default function TodoManage() {
                 onAiExec={handleAiExec}
                 onRequestFork={handleRequestFork}
                 onDeleteAiSession={handleDeleteAiSession}
-                onUpdateSessionLabel={handleUpdateSessionLabel}
                 onDelete={handleDelete}
                 onOpenTrae={handleOpenTrae}
                 onOpenTerminal={handleOpenTerminal}

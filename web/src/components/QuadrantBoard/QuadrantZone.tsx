@@ -17,7 +17,6 @@ export interface QuadrantZoneProps {
   onToggleDone: (t: Todo) => void
   onAiExec: (todo: Todo, tool: AiTool, session?: Todo['aiSessions'][number]) => void
   onDeleteAiSession: (todo: Todo, session: Todo['aiSessions'][number], currentSessionId?: string | null) => void
-  onUpdateSessionLabel: (todo: Todo, session: Todo['aiSessions'][number], label: string) => void
   onDelete: (t: Todo) => void
   onOpenTrae: (todo: Todo, editor?: 'trae-cn' | 'trae' | 'cursor') => void
   onOpenTerminal: (todo: Todo) => void
@@ -30,7 +29,7 @@ export interface QuadrantZoneProps {
   highlightTodoId?: string | null
 }
 
-export function QuadrantZone({ config, todos, childrenByParentId, childHitIdsByParentId, onCreateSubtodo, onCardClick, onToggleDone, onAiExec, onDeleteAiSession, onUpdateSessionLabel, onDelete, onOpenTrae, onOpenTerminal, onOpenNativeResume, onExport, style, isNarrow, onRequestFork, onRefresh, highlightTodoId }: QuadrantZoneProps) {
+export function QuadrantZone({ config, todos, childrenByParentId, childHitIdsByParentId, onCreateSubtodo, onCardClick, onToggleDone, onAiExec, onDeleteAiSession, onDelete, onOpenTrae, onOpenTerminal, onOpenNativeResume, onExport, style, isNarrow, onRequestFork, onRefresh, highlightTodoId }: QuadrantZoneProps) {
   const { t } = useTranslation(['todo'])
   const { setNodeRef, isOver } = useDroppable({ id: `quadrant-${config.q}` })
 
@@ -57,7 +56,6 @@ export function QuadrantZone({ config, todos, childrenByParentId, childHitIdsByP
             onAiExec={onAiExec}
             onRequestFork={onRequestFork}
             onDeleteAiSession={onDeleteAiSession}
-            onUpdateSessionLabel={onUpdateSessionLabel}
             onDelete={onDelete}
             onOpenTrae={onOpenTrae}
             onOpenTerminal={onOpenTerminal}

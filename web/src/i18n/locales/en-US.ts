@@ -197,8 +197,6 @@ const en = {
       startCursor: 'Start Cursor',
       addSubtodo: 'Add subtodo',
       deleteConfirm: 'Delete?',
-      sessionLabelPlaceholder: 'Enter session title...',
-      editLabelTooltip: 'Edit title',
       localResumedTooltip: 'Resumed in local terminal at: {{time}}',
       localResumedShort: 'Local resumed · {{time}}',
       liveRunningElapsed: 'Turn {{ago}}',

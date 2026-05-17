@@ -448,14 +448,6 @@ export async function forkAiSession(todoId: string, sessionId: string, input: {
   return body
 }
 
-export async function updateSessionLabel(todoId: string, sessionId: string, label: string): Promise<Todo> {
-  const body = await jsonFetch<{ ok: true; todo: Todo }>(`/api/todos/${todoId}/ai-sessions/${sessionId}`, {
-    method: 'PATCH',
-    body: JSON.stringify({ label }),
-  })
-  return body.todo
-}
-
 export async function deleteTodoAiSession(todoId: string, sessionId: string): Promise<Todo> {
   const body = await jsonFetch<{ ok: true; todo: Todo }>(`/api/todos/${todoId}/ai-sessions/${sessionId}`, {
     method: 'DELETE',

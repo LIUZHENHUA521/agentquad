@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { Button, Tooltip, Dropdown, Popconfirm, Tag, Input } from 'antd'
-import { Plus, Trash2, Clock, Play, Code, Pencil, ChevronDown, ChevronRight, CornerDownLeft, AlertTriangle, CheckCircle2, RotateCcw, Bot } from 'lucide-react'
+import { Button, Tooltip, Dropdown, Popconfirm, Tag } from 'antd'
+import { Plus, Trash2, Clock, Play, Code, ChevronDown, ChevronRight, CornerDownLeft, AlertTriangle, CheckCircle2, RotateCcw, Bot } from 'lucide-react'
 import { useSortable, SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import dayjs from 'dayjs'
@@ -52,7 +52,6 @@ export interface SortableTodoCardProps {
   onToggleDone: (t: Todo) => void
   onAiExec: (todo: Todo, tool: AiTool, session?: Todo['aiSessions'][number]) => void
   onDeleteAiSession: (todo: Todo, session: Todo['aiSessions'][number], currentSessionId?: string | null) => void
-  onUpdateSessionLabel: (todo: Todo, session: Todo['aiSessions'][number], label: string) => void
   onDelete: (t: Todo) => void
   onOpenTrae: (todo: Todo, editor?: 'trae-cn' | 'trae' | 'cursor') => void
   onOpenTerminal: (todo: Todo) => void
@@ -68,11 +67,9 @@ export interface SortableTodoCardProps {
 // 避免 running / pending_confirm 期间因为 nativeId 还没到位而误报。
 const TERMINAL_AI_STATUSES = new Set<string>(['done', 'failed', 'stopped'])
 
-export function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo = false, agents = [], onCreateSubtodo, onClick, onToggleDone, onAiExec, onDeleteAiSession, onUpdateSessionLabel, onDelete, onOpenTrae, onOpenTerminal, onOpenNativeResume, onExport, isNarrow, onRequestFork, onRefresh, highlightTodoId }: SortableTodoCardProps) {
+export function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo = false, agents = [], onCreateSubtodo, onClick, onToggleDone, onAiExec, onDeleteAiSession, onDelete, onOpenTrae, onOpenTerminal, onOpenNativeResume, onExport, isNarrow, onRequestFork, onRefresh, highlightTodoId }: SortableTodoCardProps) {
   const { message } = useAppMessages()
   const { t } = useTranslation(['todo', 'errors', 'session'])
-  const [editingLabelSessionId, setEditingLabelSessionId] = useState<string | null>(null)
-  const [editingLabelText, setEditingLabelText] = useState('')
   const [childrenExpanded, setChildrenExpanded] = useState(true)
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: todoDndId(todo) })
   const style = {
@@ -299,51 +296,6 @@ export function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo =
                   >
                     <div className="todo-history-body">
                       <div className="todo-history-headline">
-                        {editingLabelSessionId === session.sessionId ? (
-                          <Input
-                            size="small"
-                            value={editingLabelText}
-                            onChange={(e) => setEditingLabelText(e.target.value)}
-                            onPressEnter={() => {
-                              onUpdateSessionLabel(todo, session, editingLabelText)
-                              setEditingLabelSessionId(null)
-                            }}
-                            onBlur={() => {
-                              onUpdateSessionLabel(todo, session, editingLabelText)
-                              setEditingLabelSessionId(null)
-                            }}
-                            onClick={(e) => e.stopPropagation()}
-                            placeholder={t('todo:card.sessionLabelPlaceholder')}
-                            autoFocus
-                            style={{ width: 160, height: 22, fontSize: 11 }}
-                          />
-                        ) : session.label ? (
-                          <Tag
-                            className="todo-history-label"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              setEditingLabelSessionId(session.sessionId)
-                              setEditingLabelText(session.label || '')
-                            }}
-                            title={t('todo:card.editLabelTooltip')}
-                            style={{ cursor: 'pointer', margin: 0, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                          >
-                            {session.label}
-                          </Tag>
-                        ) : (
-                          <Tag
-                            className="todo-history-label-empty"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              setEditingLabelSessionId(session.sessionId)
-                              setEditingLabelText('')
-                            }}
-                            title={t('todo:card.editLabelTooltip')}
-                            style={{ cursor: 'pointer', margin: 0, borderStyle: 'dashed', display: 'inline-flex', alignItems: 'center' }}
-                          >
-                            <Pencil size={10} />
-                          </Tag>
-                        )}
                         <span className="todo-history-tool">
                           <AgentIcon tool={session.tool} />
                           {toolDisplayName(session.tool)}
@@ -477,7 +429,6 @@ export function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo =
                       onAiExec={onAiExec}
                       onRequestFork={onRequestFork}
                       onDeleteAiSession={onDeleteAiSession}
-                      onUpdateSessionLabel={onUpdateSessionLabel}
                       onDelete={onDelete}
                       onOpenTrae={onOpenTrae}
                       onOpenTerminal={onOpenTerminal}
