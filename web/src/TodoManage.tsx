@@ -1377,17 +1377,37 @@ export default function TodoManage() {
           </Form.Item>
           {/* 指派 Agent — 单选，可选；选了即代表"创建后立即派他干活"（autoStart=true）。
               不选 = 仅创建 todo，等用户手动 Start。所以原先的"创建后自动启动 AI" 开关
-              和"启用模板"开关一并退役。 */}
+              和"启用模板"开关一并退役。
+              下拉里置顶一个"自由模式"显式 item，跟 TodoCard 的派活下拉对齐——
+              比让用户去摸 allowClear 的 × 直观得多。点它走 normalize 把表单值还原成
+              undefined，Select 仍显示 placeholder，提交时进 else 分支不起会话。 */}
           <Form.Item
             name="agentId"
             label={t('todo:form.agentLabel')}
             extra={t('todo:form.agentExtra')}
+            normalize={(v) => (v === '__noAgent__' ? undefined : v)}
           >
             <Select
               allowClear
               placeholder={templates.length ? t('todo:form.agentPlaceholder') : t('todo:form.appliedTemplatesEmpty')}
-              options={templates.map(tpl => ({ value: tpl.id, label: tpl.builtin ? t('todo:form.templateBuiltinLabel', { name: tpl.name }) : tpl.name }))}
-              optionFilterProp="label"
+              options={[
+                {
+                  value: '__noAgent__',
+                  // 自由模式 label 留纯字符串：search filter 不会因为 JSX 崩；
+                  // 视觉上的"特殊性"用 optionRender 单独处理。
+                  label: t('todo:card.dispatchNoAgent', { defaultValue: '自由模式（不指派 agent）' }),
+                },
+                ...templates.map(tpl => ({ value: tpl.id, label: tpl.builtin ? t('todo:form.templateBuiltinLabel', { name: tpl.name }) : tpl.name })),
+              ]}
+              optionRender={(option) => option.value === '__noAgent__'
+                ? <span style={{ fontStyle: 'italic', opacity: 0.85 }}>{option.label as string}</span>
+                : (option.label as React.ReactNode)
+              }
+              // 自由模式 item 始终展示在顶部，不参与文字过滤
+              filterOption={(input, option) => {
+                if (option?.value === '__noAgent__') return true
+                return String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+              }}
               showSearch
             />
           </Form.Item>
