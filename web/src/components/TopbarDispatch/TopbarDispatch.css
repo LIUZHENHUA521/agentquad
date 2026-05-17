@@ -242,10 +242,15 @@
 }
 .topbar-filter-icon {
   width: 16px;
-  display: inline-grid;
-  place-items: center;
-  font-family: var(--font-mono);
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
   color: var(--text-tertiary);
+}
+.topbar-filter-icon svg {
+  display: block;
 }
 .topbar-filter-row.is-active .topbar-filter-icon {
   color: var(--accent-electric);

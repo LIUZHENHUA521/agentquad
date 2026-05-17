@@ -1,15 +1,15 @@
-import { useState } from 'react'
+import { useState, type ComponentType } from 'react'
 import { Popover } from 'antd'
-import { ListFilter } from 'lucide-react'
+import { Asterisk, Check, Circle, ListFilter, type LucideProps } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useDispatchStore, type BoardFilter } from '../../store/dispatchStore'
 
 const ORDER: BoardFilter[] = ['todo', 'done', 'all']
 
-const ICONS: Record<BoardFilter, string> = {
-  todo: '●',
-  done: '✓',
-  all: '∗',
+const ICONS: Record<BoardFilter, ComponentType<LucideProps>> = {
+  todo: Circle,
+  done: Check,
+  all: Asterisk,
 }
 
 export function BoardFilterPill() {
@@ -33,6 +33,7 @@ export function BoardFilterPill() {
     <div className="topbar-filter-list">
       {ORDER.map((value) => {
         const active = value === boardFilter
+        const Icon = ICONS[value]
         return (
           <button
             key={value}
@@ -44,7 +45,7 @@ export function BoardFilterPill() {
             }}
             data-testid={`topbar-filter-option-${value}`}
           >
-            <span className="topbar-filter-icon">{ICONS[value]}</span>
+            <span className="topbar-filter-icon"><Icon size={13} strokeWidth={2} /></span>
             <span>{optionFor(value)}</span>
           </button>
         )
