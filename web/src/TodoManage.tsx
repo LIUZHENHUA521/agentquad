@@ -34,6 +34,7 @@ import {
   listLiveSessions,
   listTemplates, PromptTemplate,
   createRecurringRule,
+  editorLabel, isEditorKind, type EditorKind,
   RecurringFrequency, RecurringRule,
   Todo, Quadrant, AiTool,
   runWiki, getWikiPending,
@@ -1066,10 +1067,17 @@ export default function TodoManage() {
     }
   }
 
-  const handleOpenTrae = useCallback(async (todo: Todo, editor: 'trae-cn' | 'trae' | 'cursor' = (localStorage.getItem('quadtodo.editor') as any) || 'trae-cn') => {
+  const handleOpenTrae = useCallback(async (todo: Todo, editorArg?: EditorKind) => {
+    let editor: EditorKind = editorArg ?? 'trae-cn'
+    if (!editorArg) {
+      try {
+        const saved = localStorage.getItem('quadtodo.editor')
+        if (isEditorKind(saved)) editor = saved
+      } catch {}
+    }
     try { localStorage.setItem('quadtodo.editor', editor) } catch {}
     const cwd = todo.workDir || undefined
-    const label = editor === 'trae-cn' ? 'Trae CN' : editor === 'trae' ? 'Trae' : 'Cursor'
+    const label = editorLabel(editor)
     try {
       await openTraeCN(cwd || '', editor)
       message.success(t('todo:message.openedEditor', { label }))

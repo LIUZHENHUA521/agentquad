@@ -12,7 +12,7 @@ import { FitAddon } from '@xterm/addon-fit'
 import { CanvasAddon } from '@xterm/addon-canvas'
 import { Unicode11Addon } from '@xterm/addon-unicode11'
 import '@xterm/xterm/css/xterm.css'
-import { getTerminalWsUrl, startAiExec, stopAiExec, openTraeCN, TodoStatus, ResumeSessionInput, EditorKind, ApiError } from './api'
+import { getTerminalWsUrl, startAiExec, stopAiExec, openTraeCN, isEditorKind, TodoStatus, ResumeSessionInput, EditorKind, ApiError } from './api'
 import { useTerminalTheme } from './hooks/useTerminalTheme'
 import { PRESET_LABELS, PRESET_ORDER, TerminalPresetName, TERMINAL_PRESETS, deriveChrome, getTokenDrivenTheme } from './terminalThemes'
 import { useTheme } from './design/ThemeProvider'
@@ -608,8 +608,8 @@ export default function AiTerminalMini({ sessionId, todoId, status, cwd, resumeT
                       if (!base) return
                       let editor: EditorKind = 'trae-cn'
                       try {
-                        const saved = localStorage.getItem('quadtodo.editor') as EditorKind | null
-                        if (saved === 'trae' || saved === 'trae-cn' || saved === 'cursor') editor = saved
+                        const saved = localStorage.getItem('quadtodo.editor')
+                        if (isEditorKind(saved)) editor = saved
                       } catch {}
                       openTraeCN(base, editor, hit, sessionId).catch((err) => {
                         console.warn('[AiTerminalMini] open link failed:', err)

@@ -5,7 +5,7 @@ import { useSortable, SortableContext, verticalListSortingStrategy } from '@dnd-
 import { CSS } from '@dnd-kit/utilities'
 import dayjs from 'dayjs'
 import { useTranslation } from 'react-i18next'
-import { updateTodo, type Todo, type AiTool, type StageTag, type LiveSession, type PromptTemplate } from '../../api'
+import { updateTodo, type Todo, type AiTool, type StageTag, type LiveSession, type PromptTemplate, type EditorKind } from '../../api'
 import { useAppConfigStore } from '../../store/appConfigStore'
 import { StageTagChip } from '../StageTagChip'
 import { AgentIcon } from '../AgentIcon'
@@ -53,7 +53,7 @@ export interface SortableTodoCardProps {
   onAiExec: (todo: Todo, tool: AiTool, session?: Todo['aiSessions'][number]) => void
   onDeleteAiSession: (todo: Todo, session: Todo['aiSessions'][number], currentSessionId?: string | null) => void
   onDelete: (t: Todo) => void
-  onOpenTrae: (todo: Todo, editor?: 'trae-cn' | 'trae' | 'cursor') => void
+  onOpenTrae: (todo: Todo, editor?: EditorKind) => void
   onOpenTerminal: (todo: Todo) => void
   onOpenNativeResume: (todo: Todo, session: Todo['aiSessions'][number]) => void
   onExport: (todo: Todo) => void

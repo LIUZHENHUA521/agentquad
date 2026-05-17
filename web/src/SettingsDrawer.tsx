@@ -8,7 +8,7 @@ import { useEffect, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { markdownComponents } from './markdownComponents'
-import { getConfig, updateConfig, AppConfig, pickDirectory, ToolDiagnostic, testTelegram, testLark, listTemplates, type ProbeHit, type DispatchChannelConfig, type PromptTemplate } from './api'
+import { getConfig, updateConfig, AppConfig, pickDirectory, ToolDiagnostic, testTelegram, testLark, listTemplates, EDITOR_KINDS, EDITOR_LABELS, isEditorKind, type EditorKind, type ProbeHit, type DispatchChannelConfig, type PromptTemplate } from './api'
 import { useAppConfigStore } from './store/appConfigStore'
 import { TelegramProbeModal } from './TelegramProbeModal'
 import telegramSetupMd from '../../docs/TELEGRAM-setup.md?raw'
@@ -111,11 +111,11 @@ export default function SettingsDrawer({ open, onClose }: Props) {
   const [err, setErr] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [pickingDefaultCwd, setPickingDefaultCwd] = useState(false)
-  const [linkEditor, setLinkEditor] = useState<'trae-cn' | 'trae' | 'cursor'>(() => {
+  const [linkEditor, setLinkEditor] = useState<EditorKind>(() => {
     try {
       // rebrand: localStorage key kept for backward compatibility
       const v = localStorage.getItem('quadtodo.editor')
-      return v === 'trae' || v === 'cursor' ? v : 'trae-cn'
+      return isEditorKind(v) ? v : 'trae-cn'
     } catch { return 'trae-cn' }
   })
   const [probeOpen, setProbeOpen] = useState(false)
@@ -575,15 +575,15 @@ export default function SettingsDrawer({ open, onClose }: Props) {
             <Radio.Group
               value={linkEditor}
               onChange={(e) => {
-                const v = e.target.value as 'trae-cn' | 'trae' | 'cursor'
+                const v = e.target.value as EditorKind
                 setLinkEditor(v)
                 // rebrand: localStorage key kept for backward compatibility
                 try { localStorage.setItem('quadtodo.editor', v) } catch {}
               }}
             >
-              <Radio.Button value="trae-cn">Trae CN</Radio.Button>
-              <Radio.Button value="trae">Trae</Radio.Button>
-              <Radio.Button value="cursor">Cursor</Radio.Button>
+              {EDITOR_KINDS.map((k) => (
+                <Radio.Button key={k} value={k}>{EDITOR_LABELS[k]}</Radio.Button>
+              ))}
             </Radio.Group>
           </Form.Item>
 

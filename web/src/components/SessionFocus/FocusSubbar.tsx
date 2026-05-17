@@ -8,7 +8,7 @@ import { useAiSessionStore } from '../../store/aiSessionStore'
 import { useDispatchStore } from '../../store/dispatchStore'
 import { useAppConfigStore } from '../../store/appConfigStore'
 import type { AiStatus, AiTool, EditorKind } from '../../api'
-import { startAiExec, openTraeCN, ApiError } from '../../api'
+import { startAiExec, openTraeCN, editorLabel, isEditorKind, ApiError } from '../../api'
 import { deriveAiState, AI_STATE_PILL_LABEL_KEY, isClosedAiStatus } from '../../design/aiPresentationState'
 import { useUnreadStore, isSessionUnread } from '../../store/unreadStore'
 import type { AutoModeController } from '../../AiTerminalMini'
@@ -76,9 +76,9 @@ export function FocusSubbar({
     let editor: EditorKind = 'trae-cn'
     try {
       const saved = localStorage.getItem('quadtodo.editor')
-      if (saved === 'trae' || saved === 'trae-cn' || saved === 'cursor') editor = saved
+      if (isEditorKind(saved)) editor = saved
     } catch {}
-    const label = editor === 'trae-cn' ? 'Trae CN' : editor === 'trae' ? 'Trae' : 'Cursor'
+    const label = editorLabel(editor)
     try {
       await openTraeCN(editorCwd, editor)
       message.success(t('todo:message.openedEditor', { label }))

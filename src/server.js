@@ -882,10 +882,17 @@ export function createServer(opts = {}) {
 		}
 	});
 
+	// All entries here share the VSCode-family CLI contract: `--new-window <cwd>` opens
+	// the workspace, `--goto file:line:col` jumps. New editors only fit here if they
+	// honor those two flags — otherwise extend the spawn logic below per-editor.
 	const EDITOR_BINS = {
 		"trae-cn": "/Applications/Trae CN.app/Contents/Resources/app/bin/trae-cn",
 		"trae": "/Applications/Trae.app/Contents/Resources/app/bin/trae",
 		"cursor": "/Applications/Cursor.app/Contents/Resources/app/bin/cursor",
+		"vscode": "/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code",
+		"vscode-insiders":
+			"/Applications/Visual Studio Code - Insiders.app/Contents/Resources/app/bin/code",
+		"windsurf": "/Applications/Windsurf.app/Contents/Resources/app/bin/windsurf",
 	};
 
 	app.post("/api/system/open-trae", (req, res) => {

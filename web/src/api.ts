@@ -565,7 +565,28 @@ export async function pickDirectory(input: {
   return { path: body.path, cancelled: body.cancelled }
 }
 
-export type EditorKind = 'trae-cn' | 'trae' | 'cursor'
+export type EditorKind = 'trae-cn' | 'trae' | 'cursor' | 'vscode' | 'vscode-insiders' | 'windsurf'
+
+export const EDITOR_KINDS: readonly EditorKind[] = [
+  'trae-cn', 'trae', 'cursor', 'vscode', 'vscode-insiders', 'windsurf',
+] as const
+
+export const EDITOR_LABELS: Record<EditorKind, string> = {
+  'trae-cn': 'Trae CN',
+  trae: 'Trae',
+  cursor: 'Cursor',
+  vscode: 'VS Code',
+  'vscode-insiders': 'VS Code Insiders',
+  windsurf: 'Windsurf',
+}
+
+export function isEditorKind(v: unknown): v is EditorKind {
+  return typeof v === 'string' && (EDITOR_KINDS as readonly string[]).includes(v)
+}
+
+export function editorLabel(editor: EditorKind): string {
+  return EDITOR_LABELS[editor]
+}
 
 export async function openTraeCN(cwd: string, editor: EditorKind = 'trae-cn', path?: string, sessionId?: string): Promise<void> {
   await jsonFetch('/api/system/open-trae', {
