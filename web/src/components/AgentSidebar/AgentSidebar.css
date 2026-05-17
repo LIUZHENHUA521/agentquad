@@ -9,13 +9,14 @@
   flex-direction: column;
   min-height: 0;
   background: var(--ant-color-bg-container);
-  border-right: 1px solid var(--ant-color-border-secondary);
+  /* 用 --border-default 而非 colorBorderSecondary：light 主题下 0.05 太淡，看不到分隔 */
+  border-right: 1px solid var(--border-default);
   overflow: hidden;
 }
 
 .agent-sidebar-head {
   padding: 14px 16px 12px;
-  border-bottom: 1px solid var(--ant-color-border-secondary);
+  border-bottom: 1px solid var(--border-default);
   display: flex;
   align-items: baseline;
   justify-content: space-between;
@@ -184,7 +185,7 @@
 
 .agent-sidebar-foot {
   padding: 12px 16px;
-  border-top: 1px solid var(--ant-color-border-secondary);
+  border-top: 1px solid var(--border-default);
 }
 .agent-sidebar-foot .new-agent-btn {
   width: 100%;

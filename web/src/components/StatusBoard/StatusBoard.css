@@ -29,7 +29,9 @@
   min-width: 220px;
   display: flex;
   flex-direction: column;
-  border-right: 1px solid var(--ant-color-border-secondary);
+  /* 用 --border-default (rgba 0/0/0 0.10 light / rgba 255/255/255 0.10 dark)，
+     比 colorBorderSecondary (0.05) 在亮色主题下能看见 */
+  border-right: 1px solid var(--border-default);
   background: var(--ant-color-bg-container, transparent);
   position: relative;
   min-height: 0;
@@ -38,7 +40,7 @@
 
 .status-board-col-head {
   padding: 14px 16px 12px;
-  border-bottom: 1px solid var(--ant-color-border-secondary);
+  border-bottom: 1px solid var(--border-default);
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
