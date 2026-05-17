@@ -233,69 +233,11 @@ export function TopbarDispatch({ unreadItems, onJump, onFocusSession, onStopSess
         <span>AgentQuad</span>
       </div>
 
-      <Popover
-        open={runningOpen}
-        onOpenChange={setRunningOpen}
-        trigger="hover"
-        mouseEnterDelay={0.15}
-        mouseLeaveDelay={0.15}
-        placement="bottomLeft"
-        overlayClassName="topbar-pending-popover"
-        content={runningPopoverContent}
-      >
-        <span data-testid="stat-running-trigger">
-          <StatPill
-            icon={<Zap size={13} />}
-            iconColor="var(--ai-running)"
-            value={runningCount}
-            label={t('topbar:statLabel.running')}
-            data-testid="stat-running"
-          />
-        </span>
-      </Popover>
-
-      <Popover
-        open={idleOpen}
-        onOpenChange={setIdleOpen}
-        trigger="hover"
-        mouseEnterDelay={0.15}
-        mouseLeaveDelay={0.15}
-        placement="bottomLeft"
-        overlayClassName="topbar-pending-popover"
-        content={idlePopoverContent}
-      >
-        <span data-testid="stat-idle-trigger">
-          <StatPill
-            icon={<Pause size={13} />}
-            iconColor="var(--ai-idle)"
-            value={idleCount}
-            label={t('topbar:statLabel.idle')}
-            data-testid="stat-idle"
-          />
-        </span>
-      </Popover>
-
-      <Popover
-        open={pendingOpen}
-        onOpenChange={setPendingOpen}
-        trigger="hover"
-        mouseEnterDelay={0.15}
-        mouseLeaveDelay={0.15}
-        placement="bottomLeft"
-        overlayClassName="topbar-pending-popover"
-        content={pendingPopoverContent}
-      >
-        <span data-testid="stat-pending-trigger">
-          <StatPill
-            variant={pendingCount > 0 ? 'alert' : 'default'}
-            icon={<MessageCircleWarning size={13} />}
-            iconColor="var(--ai-pending-confirm)"
-            value={pendingCount}
-            label={t('topbar:pendingLabel')}
-            data-testid="stat-pending"
-          />
-        </span>
-      </Popover>
+      {/* 运行中 / 空闲 / 待确认 三个 StatPill 已退役 —— StatusBoard 的 4 列
+          列头已经带了同样的计数；topbar 上再放一份就是冗余。
+          Popover content（runningPopoverContent / idlePopoverContent /
+          pendingPopoverContent）以及它们依赖的 hover 状态仍保留，CommandPalette
+          / 快捷键路径可能还引用，等下次清理再扫除。 */}
 
       <div className="topbar-spacer" />
 
