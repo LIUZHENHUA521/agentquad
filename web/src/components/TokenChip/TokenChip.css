@@ -1,17 +1,20 @@
 /* Token 用量 tag —— ≥80% context 时换橙色背景作为压缩临近的视觉警示；
-   具体 % 在 tooltip 里。tool=cursor 时显示 N/A 占位（视觉对齐，避免漏字段）。 */
+   具体 % 在 tooltip 里。tool=cursor 时显示 N/A 占位（视觉对齐，避免漏字段）。
+   line-height 跟 padding 是按"bg-box ≈ 周围文本行高"调的：line-height 1.4
+   + 上下 1px padding，整体 ~17px，正好跟同行的 ⚡/● 等 11px icon + label
+   组合对得齐，不再单独"突出"。改这里前先理解一下 align 逻辑再动。 */
 .token-chip {
   display: inline-flex;
   align-items: center;
   font-size: 11px;
-  line-height: 1;
+  line-height: 1.4;
   color: var(--text-tertiary);
   flex-shrink: 0;
   font-variant-numeric: tabular-nums;
 }
 
 .token-chip-tag {
-  padding: 3px 6px;
+  padding: 1px 6px;
   border-radius: 4px;
   background: color-mix(in srgb, var(--text-tertiary) 14%, transparent);
 }
