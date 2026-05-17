@@ -126,7 +126,7 @@
   border: 1px solid var(--border-subtle);
   /* 锐角：跟看板列分隔线 + accent 左 rail 视觉对齐，不再用 6px 圆角 */
   border-radius: 0;
-  padding: 12px;
+  padding: 9px 12px 12px;
   cursor: pointer;
   position: relative;
   /* FLIP hook 会在搬家时临时注入 transition: transform；hover 等也需要平滑 */
@@ -176,9 +176,10 @@
 .session-card-parent {
   font-family: var(--font-mono);
   font-size: 11px;
+  line-height: 1.3;
   color: var(--ant-color-text-tertiary);
-  margin-bottom: 8px;
-  padding-bottom: 6px;
+  margin: 0 0 6px;
+  padding-bottom: 5px;
   border-bottom: 1px solid var(--ant-color-border-secondary);
   display: flex;
   align-items: center;
@@ -215,17 +216,21 @@
 .session-card-agent {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  margin: 0 0 8px;
-  padding: 2px 8px;
+  gap: 6px;
+  margin: 0 0 10px;
+  padding: 3px 10px 3px 8px;
   max-width: 100%;
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--ant-color-primary) 14%, var(--surface-1));
-  border: 1px solid color-mix(in srgb, var(--ant-color-primary) 38%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ant-color-primary) 16%, transparent);
   color: var(--ant-color-primary);
-  font-size: 11px;
+  font-size: 11.5px;
   font-weight: 600;
-  line-height: 1.4;
+  line-height: 1.45;
+  letter-spacing: 0.01em;
+}
+.session-card-agent svg {
+  opacity: 0.9;
+  flex-shrink: 0;
 }
 .session-card-agent-name {
   overflow: hidden;
