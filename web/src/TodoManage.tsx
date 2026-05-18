@@ -446,12 +446,18 @@ export default function TodoManage() {
 
   const handleStopSession = useCallback(async (sessionId: string) => {
     // 乐观更新：先把 live store 翻 'stopped'，看板的 mergeLiveSession + deriveColumnFor
-    // 立刻把卡片移出"运行中/待确认"列；不等后端 stop 往返 + 3s poll，避免点完 Cancel
-    // 卡片还杵在原地的延迟感。失败时后端真状态会通过 3s poll 兜底回来。
+    // 立刻把卡片移出"运行中/待确认"列；不等后端 stop 往返 + 3s poll。
+    // 配合 aiSessionStore.setSessions 里的"终态单调"守门，3s 轮询不会把它回写成 running。
+    // 但 stop 请求失败时必须回滚，否则会卡死在"假停"状态——server 真在跑，UI 却以为停了。
+    const prev = useAiSessionStore.getState().sessions.get(sessionId)
+    const prevStatus = prev?.status
     try {
       useAiSessionStore.getState().updateSessionStatus(sessionId, 'stopped', Date.now())
     } catch { /* live store 没这条记录无所谓，后端 stopped 事件会兜底 */ }
     stopAiExec(sessionId).catch((e: any) => {
+      if (prevStatus && !['done', 'failed', 'stopped'].includes(prevStatus)) {
+        useAiSessionStore.getState().updateSessionStatus(sessionId, prevStatus, prev?.completedAt ?? null)
+      }
       message.warning(`停止失败：${e?.message || 'unknown'}`)
     })
     useDispatchStore.getState().signal('refreshTodos')

@@ -33,6 +33,11 @@ interface AiSessionState {
 const WINDOW_MS = 5000
 const HISTORY_LEN = 30
 
+const TERMINAL_AI_STATUSES: ReadonlySet<AiStatus> = new Set<AiStatus>(['done', 'failed', 'stopped'])
+function isTerminalAiStatus(status: AiStatus | undefined | null): boolean {
+  return !!status && TERMINAL_AI_STATUSES.has(status)
+}
+
 export const useAiSessionStore = create<AiSessionState>((set) => ({
   sessions: new Map(),
   outputSamples: new Map(),
@@ -40,9 +45,20 @@ export const useAiSessionStore = create<AiSessionState>((set) => ({
   resources: new Map(),
   resourceHistory: new Map(),
 
-  setSessions: (list) => set(() => {
+  setSessions: (list) => set((state) => {
+    // 终态单调：本地已是 stopped/done/failed 的 session，3s 轮询里若 server 还报 running/
+    // pending_confirm（kill 信号已发但 PTY done 事件还没触发的窗口），保持本地终态——
+    // 否则乐观 Cancel 会被轮询回写成"复活"。一个 session 一旦死了不会再活，所以这个
+    // 不变量永远安全；待 server 真的进入终态/被清理时，自然会一致。
     const m = new Map<string, SessionMeta>()
-    for (const s of list) m.set(s.sessionId, s)
+    for (const s of list) {
+      const prev = state.sessions.get(s.sessionId)
+      if (prev && isTerminalAiStatus(prev.status) && !isTerminalAiStatus(s.status)) {
+        m.set(s.sessionId, { ...s, status: prev.status, completedAt: prev.completedAt ?? s.completedAt })
+      } else {
+        m.set(s.sessionId, s)
+      }
+    }
     return { sessions: m }
   }),
 
