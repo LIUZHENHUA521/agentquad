@@ -103,6 +103,13 @@ agentquad mcp status      # 健康检查
 
 → **[docs/TELEGRAM.md](./docs/TELEGRAM.md)**
 
+### 💼 飞书 / Lark（话题群里 @bot 触发任务）
+
+跑一个飞书自建应用（长连接，**无需公网**），在话题群里 @bot 发"帮我做：X"就自动建 todo + 拉起本地 Claude/Codex，过程实时同步到 thread。
+
+→ **新人教程：[docs/LARK-getting-started.md](./docs/LARK-getting-started.md)** — 从装包到飞书 @bot 跑通一条完整路径
+→ 配置参考：[docs/LARK.md](./docs/LARK.md)
+
 ### 🐱 OpenClaw（微信桥接）
 
 把 AgentQuad 接到 [OpenClaw](https://openclaw.ai/) 的微信渠道：在微信里说"帮我做：X"就自动建 todo + 启动 Claude Code，AI 卡到决策点又能在微信里推给你选。
