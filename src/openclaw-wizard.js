@@ -40,8 +40,9 @@ const INTERRUPT_TRIGGERS = [
   /^interrupt$/i,
 ]
 
-import { existsSync, readdirSync, statSync } from 'node:fs'
-import { join, basename } from 'node:path'
+import { existsSync, mkdirSync, readdirSync, statSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { join, basename, dirname, resolve as resolvePath } from 'node:path'
 import { parseCallbackData, buildAnswerReplyText, buildExtendedReplyText, CB_KIND_ANSWER, CB_KIND_EXTEND } from './ask-user-buttons.js'
 import { applySystemRules } from './system-rules.js'
 import { resolveTool } from './dispatch.js'
@@ -89,6 +90,65 @@ function tryExtractWorkdir(text) {
   const m = text.match(/(?:目录|路径|workdir|cwd|文件夹)[:：=\s]+([^\s,，；;]+)/i)
   if (m) return m[1].trim()
   return null
+}
+
+/**
+ * 归一化用户输入的自定义工作目录，必要时新建。
+ *   - `~` / `~/x` → 展开到 $HOME
+ *   - 非绝对路径 → 拒绝
+ *   - 已存在且是目录 → ok
+ *   - 已存在但是文件 → not_dir
+ *   - 不存在 + 父目录存在且是目录 → mkdir -p，标记 created
+ *   - 父目录不存在 / 不是目录 → 拒绝（防 typo 误建）
+ *   - mkdir 抛错 → mkdir_failed (带错误信息)
+ *
+ * 返回 { ok, path?, created?, reason?, message? }
+ */
+function prepareCustomWorkdir(input) {
+  const raw = String(input || '').trim()
+  if (!raw) return { ok: false, reason: 'empty', message: '路径为空' }
+
+  let p = raw
+  if (p === '~') p = homedir()
+  else if (p.startsWith('~/')) p = join(homedir(), p.slice(2))
+
+  if (!p.startsWith('/')) {
+    return {
+      ok: false, reason: 'not_absolute',
+      message: `路径必须是绝对路径或 ~/ 开头：\`${raw}\``,
+    }
+  }
+
+  const abs = resolvePath(p)
+
+  if (existsSync(abs)) {
+    let st
+    try { st = statSync(abs) }
+    catch (e) { return { ok: false, reason: 'stat_failed', message: `读取 \`${abs}\` 状态失败：${e.message}` } }
+    if (st.isDirectory()) return { ok: true, path: abs, created: false }
+    return { ok: false, reason: 'not_dir', message: `\`${abs}\` 已存在但不是目录` }
+  }
+
+  const parent = dirname(abs)
+  if (!existsSync(parent)) {
+    return {
+      ok: false, reason: 'parent_missing',
+      message: `父目录 \`${parent}\` 不存在；请检查路径或先手动创建父目录。`,
+    }
+  }
+  let parentSt
+  try { parentSt = statSync(parent) }
+  catch (e) { return { ok: false, reason: 'parent_stat_failed', message: `读取父目录失败：${e.message}` } }
+  if (!parentSt.isDirectory()) {
+    return { ok: false, reason: 'parent_not_dir', message: `父目录 \`${parent}\` 不是目录` }
+  }
+
+  try {
+    mkdirSync(abs, { recursive: true })
+    return { ok: true, path: abs, created: true }
+  } catch (e) {
+    return { ok: false, reason: 'mkdir_failed', message: `新建 \`${abs}\` 失败：${e.message}` }
+  }
 }
 
 /** 解析"agent Bug" / "用 X agent" / "员工 X" 等；返回 agent 名 (string) 或 null。
@@ -377,6 +437,19 @@ export function createOpenClawWizard({
     const workdirHint = tryExtractWorkdir(text)
     const templateHint = tryExtractTemplateHint(text)
 
+    // hint 里给出的路径同样要校验 / 必要时新建；失败就丢弃 hint 让用户在 workdir 步重选，
+    // 避免出现「DB 记的 workDir 和实际 PTY cwd 不一致」。
+    let hintedWorkdir = null
+    if (workdirHint) {
+      const prep = prepareCustomWorkdir(workdirHint)
+      if (prep.ok) {
+        hintedWorkdir = prep.path
+        if (prep.created) logger.info?.(`[wizard] auto-created hinted workdir: ${prep.path}`)
+      } else {
+        logger.warn?.(`[wizard] workdir hint "${workdirHint}" rejected (${prep.reason}); user will choose at workdir step`)
+      }
+    }
+
     const w = {
       peer: chatId,        // 兼容字段（旧代码读 w.peer）
       channel,
@@ -389,7 +462,7 @@ export function createOpenClawWizard({
       routeKey,
       title,
       workdirOptions: listWorkdirOptions(),
-      chosenWorkdir: workdirHint || null,
+      chosenWorkdir: hintedWorkdir,
       chosenTemplate: null,
       step: STEP_WORKDIR,
       startedAt: Date.now(),
@@ -429,15 +502,18 @@ export function createOpenClawWizard({
       // 不再走数字 / `/`/`~` 检测。这是 callback_query 路径独有的子态——
       // 文本路径下用户直接粘 `/path` 也仍然走老逻辑。
       if (w.awaitingCustomWorkdir) {
-        const path = text.trim()
-        if (!path) return { reply: '🖋 路径为空，请重发' }
-        w.chosenWorkdir = path
+        const prep = prepareCustomWorkdir(text)
+        if (!prep.ok) {
+          return { reply: `🖋 ${prep.message}\n请重新输入路径。` }
+        }
+        w.chosenWorkdir = prep.path
         w.awaitingCustomWorkdir = false
         w.step = STEP_TEMPLATE
         const templates = db.listTemplates()
         w.cachedTemplates = templates
         const prompt = buildTemplatePrompt(templates)
-        return { reply: prompt.text, replyMarkup: prompt.replyMarkup }
+        const ack = prep.created ? `📁 已为新项目新建目录 \`${prep.path}\`\n\n` : ''
+        return { reply: `${ack}${prompt.text}`, replyMarkup: prompt.replyMarkup }
       }
       // 数字选项？
       const idx = parseNumericChoice(text, w.workdirOptions.length + 1)
@@ -456,12 +532,21 @@ export function createOpenClawWizard({
       }
       // 自定义路径（文本路径下的隐式触发，老行为）
       if (text.startsWith('/') || text.startsWith('~')) {
-        w.chosenWorkdir = text.trim()
+        const prep = prepareCustomWorkdir(text)
+        if (!prep.ok) {
+          const wprompt = buildWorkdirPrompt(w.workdirOptions)
+          return {
+            reply: `❌ ${prep.message}\n\n${wprompt.text}`,
+            replyMarkup: wprompt.replyMarkup,
+          }
+        }
+        w.chosenWorkdir = prep.path
         w.step = STEP_TEMPLATE
         const templates = db.listTemplates()
         w.cachedTemplates = templates
         const prompt = buildTemplatePrompt(templates)
-        return { reply: prompt.text, replyMarkup: prompt.replyMarkup }
+        const ack = prep.created ? `📁 已为新项目新建目录 \`${prep.path}\`\n\n` : ''
+        return { reply: `${ack}${prompt.text}`, replyMarkup: prompt.replyMarkup }
       }
       // 看不懂 → 重发提示（保留按钮）
       const prompt = buildWorkdirPrompt(w.workdirOptions)
@@ -2407,6 +2492,7 @@ export const __test__ = {
   tryExtractTemplateHint,
   parseNumericChoice,
   findTemplateByHint,
+  prepareCustomWorkdir,
   buildWorkdirMessage,
   buildTemplateMessage,
   buildWorkdirReplyMarkup,

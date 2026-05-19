@@ -91,9 +91,22 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
   /** @type {Map<string, string>} */
   const nativeSessionMap = new Map()
 
-  function resolveSessionCwd(requestedCwd) {
+  // strict=true：requestedCwd 给了但不存在 → 抛 cwd_not_found，由 caller 决定如何处理；
+  //              （spawnSession 走这条路，让 wizard/MCP/web UI 显式失败而不是悄悄改地方）
+  // strict=false（默认）：requestedCwd 不存在时回落到 defaultCwd / HOME；
+  //              （recoverPendingTodosOnStartup 用这条，避免 DB 里旧目录被删过会让恢复崩）
+  function resolveSessionCwd(requestedCwd, { strict = false } = {}) {
     const fallback = getDefaultCwd?.() || defaultCwd || process.env.HOME || process.cwd()
-    if (requestedCwd && existsSync(requestedCwd)) return requestedCwd
+    if (requestedCwd) {
+      if (existsSync(requestedCwd)) return requestedCwd
+      if (strict) {
+        const err = new Error(`cwd_not_found: ${requestedCwd}`)
+        err.code = 'cwd_not_found'
+        err.cwd = requestedCwd
+        throw err
+      }
+      console.warn(`[ai-terminal] requested cwd "${requestedCwd}" does not exist; falling back to ${fallback}`)
+    }
     if (fallback && existsSync(fallback)) return fallback
     return process.env.HOME || process.cwd()
   }
@@ -562,7 +575,9 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
     }
 
     const sessionId = externalSessionId || `ai-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
-    let sessionCwd = resolveSessionCwd(cwd)
+    // strict 模式：cwd 不存在直接抛 cwd_not_found，让路由层 / wizard / MCP 拿到结构化错误，
+    // 不再悄悄回落到 defaultCwd，避免「DB 记的 workDir 和实际 PTY cwd 不一致」。
+    let sessionCwd = resolveSessionCwd(cwd, { strict: true })
     // 跟 recoverPendingTodosOnStartup 同样的 claude resume cwd 漂移修正：
     // 前端把 session.cwd 原样回传，但那个 cwd 跟实际 jsonl 落盘的目录可能不一致；
     // 在记到 DB 之前先用文件位置反查真实 cwd，下次再 resume 就不用再纠正了。
@@ -782,6 +797,15 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
           fix: e.fix,
           message: e.message,
           error: e.message,
+        })
+      }
+      if (e.code === 'cwd_not_found') {
+        return res.status(400).json({
+          ok: false,
+          code: 'cwd_not_found',
+          cwd: e.cwd,
+          error: e.message,
+          message: `工作目录不存在：${e.cwd}`,
         })
       }
       const status = e.code === 'bad_request' ? 400 : e.code === 'not_found' ? 404 : 500

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { mkdtempSync, mkdirSync, rmSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, rmSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { openDb } from '../src/db.js'
@@ -46,6 +46,64 @@ describe('openclaw-wizard parsers', () => {
     expect(internals.parseNumericChoice('5', 5)).toBe(4)
     expect(internals.parseNumericChoice('6', 5)).toBeNull()
     expect(internals.parseNumericChoice('hi', 5)).toBeNull()
+  })
+
+  it('prepareCustomWorkdir: existing dir → ok, not created', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'prep-cwd-'))
+    try {
+      const r = internals.prepareCustomWorkdir(tmp)
+      expect(r.ok).toBe(true)
+      expect(r.path).toBe(tmp)
+      expect(r.created).toBe(false)
+    } finally {
+      rmSync(tmp, { recursive: true, force: true })
+    }
+  })
+
+  it('prepareCustomWorkdir: mkdir when immediate parent exists', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'prep-cwd-'))
+    const child = join(tmp, 'new-project')   // 父目录 tmp 存在 → 允许新建
+    try {
+      const r = internals.prepareCustomWorkdir(child)
+      expect(r.ok).toBe(true)
+      expect(r.path).toBe(child)
+      expect(r.created).toBe(true)
+      expect(existsSync(child)).toBe(true)
+    } finally {
+      rmSync(tmp, { recursive: true, force: true })
+    }
+  })
+
+  it('prepareCustomWorkdir: parent missing (typo) is rejected even when grandparent exists', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'prep-cwd-'))
+    const grandchild = join(tmp, 'missing-dir', 'project')   // tmp/missing-dir 不存在
+    try {
+      const r = internals.prepareCustomWorkdir(grandchild)
+      expect(r.ok).toBe(false)
+      expect(r.reason).toBe('parent_missing')
+      expect(existsSync(grandchild)).toBe(false)
+    } finally {
+      rmSync(tmp, { recursive: true, force: true })
+    }
+  })
+
+  it('prepareCustomWorkdir: parent missing → rejected with parent_missing', () => {
+    const r = internals.prepareCustomWorkdir('/__definitely_not_real_top__/x/y')
+    expect(r.ok).toBe(false)
+    expect(r.reason).toBe('parent_missing')
+    expect(r.message).toContain('父目录')
+  })
+
+  it('prepareCustomWorkdir: non-absolute path → rejected', () => {
+    const r = internals.prepareCustomWorkdir('relative/path')
+    expect(r.ok).toBe(false)
+    expect(r.reason).toBe('not_absolute')
+  })
+
+  it('prepareCustomWorkdir: empty input → rejected', () => {
+    const r = internals.prepareCustomWorkdir('  ')
+    expect(r.ok).toBe(false)
+    expect(r.reason).toBe('empty')
   })
 })
 
@@ -201,11 +259,46 @@ describe('openclaw-wizard state machine', () => {
     expect(r.reply).toContain('📁')
   })
 
-  it('custom path in workdir step accepted', async () => {
+  it('custom path in workdir step accepted (existing directory)', async () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'wizard-cwd-'))
+    try {
+      await wizard.handleInbound({ peer: 'u1', text: '帮我做 X' })
+      const r = await wizard.handleInbound({ peer: 'u1', text: tmp })
+      expect(r.reply).toContain('👤')
+      expect(r.reply).not.toContain('已为新项目新建目录')
+      expect(wizard._peek('u1').chosenWorkdir).toBe(tmp)
+    } finally {
+      rmSync(tmp, { recursive: true, force: true })
+    }
+  })
+
+  it('custom path in workdir step auto-creates non-existent dir when parent exists', async () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'wizard-cwd-'))
+    const child = join(tmp, 'new-project')
+    try {
+      await wizard.handleInbound({ peer: 'u1', text: '帮我做 X' })
+      const r = await wizard.handleInbound({ peer: 'u1', text: child })
+      expect(r.reply).toContain('👤')
+      expect(r.reply).toContain('已为新项目新建目录')
+      expect(wizard._peek('u1').chosenWorkdir).toBe(child)
+      // 目录确实被建出来了
+      expect(existsSync(child)).toBe(true)
+    } finally {
+      rmSync(tmp, { recursive: true, force: true })
+    }
+  })
+
+  it('custom path in workdir step rejects when parent dir is missing (likely typo)', async () => {
     await wizard.handleInbound({ peer: 'u1', text: '帮我做 X' })
-    const r = await wizard.handleInbound({ peer: 'u1', text: '/some/where' })
-    expect(r.reply).toContain('👤')
-    expect(wizard._peek('u1').chosenWorkdir).toBe('/some/where')
+    // 父目录 /__definitely_not_a_real_top_level__/foo 不存在
+    const bogus = '/__definitely_not_a_real_top_level__/foo/bar'
+    const r = await wizard.handleInbound({ peer: 'u1', text: bogus })
+    expect(r.action).toBe('wizard_step')
+    expect(r.reply).toContain('父目录')
+    expect(r.reply).toContain('不存在')
+    // 仍然停在 workdir 步、未设置 chosenWorkdir
+    expect(wizard._peek('u1').chosenWorkdir).toBeNull()
+    expect(wizard._peek('u1').step).toBe('workdir')
   })
 
   it('routes ask_user reply when no wizard active', async () => {
@@ -1948,23 +2041,40 @@ describe('openclaw-wizard inline keyboard (callback_query)', () => {
     expect(r.toast).toContain('象限步骤已移除')
   })
 
-  it('callback "qt:wd:custom" enters awaiting subtate; next text becomes path', async () => {
-    await wizard.handleInbound({ chatId: '-100', threadId: null, text: '帮我做 X' })
+  it('callback "qt:wd:custom" enters awaiting subtate; next absolute path is validated', async () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'wizard-cb-cwd-'))
+    try {
+      await wizard.handleInbound({ chatId: '-100', threadId: null, text: '帮我做 X' })
 
-    const cb = await wizard.handleCallback({
+      const cb = await wizard.handleCallback({
+        chatId: '-100', threadId: null,
+        callbackData: 'qt:wd:custom', callbackMessageId: 22,
+      })
+      expect(cb.action).toBe('wizard_custom_workdir')
+      expect(cb.reply).toContain('请直接输入完整路径')
+
+      // 子态：下一条文本被当作路径并校验存在性
+      const r = await wizard.handleInbound({ chatId: '-100', threadId: null, text: tmp })
+      expect(r.action).toBe('wizard_step')
+      expect(r.reply).toContain('👤 派哪个 Agent')
+      expect(r.replyMarkup).toBeTruthy()
+      expect(wizard._peek(`-100:general`).chosenWorkdir).toBe(tmp)
+      expect(wizard._peek(`-100:general`).awaitingCustomWorkdir).toBe(false)
+    } finally {
+      rmSync(tmp, { recursive: true, force: true })
+    }
+  })
+
+  it('callback "qt:wd:custom" subtate rejects non-absolute path with friendly message', async () => {
+    await wizard.handleInbound({ chatId: '-100', threadId: null, text: '帮我做 X' })
+    await wizard.handleCallback({
       chatId: '-100', threadId: null,
       callbackData: 'qt:wd:custom', callbackMessageId: 22,
     })
-    expect(cb.action).toBe('wizard_custom_workdir')
-    expect(cb.reply).toContain('请直接输入完整路径')
-
-    // 子态：下一条任意文本（不再要求 / 或 ~ 开头）
     const r = await wizard.handleInbound({ chatId: '-100', threadId: null, text: 'my-folder' })
-    expect(r.action).toBe('wizard_step')
-    expect(r.reply).toContain('👤 派哪个 Agent')
-    expect(r.replyMarkup).toBeTruthy()
-    expect(wizard._peek(`-100:general`).chosenWorkdir).toBe('my-folder')
-    expect(wizard._peek(`-100:general`).awaitingCustomWorkdir).toBe(false)
+    expect(r.reply).toContain('路径必须是绝对路径')
+    // 仍停留在 awaitingCustomWorkdir 子态，等用户再发一次
+    expect(wizard._peek(`-100:general`).awaitingCustomWorkdir).toBe(true)
   })
 
   it('legacy quadrant callback (qt:q:N) is gracefully deprecated', async () => {
