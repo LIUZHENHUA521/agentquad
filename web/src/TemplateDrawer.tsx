@@ -45,6 +45,30 @@ export default function TemplateDrawer({ open, onClose, onChanged }: Props) {
   const [editorOpen, setEditorOpen] = useState(false)
   const [form] = Form.useForm()
   const [previewContent, setPreviewContent] = useState('')
+  const [search, setSearch] = useState('')
+
+  const grouped = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    const filtered = q
+      ? list.filter(tpl =>
+          tpl.name.toLowerCase().includes(q) ||
+          (tpl.description || '').toLowerCase().includes(q),
+        )
+      : list
+    const byCat = new Map<string, PromptTemplate[]>()
+    for (const tpl of filtered) {
+      const key = tpl.category || 'none'
+      if (!byCat.has(key)) byCat.set(key, [])
+      byCat.get(key)!.push(tpl)
+    }
+    return [...byCat.entries()].sort(([a], [b]) => {
+      if (a === 'none') return -1
+      if (b === 'none') return 1
+      return a.localeCompare(b)
+    })
+  }, [list, search])
+
+  const totalShown = grouped.reduce((n, [, items]) => n + items.length, 0)
 
   const refresh = useCallback(async () => {
     setLoading(true)
@@ -139,44 +163,64 @@ export default function TemplateDrawer({ open, onClose, onChanged }: Props) {
         {list.length === 0 && !loading ? (
           <Empty description={t('settings:template.emptyList')} />
         ) : (
-          <List
-            loading={loading}
-            dataSource={list}
-            renderItem={tpl => (
-              <List.Item
-                actions={[
-                  <Tooltip title={t('settings:template.copyForMe')} key="copy">
-                    <Button type="text" size="small" icon={<CopyOutlined />} onClick={() => handleCopy(tpl)} />
-                  </Tooltip>,
-                  <Tooltip title={t('settings:template.editTooltip')} key="edit">
-                    <Button type="text" size="small" icon={<EditOutlined />} onClick={() => handleEdit(tpl)} />
-                  </Tooltip>,
-                  <Popconfirm key="del" title={t('settings:template.deleteConfirm')} disabled={tpl.builtin} onConfirm={() => handleDelete(tpl)}>
-                    <Tooltip title={tpl.builtin ? t('settings:template.builtinTooltipDelete') : t('settings:template.deleteTooltip')}>
-                      <Button type="text" size="small" danger icon={<DeleteOutlined />} disabled={tpl.builtin} />
-                    </Tooltip>
-                  </Popconfirm>,
-                ]}
-              >
-                <List.Item.Meta
-                  title={
-                    <Space>
-                      <span>{tpl.name}</span>
-                      {tpl.builtin && <Tag color="blue">{t('settings:template.builtinTag')}</Tag>}
-                    </Space>
-                  }
-                  description={
-                    <Space direction="vertical" size={2} style={{ width: '100%' }}>
-                      {tpl.description && <Text type="secondary">{tpl.description}</Text>}
-                      <Paragraph type="secondary" ellipsis={{ rows: 2 }} style={{ margin: 0, fontSize: 12 }}>
-                        {tpl.content}
-                      </Paragraph>
-                    </Space>
-                  }
-                />
-              </List.Item>
+          <>
+            <Input.Search
+              placeholder={t('settings:template.searchPlaceholder')}
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              allowClear
+              style={{ marginBottom: 12 }}
+            />
+            {totalShown === 0 ? (
+              <Empty description={t('settings:template.emptySearch')} />
+            ) : (
+              grouped.map(([cat, items]) => (
+                <div key={cat} style={{ marginBottom: 16 }}>
+                  <Typography.Text strong style={{ display: 'block', marginBottom: 8 }}>
+                    {t(`settings:template.categoryLabels.${cat}` as any, cat)} · {items.length}
+                  </Typography.Text>
+                  <List
+                    loading={loading}
+                    dataSource={items}
+                    renderItem={tpl => (
+                      <List.Item
+                        actions={[
+                          <Tooltip title={t('settings:template.copyForMe')} key="copy">
+                            <Button type="text" size="small" icon={<CopyOutlined />} onClick={() => handleCopy(tpl)} />
+                          </Tooltip>,
+                          <Tooltip title={t('settings:template.editTooltip')} key="edit">
+                            <Button type="text" size="small" icon={<EditOutlined />} onClick={() => handleEdit(tpl)} />
+                          </Tooltip>,
+                          <Popconfirm key="del" title={t('settings:template.deleteConfirm')} disabled={tpl.builtin} onConfirm={() => handleDelete(tpl)}>
+                            <Tooltip title={tpl.builtin ? t('settings:template.builtinTooltipDelete') : t('settings:template.deleteTooltip')}>
+                              <Button type="text" size="small" danger icon={<DeleteOutlined />} disabled={tpl.builtin} />
+                            </Tooltip>
+                          </Popconfirm>,
+                        ]}
+                      >
+                        <List.Item.Meta
+                          title={
+                            <Space>
+                              <span>{tpl.name}</span>
+                              {tpl.builtin && <Tag color="blue">{t('settings:template.builtinTag')}</Tag>}
+                            </Space>
+                          }
+                          description={
+                            <Space direction="vertical" size={2} style={{ width: '100%' }}>
+                              {tpl.description && <Text type="secondary">{tpl.description}</Text>}
+                              <Paragraph type="secondary" ellipsis={{ rows: 2 }} style={{ margin: 0, fontSize: 12 }}>
+                                {tpl.content}
+                              </Paragraph>
+                            </Space>
+                          }
+                        />
+                      </List.Item>
+                    )}
+                  />
+                </div>
+              ))
             )}
-          />
+          </>
         )}
       </Drawer>
 
