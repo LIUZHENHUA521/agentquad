@@ -1090,6 +1090,10 @@ export function openDb(arg = ':memory:') {
     `SELECT DISTINCT category FROM prompt_templates
      WHERE pack = ? AND category IS NOT NULL`,
   )
+  const listInstalledNamesForPack = db.prepare(
+    `SELECT name FROM prompt_templates
+     WHERE pack = ? AND builtin = 1`,
+  )
   const countInstalledForPack = db.prepare(
     `SELECT COUNT(*) AS n FROM prompt_templates
      WHERE pack = ? AND builtin = 1`,
@@ -1097,6 +1101,10 @@ export function openDb(arg = ':memory:') {
 
   function installedCategoriesForPack(packId) {
     return listInstalledCategoriesForPack.all(packId).map(r => r.category).filter(Boolean)
+  }
+
+  function installedNamesForPack(packId) {
+    return listInstalledNamesForPack.all(packId).map(r => r.name).filter(Boolean)
   }
 
   function installedCountForPack(packId) {
@@ -1604,6 +1612,7 @@ export function openDb(arg = ':memory:') {
     uninstallPack,
     listInstalledPacks,
     installedCategoriesForPack,
+    installedNamesForPack,
     installedCountForPack,
     createTodo,
     getTodo,

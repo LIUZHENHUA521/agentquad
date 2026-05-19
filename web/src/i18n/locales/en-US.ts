@@ -985,7 +985,7 @@ const en = {
       pick: 'Pick Agents',
       adjust: 'Adjust Selection',
       uninstallAll: 'Uninstall All',
-      pickerTitle: 'Pick Agent Categories',
+      pickerTitle: 'Pick Agents',
       apply: 'Apply',
       cancel: 'Cancel',
       selectAll: 'Select All',

@@ -35,6 +35,20 @@ export function getPackCategories(id) {
   return [...byCat.values()].sort((a, b) => a.slug.localeCompare(b.slug))
 }
 
+export function getPackEntryMeta(id) {
+  const data = load(id)
+  if (!data) return null
+  return data.entries.map(e => ({
+    slug: e.slug,
+    name: e.name,
+    nameEn: e.nameEn,
+    description: e.description,
+    emoji: e.emoji,
+    category: e.category,
+    categoryLabel: e.categoryLabel,
+  }))
+}
+
 export function availablePacks() {
   return AVAILABLE.map(({ id }) => {
     const data = load(id)
@@ -47,18 +61,31 @@ export function availablePacks() {
       attribution: data.attribution,
       entryCount: data.entries.length,
       categories: getPackCategories(id),
+      entries: getPackEntryMeta(id),
     }
   }).filter(Boolean)
 }
 
-export function getPackEntries(id, categories) {
+export function getPackEntries(id, filter) {
   const data = load(id)
   if (!data) return null
-  const filter = Array.isArray(categories) && categories.length > 0
-    ? new Set(categories)
-    : null
+  // Accept legacy positional (array of category slugs) or object { categories, names }.
+  let categories = null
+  let names = null
+  if (Array.isArray(filter)) {
+    categories = filter
+  } else if (filter && typeof filter === 'object') {
+    if (Array.isArray(filter.categories)) categories = filter.categories
+    if (Array.isArray(filter.names)) names = filter.names
+  }
+  const catSet = categories && categories.length > 0 ? new Set(categories) : null
+  const nameSet = names && names.length > 0 ? new Set(names) : null
   return data.entries
-    .filter(e => !filter || filter.has(e.category))
+    .filter(e => {
+      if (nameSet && !nameSet.has(e.name)) return false
+      if (catSet && !catSet.has(e.category)) return false
+      return true
+    })
     .map(e => ({
       name: e.name,
       description: e.description,

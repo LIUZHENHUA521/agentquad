@@ -120,4 +120,61 @@ describe('Template packs router', () => {
     expect(status).toBe(404)
     expect(data.ok).toBe(false)
   })
+
+  it('GET surfaces pack entries and installedNames for tree-picker UI', async () => {
+    const { data } = await req(app, 'GET', '/api/template-packs')
+    const agency = data.packs.find(p => p.id === 'agency-agents')
+    expect(Array.isArray(agency.entries)).toBe(true)
+    expect(agency.entries.length).toBe(agency.entryCount)
+    const sample = agency.entries[0]
+    expect(typeof sample.slug).toBe('string')
+    expect(typeof sample.name).toBe('string')
+    expect(typeof sample.category).toBe('string')
+    expect(typeof sample.categoryLabel).toBe('string')
+    expect(agency.installedNames).toEqual([])
+  })
+
+  it('install with names installs exactly those entries', async () => {
+    const { data: listed } = await req(app, 'GET', '/api/template-packs')
+    const agency = listed.packs.find(p => p.id === 'agency-agents')
+    // Pick two arbitrary entries across two different categories.
+    const byCat = new Map()
+    for (const e of agency.entries) {
+      if (!byCat.has(e.category)) byCat.set(e.category, e)
+      if (byCat.size === 2) break
+    }
+    const picks = [...byCat.values()].map(e => e.name)
+    const { status, data } = await req(
+      app, 'POST', '/api/template-packs/agency-agents/install', { names: picks },
+    )
+    expect(status).toBe(200)
+    expect(data.installed).toBe(picks.length)
+    const { data: after } = await req(app, 'GET', '/api/template-packs')
+    const agencyAfter = after.packs.find(p => p.id === 'agency-agents')
+    expect(agencyAfter.installedNames.slice().sort()).toEqual(picks.slice().sort())
+    expect(agencyAfter.installedCount).toBe(picks.length)
+  })
+
+  it('install names overrides previous selection (clean slate)', async () => {
+    const { data: listed } = await req(app, 'GET', '/api/template-packs')
+    const agency = listed.packs.find(p => p.id === 'agency-agents')
+    const first = [agency.entries[0].name, agency.entries[1].name]
+    const second = [agency.entries[2].name]
+    await req(app, 'POST', '/api/template-packs/agency-agents/install', { names: first })
+    await req(app, 'POST', '/api/template-packs/agency-agents/install', { names: second })
+    const { data } = await req(app, 'GET', '/api/template-packs')
+    const agencyAfter = data.packs.find(p => p.id === 'agency-agents')
+    expect(agencyAfter.installedNames).toEqual(second)
+  })
+
+  it('install with empty names array uninstalls all', async () => {
+    await req(app, 'POST', '/api/template-packs/agency-agents/install')
+    expect(db.installedCountForPack('agency-agents')).toBeGreaterThan(0)
+    const { status, data } = await req(
+      app, 'POST', '/api/template-packs/agency-agents/install', { names: [] },
+    )
+    expect(status).toBe(200)
+    expect(data.installed).toBe(0)
+    expect(db.installedCountForPack('agency-agents')).toBe(0)
+  })
 })

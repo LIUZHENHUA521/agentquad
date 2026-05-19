@@ -981,7 +981,7 @@ const zh = {
       pick: '选择员工',
       adjust: '调整选择',
       uninstallAll: '全部卸载',
-      pickerTitle: '选择员工分类',
+      pickerTitle: '选择员工',
       apply: '应用',
       cancel: '取消',
       selectAll: '全选',

@@ -12,6 +12,7 @@ export function createTemplatePacksRouter({ db }) {
         installed: installed.has(p.id),
         installedCount: db.installedCountForPack(p.id),
         installedCategories: db.installedCategoriesForPack(p.id),
+        installedNames: db.installedNamesForPack(p.id),
       }))
       res.json({ ok: true, packs })
     } catch (e) {
@@ -21,27 +22,38 @@ export function createTemplatePacksRouter({ db }) {
 
   router.post('/:id/install', (req, res) => {
     try {
-      const categories = Array.isArray(req.body?.categories) ? req.body.categories : null
-      // Distinguish "no filter" (null → install all) from "empty selection" (empty array → install nothing).
+      const categoriesRaw = req.body?.categories
+      const namesRaw = req.body?.names
+      const categories = Array.isArray(categoriesRaw) ? categoriesRaw : null
+      const names = Array.isArray(namesRaw) ? namesRaw : null
+      // No filter at all → install everything.
+      // Empty array on either filter → caller explicitly selected nothing → install nothing.
+      const noFilter = categories === null && names === null
+      const explicitEmpty =
+        (categories !== null && categories.length === 0 && names === null) ||
+        (names !== null && names.length === 0 && categories === null)
       let entries
-      if (categories === null) {
+      if (noFilter) {
         entries = getPackEntries(req.params.id)
-      } else if (categories.length === 0) {
-        // Empty selection: still validate the pack exists, then install nothing.
+      } else if (explicitEmpty) {
         const all = getPackEntries(req.params.id)
         if (!all) { res.status(404).json({ ok: false, error: 'pack_not_found' }); return }
         entries = []
       } else {
-        entries = getPackEntries(req.params.id, categories)
+        entries = getPackEntries(req.params.id, { categories, names })
       }
       if (!entries) { res.status(404).json({ ok: false, error: 'pack_not_found' }); return }
       // Clean-slate: wipe existing pack rows first, then install the new selection.
-      // For "install all" (categories null), this also makes the call idempotent.
       db.uninstallPack(req.params.id)
       if (entries.length > 0) {
         db.installPack(req.params.id, entries)
       }
-      res.json({ ok: true, installed: entries.length, categories: categories || null })
+      res.json({
+        ok: true,
+        installed: entries.length,
+        categories: categories,
+        names: names,
+      })
     } catch (e) {
       res.status(500).json({ ok: false, error: e.message })
     }
