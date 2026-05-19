@@ -269,8 +269,34 @@ export interface PromptTemplate {
   content: string
   builtin: boolean
   sortOrder: number
+  pack: string | null
+  category: string | null
   createdAt: number
   updatedAt: number
+}
+
+export interface TemplatePack {
+  id: string
+  version: string
+  source: string
+  license: string
+  attribution: string
+  entryCount: number
+  installed: boolean
+}
+
+export async function listTemplatePacks(): Promise<TemplatePack[]> {
+  const body = await jsonFetch<{ ok: true; packs: TemplatePack[] }>('/api/template-packs')
+  return body.packs
+}
+
+export async function installTemplatePack(id: string): Promise<{ installed: number }> {
+  const body = await jsonFetch<{ ok: true; installed: number }>(`/api/template-packs/${id}/install`, { method: 'POST' })
+  return { installed: body.installed }
+}
+
+export async function uninstallTemplatePack(id: string): Promise<void> {
+  await jsonFetch<{ ok: true }>(`/api/template-packs/${id}/uninstall`, { method: 'POST' })
 }
 
 export async function listTemplates(): Promise<PromptTemplate[]> {
