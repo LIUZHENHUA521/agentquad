@@ -103,7 +103,7 @@
       "description": "数据工程专家,擅长构建可靠的数据管道、Lakehouse 架构与可扩展的数据基础设施,精通 ETL/ELT、Apache Spark、dbt、流式系统与云数据平台,将原始数据转化为可信、可分析的数据资产"
     },
     "engineering-database-optimizer": {
-      "name": "数据库优化专家",
+      "name": "数据库优化师",
       "description": "数据库专家,专注于 PostgreSQL、MySQL 以及 Supabase、PlanetScale 等现代数据库的 schema 设计、查询优化、索引策略与性能调优"
     },
     "engineering-devops-automator": {
@@ -751,7 +751,7 @@
       "description": "技术评估专家,专注于评估、测试并推荐适用于业务与提效场景的工具、软件与平台"
     },
     "testing-workflow-optimizer": {
-      "name": "工作流优化专家",
+      "name": "工作流优化师",
       "description": "流程改进专家,专注于跨业务职能的工作流分析、优化与自动化,最大化生产力与效率"
     }
   }
