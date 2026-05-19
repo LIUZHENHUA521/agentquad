@@ -25,6 +25,7 @@ import { createTranscriptsService } from "./transcripts/index.js";
 import { createTodosRouter } from "./routes/todos.js";
 import { createUploadsRouter } from "./routes/uploads.js";
 import { createTemplatesRouter } from "./routes/templates.js";
+import { createTemplatePacksRouter } from "./routes/templatePacks.js";
 import { createRecurringRulesRouter } from "./routes/recurringRules.js";
 import { createStatsRouter } from "./routes/stats.js";
 import { createReportsRouter } from "./routes/reports.js";
@@ -1192,6 +1193,7 @@ export function createServer(opts = {}) {
 		getPty: () => pty,
 	}));
 	app.use("/api/templates", createTemplatesRouter({ db }));
+	app.use("/api/template-packs", createTemplatePacksRouter({ db }));
 	app.use("/api/recurring-rules", createRecurringRulesRouter({ db }));
 	app.use("/api/ai-terminal", ait.router);
 
