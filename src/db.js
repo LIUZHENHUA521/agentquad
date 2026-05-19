@@ -1086,6 +1086,23 @@ export function openDb(arg = ':memory:') {
     return listPackIds.all().map(r => r.pack).filter(Boolean)
   }
 
+  const listInstalledCategoriesForPack = db.prepare(
+    `SELECT DISTINCT category FROM prompt_templates
+     WHERE pack = ? AND category IS NOT NULL`,
+  )
+  const countInstalledForPack = db.prepare(
+    `SELECT COUNT(*) AS n FROM prompt_templates
+     WHERE pack = ? AND builtin = 1`,
+  )
+
+  function installedCategoriesForPack(packId) {
+    return listInstalledCategoriesForPack.all(packId).map(r => r.category).filter(Boolean)
+  }
+
+  function installedCountForPack(packId) {
+    return countInstalledForPack.get(packId)?.n || 0
+  }
+
   // ─── pending_questions ──────────────────────────────────────────
   // 配合 ask_user MCP 工具：AI 在 PTY 里发起问题时，写一行 pending；
   // 用户在 OpenClaw（微信）回复后，通过 submit_user_reply 回填。
@@ -1586,6 +1603,8 @@ export function openDb(arg = ':memory:') {
     installPack,
     uninstallPack,
     listInstalledPacks,
+    installedCategoriesForPack,
+    installedCountForPack,
     createTodo,
     getTodo,
     updateTodo,

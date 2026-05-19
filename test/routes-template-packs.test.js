@@ -21,7 +21,7 @@ async function req(app, method, url, body) {
         const res = await fetch(`http://127.0.0.1:${port}${url}`, {
           method,
           headers: { 'content-type': 'application/json' },
-          body: body ? JSON.stringify(body) : undefined,
+          body: body !== undefined ? JSON.stringify(body) : undefined,
         })
         const data = await res.json()
         resolve({ status: res.status, data })
@@ -31,7 +31,7 @@ async function req(app, method, url, body) {
   })
 }
 
-describe('GET /api/template-packs', () => {
+describe('Template packs router', () => {
   let tmpDir, db, app
   beforeEach(() => {
     tmpDir = mkdtempSync(join(tmpdir(), 'aq-pkroute-'))
@@ -40,32 +40,79 @@ describe('GET /api/template-packs', () => {
   })
   afterEach(() => { db.close?.(); rmSync(tmpDir, { recursive: true, force: true }) })
 
-  it('lists agency-agents pack as available, not installed', async () => {
+  it('GET lists agency-agents with categories breakdown', async () => {
     const { status, data } = await req(app, 'GET', '/api/template-packs')
     expect(status).toBe(200)
-    expect(data.ok).toBe(true)
     const agency = data.packs.find(p => p.id === 'agency-agents')
     expect(agency).toBeTruthy()
     expect(agency.installed).toBe(false)
     expect(agency.entryCount).toBeGreaterThanOrEqual(180)
-    expect(agency.license).toBe('MIT')
+    expect(Array.isArray(agency.categories)).toBe(true)
+    expect(agency.categories.length).toBeGreaterThanOrEqual(10)
+    for (const c of agency.categories) {
+      expect(typeof c.slug).toBe('string')
+      expect(typeof c.label).toBe('string')
+      expect(c.count).toBeGreaterThan(0)
+    }
+    expect(agency.installedCount).toBe(0)
+    expect(agency.installedCategories).toEqual([])
   })
 
-  it('install endpoint inserts all pack entries', async () => {
+  it('install with no body installs all entries', async () => {
     const { status, data } = await req(app, 'POST', '/api/template-packs/agency-agents/install')
     expect(status).toBe(200)
-    expect(data.ok).toBe(true)
     expect(data.installed).toBeGreaterThanOrEqual(180)
-    const installed = db.listTemplates().filter(t => t.pack === 'agency-agents')
-    expect(installed.length).toBe(data.installed)
+    expect(db.installedCountForPack('agency-agents')).toBe(data.installed)
+  })
+
+  it('install with categories filters to those', async () => {
+    const { status, data } = await req(app, 'POST', '/api/template-packs/agency-agents/install', { categories: ['engineering', 'design'] })
+    expect(status).toBe(200)
+    // engineering 29 + design 8 = 37 (per agency-agents.json)
+    expect(data.installed).toBeGreaterThan(20)
+    expect(data.installed).toBeLessThan(50)
+    const cats = db.installedCategoriesForPack('agency-agents').sort()
+    expect(cats).toEqual(['design', 'engineering'])
+  })
+
+  it('reinstall replaces categories (clean slate)', async () => {
+    await req(app, 'POST', '/api/template-packs/agency-agents/install', { categories: ['engineering'] })
+    const firstCount = db.installedCountForPack('agency-agents')
+    expect(firstCount).toBeGreaterThan(20)
+    await req(app, 'POST', '/api/template-packs/agency-agents/install', { categories: ['design'] })
+    const cats = db.installedCategoriesForPack('agency-agents').sort()
+    expect(cats).toEqual(['design'])
+  })
+
+  it('install with empty array uninstalls all', async () => {
+    await req(app, 'POST', '/api/template-packs/agency-agents/install')
+    expect(db.installedCountForPack('agency-agents')).toBeGreaterThan(0)
+    const { status, data } = await req(app, 'POST', '/api/template-packs/agency-agents/install', { categories: [] })
+    expect(status).toBe(200)
+    expect(data.installed).toBe(0)
+    expect(db.installedCountForPack('agency-agents')).toBe(0)
+  })
+
+  it('partial install preserves user-edited copies on subsequent install', async () => {
+    await req(app, 'POST', '/api/template-packs/agency-agents/install', { categories: ['engineering'] })
+    const installed = db.listTemplates().find(t => t.pack === 'agency-agents')
+    const userCopy = db.createTemplate({
+      name: installed.name + ' (我的)',
+      description: 'copy',
+      content: installed.content,
+    })
+    // Switch to a different category
+    await req(app, 'POST', '/api/template-packs/agency-agents/install', { categories: ['design'] })
+    const all = db.listTemplates()
+    expect(all.find(t => t.id === userCopy.id)).toBeTruthy()
+    expect(all.find(t => t.pack === 'agency-agents' && t.category === 'engineering')).toBeUndefined()
   })
 
   it('uninstall endpoint removes all pack rows', async () => {
     await req(app, 'POST', '/api/template-packs/agency-agents/install')
-    const { status, data } = await req(app, 'POST', '/api/template-packs/agency-agents/uninstall')
+    const { status } = await req(app, 'POST', '/api/template-packs/agency-agents/uninstall')
     expect(status).toBe(200)
-    expect(data.ok).toBe(true)
-    expect(db.listTemplates().filter(t => t.pack === 'agency-agents')).toHaveLength(0)
+    expect(db.installedCountForPack('agency-agents')).toBe(0)
   })
 
   it('install endpoint 404s for unknown pack', async () => {
