@@ -977,6 +977,15 @@ const zh = {
       attribution: '来源：{{src}} · {{license}}',
       installedOk: '已安装 {{n}} 个员工',
       uninstalledOk: '已卸载（你手动复制过的副本保留）',
+      pick: '选择员工',
+      adjust: '调整选择',
+      uninstallAll: '全部卸载',
+      pickerTitle: '选择员工分类',
+      apply: '应用',
+      cancel: '取消',
+      selectAll: '全选',
+      clearAll: '清空',
+      pickerSummary: '已选 {{cats}} 个分类 / {{agents}} 个员工',
       packs: {
         'agency-agents': {
           name: 'Agency Agents',

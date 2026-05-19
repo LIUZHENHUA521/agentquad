@@ -275,6 +275,12 @@ export interface PromptTemplate {
   updatedAt: number
 }
 
+export interface TemplatePackCategory {
+  slug: string
+  label: string
+  count: number
+}
+
 export interface TemplatePack {
   id: string
   version: string
@@ -283,6 +289,9 @@ export interface TemplatePack {
   attribution: string
   entryCount: number
   installed: boolean
+  installedCount: number
+  installedCategories: string[]
+  categories: TemplatePackCategory[]
 }
 
 export async function listTemplatePacks(): Promise<TemplatePack[]> {
@@ -290,8 +299,17 @@ export async function listTemplatePacks(): Promise<TemplatePack[]> {
   return body.packs
 }
 
-export async function installTemplatePack(id: string): Promise<{ installed: number }> {
-  const body = await jsonFetch<{ ok: true; installed: number }>(`/api/template-packs/${id}/install`, { method: 'POST' })
+export async function installTemplatePack(
+  id: string,
+  categories?: string[],
+): Promise<{ installed: number }> {
+  const body = await jsonFetch<{ ok: true; installed: number }>(
+    `/api/template-packs/${id}/install`,
+    {
+      method: 'POST',
+      body: categories !== undefined ? JSON.stringify({ categories }) : undefined,
+    },
+  )
   return { installed: body.installed }
 }
 

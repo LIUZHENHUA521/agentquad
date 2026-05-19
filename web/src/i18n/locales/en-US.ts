@@ -981,6 +981,15 @@ const en = {
       attribution: 'Source: {{src}} · {{license}}',
       installedOk: 'Installed {{n}} agents',
       uninstalledOk: 'Uninstalled (your manual copies are preserved)',
+      pick: 'Pick Agents',
+      adjust: 'Adjust Selection',
+      uninstallAll: 'Uninstall All',
+      pickerTitle: 'Pick Agent Categories',
+      apply: 'Apply',
+      cancel: 'Cancel',
+      selectAll: 'Select All',
+      clearAll: 'Clear All',
+      pickerSummary: '{{cats}} categories selected / {{agents}} agents',
       packs: {
         'agency-agents': {
           name: 'Agency Agents',
