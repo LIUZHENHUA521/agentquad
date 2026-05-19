@@ -4,7 +4,7 @@ import { LANG_STORAGE_KEY } from './i18n'
 import type { SupportedLng } from './i18n/resources'
 import { useAppMessages } from './design/useAppMessages'
 import { MinusCircleOutlined, PlusOutlined, BookOutlined } from '@ant-design/icons'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { markdownComponents } from './markdownComponents'
@@ -15,6 +15,7 @@ import telegramSetupMd from '../../docs/TELEGRAM-setup.md?raw'
 import larkSetupMd from '../../docs/LARK.md?raw'
 import { AgentIcon } from './components/AgentIcon'
 import AgencyPackSection from './AgencyPackSection'
+import { templatesToGroupedOptions, templateFilterOption } from './templateGrouping'
 import './SettingsDrawer.css'
 
 const { Text } = Typography
@@ -617,11 +618,24 @@ export default function SettingsDrawer({ open, onClose }: Props) {
             <Select
               allowClear
               placeholder={t('settings:general.defaultTemplatesPlaceholder')}
-              options={templates.map((tpl) => ({
-                value: tpl.id,
-                label: tpl.builtin ? t('settings:general.defaultTemplatesBuiltinLabel', { name: tpl.name }) : tpl.name,
-              }))}
-              optionFilterProp="label"
+              // 184+ 模板按 category 分组，原 builtin label 装饰仍保留——
+              // 在 helper 返回的 leaf 上后处理一层即可（既不污染 helper，又
+              // 保住"全自动工程师 (内置)"那种视觉前缀）。
+              options={useMemo(() => {
+                const groups = templatesToGroupedOptions(templates, (k, fb) => t(k as any, fb as any) as string)
+                const byId = new Map(templates.map(tpl => [tpl.id, tpl]))
+                return groups.map(g => ({
+                  ...g,
+                  options: g.options.map(opt => {
+                    const tpl = byId.get(opt.value)
+                    if (tpl?.builtin) {
+                      return { ...opt, label: t('settings:general.defaultTemplatesBuiltinLabel', { name: tpl.name }) }
+                    }
+                    return opt
+                  }),
+                }))
+              }, [templates, t])}
+              filterOption={templateFilterOption}
               showSearch
             />
           </Form.Item>

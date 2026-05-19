@@ -43,6 +43,7 @@ import {
   ApiError,
 } from './api'
 import { renderAppliedTemplates } from './promptRender'
+import { templatesToGroupedOptions, templateFilterOption } from './templateGrouping'
 import SettingsDrawer from './SettingsDrawer'
 import { StatsReportsDrawer } from './components/StatsReportsDrawer'
 import TelegramSyncButton from './TelegramSyncButton'
@@ -1397,23 +1398,42 @@ export default function TodoManage() {
             <Select
               allowClear
               placeholder={templates.length ? t('todo:form.agentPlaceholder') : t('todo:form.appliedTemplatesEmpty')}
-              options={[
-                {
-                  value: '__noAgent__',
-                  // 自由模式 label 留纯字符串：search filter 不会因为 JSX 崩；
-                  // 视觉上的"特殊性"用 optionRender 单独处理。
-                  label: t('todo:card.dispatchNoAgent', { defaultValue: '自由模式（不指派 agent）' }),
-                },
-                ...templates.map(tpl => ({ value: tpl.id, label: tpl.builtin ? t('todo:form.templateBuiltinLabel', { name: tpl.name }) : tpl.name })),
-              ]}
+              // 184+ 模板按 category 分组 + 搜索。"自由模式"用一个游离 leaf
+              // 永远置顶，且 filterOption 里给它兜底 return true，确保用户
+              // 搜任何关键词都还能看到它。builtin label 装饰沿用历史样式。
+              options={useMemo(() => {
+                const groups = templatesToGroupedOptions(templates, (k, fb) => t(k as any, fb as any) as string)
+                const byId = new Map(templates.map(tpl => [tpl.id, tpl]))
+                const grouped = groups.map(g => ({
+                  ...g,
+                  options: g.options.map(opt => {
+                    const tpl = byId.get(opt.value)
+                    if (tpl?.builtin) {
+                      return { ...opt, label: t('todo:form.templateBuiltinLabel', { name: tpl.name }) }
+                    }
+                    return opt
+                  }),
+                }))
+                return [
+                  {
+                    value: '__noAgent__',
+                    // 自由模式 label 留纯字符串：search filter 不会因为 JSX 崩；
+                    // 视觉上的"特殊性"用 optionRender 单独处理。
+                    label: t('todo:card.dispatchNoAgent', { defaultValue: '自由模式（不指派 agent）' }),
+                  } as any,
+                  ...grouped,
+                ]
+              }, [templates, t])}
               optionRender={(option) => option.value === '__noAgent__'
                 ? <span style={{ fontStyle: 'italic', opacity: 0.85 }}>{option.label as string}</span>
                 : (option.label as React.ReactNode)
               }
-              // 自由模式 item 始终展示在顶部，不参与文字过滤
+              // 自由模式 item 始终展示在顶部，不参与文字过滤；
+              // 其余 leaf 走共用 templateFilterOption（吃 _searchHaystack，
+              // 比单看 label 多带 description 命中范围）。
               filterOption={(input, option) => {
                 if (option?.value === '__noAgent__') return true
-                return String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                return templateFilterOption(input, option)
               }}
               showSearch
             />
