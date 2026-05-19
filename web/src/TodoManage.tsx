@@ -1762,7 +1762,7 @@ export default function TodoManage() {
         </div>
       </Drawer>
 
-      <SettingsDrawer open={settingsOpen} onClose={() => closeDrawer('settings')} />
+      <SettingsDrawer open={settingsOpen} onClose={() => closeDrawer('settings')} onTemplatesChanged={refreshTemplates} />
       <WikiDrawer open={wikiOpen} onClose={() => closeDrawer('wiki')} />
       <StatsReportsDrawer />
       <ExportDialog

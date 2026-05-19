@@ -23,6 +23,7 @@ const { Text } = Typography
 interface Props {
   open: boolean
   onClose: () => void
+  onTemplatesChanged?: () => void | Promise<void>
 }
 
 function splitCommandLine(input: string): string[] {
@@ -104,7 +105,7 @@ const TOOL_LABEL: Record<ToolKey, string> = {
   cursor: 'Cursor',
 }
 
-export default function SettingsDrawer({ open, onClose }: Props) {
+export default function SettingsDrawer({ open, onClose, onTemplatesChanged }: Props) {
   const { t, i18n } = useTranslation(['settings'])
   const currentLang = (i18n.resolvedLanguage || i18n.language || 'zh-CN') as SupportedLng
   const { message } = useAppMessages()
@@ -646,6 +647,7 @@ export default function SettingsDrawer({ open, onClose }: Props) {
             } catch {
               setTemplates([])
             }
+            await onTemplatesChanged?.()
           }} />
 
           <Form.Item
