@@ -275,6 +275,17 @@ npm run clean           # 删除 node_modules / dist-web / web/dist
 
 ---
 
+## 内置扩展员工包
+
+AgentQuad 内置一个可选的 **Agency Agents** 员工扩展包（184 个细分角色），**默认不安装**，可在 设置 → 扩展员工包 里一键启用。
+
+- 来源：[msitarzewski/agency-agents](https://github.com/msitarzewski/agency-agents)
+- 锚定 commit：`783f6a72bfd7f3135700ac273c619d92821b419a`
+- License：MIT（见 `assets/agency-agents-LICENSE`）
+- Agent 正文保留英文；名称、简介、分类已翻译为中文。
+
+---
+
 ## License
 
 [MIT](./LICENSE) © LIUZHENHUA521

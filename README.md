@@ -274,6 +274,17 @@ Issues and PRs welcome. If AgentQuad saved you time, please ⭐ star the repo �
 
 ---
 
+## Bundled Expansion Packs
+
+AgentQuad ships an optional **Agency Agents** expansion pack (184 specialized prompt roles). It is **not installed by default** — enable it under Settings → 扩展员工包.
+
+- Source: [msitarzewski/agency-agents](https://github.com/msitarzewski/agency-agents)
+- Pinned commit: `783f6a72bfd7f3135700ac273c619d92821b419a`
+- License: MIT (see `assets/agency-agents-LICENSE`)
+- Agent body content is left in English; names, descriptions, and categories are translated to Chinese.
+
+---
+
 ## License
 
 [MIT](./LICENSE) © LIUZHENHUA521
