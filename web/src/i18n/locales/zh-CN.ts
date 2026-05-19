@@ -977,6 +977,7 @@ const zh = {
       attribution: '来源：{{src}} · {{license}}',
       installedOk: '已安装 {{n}} 个员工',
       uninstalledOk: '已卸载（你手动复制过的副本保留）',
+      serverStale: '后端是旧版本，无法分类选择。请在终端运行 `npm run stop && npm start` 重启后再试。',
       pick: '选择员工',
       adjust: '调整选择',
       uninstallAll: '全部卸载',

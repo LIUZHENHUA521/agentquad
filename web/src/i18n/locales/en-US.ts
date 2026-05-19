@@ -981,6 +981,7 @@ const en = {
       attribution: 'Source: {{src}} · {{license}}',
       installedOk: 'Installed {{n}} agents',
       uninstalledOk: 'Uninstalled (your manual copies are preserved)',
+      serverStale: 'Backend is on old code — restart with `npm run stop && npm start` to use the picker.',
       pick: 'Pick Agents',
       adjust: 'Adjust Selection',
       uninstallAll: 'Uninstall All',

@@ -30,8 +30,16 @@ export default function AgencyPackSection({ onChanged }: Props) {
   useEffect(() => { refresh() }, [refresh])
 
   const openPicker = (p: TemplatePack) => {
+    if (!Array.isArray(p.categories)) {
+      // Server is running old code without the per-category breakdown.
+      // Tell the user instead of crashing on `p.categories.map(...)` below.
+      message.error(t('settings:templatePacks.serverStale', {
+        defaultValue: 'Server is running old code — restart with `npm run stop && npm start` to use the picker.',
+      }))
+      return
+    }
     setPickerFor(p)
-    setPicked(p.installedCategories.slice())
+    setPicked((p.installedCategories || []).slice())
   }
   const closePicker = () => { setPickerFor(null); setPicked([]) }
 
