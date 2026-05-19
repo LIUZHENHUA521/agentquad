@@ -211,7 +211,7 @@ export function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo =
                 style={{
                   background: 'var(--surface-2, white)',
                   border: '1px solid var(--border, #d9d9d9)',
-                  borderRadius: 8,
+                  borderRadius: 0,
                   padding: 8,
                   width: 320,
                   maxHeight: 420,
@@ -239,7 +239,7 @@ export function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo =
                   style={{
                     cursor: 'pointer',
                     padding: '6px 8px',
-                    borderRadius: 4,
+                    borderRadius: 0,
                     opacity: currentAgentId ? 0.7 : 1,
                     fontStyle: 'italic',
                     background: currentAgentId == null ? 'var(--surface-3, #f5f5f5)' : 'transparent',
@@ -273,7 +273,7 @@ export function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo =
                           style={{
                             cursor: 'pointer',
                             padding: '6px 8px',
-                            borderRadius: 4,
+                            borderRadius: 0,
                             fontWeight: isCurrent ? 600 : 400,
                             background: isCurrent ? 'var(--surface-3, #f5f5f5)' : 'transparent',
                           }}
