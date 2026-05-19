@@ -1,0 +1,758 @@
+{
+  "version": "783f6a72",
+  "categories": {
+    "academic": "学术",
+    "design": "设计",
+    "engineering": "工程",
+    "finance": "财务",
+    "game-development": "游戏开发",
+    "marketing": "营销",
+    "paid-media": "付费投放",
+    "product": "产品",
+    "project-management": "项目管理",
+    "sales": "销售",
+    "spatial-computing": "空间计算",
+    "specialized": "专项",
+    "strategy": "战略",
+    "support": "客服支持",
+    "testing": "测试"
+  },
+  "entries": {
+    "academic-anthropologist": {
+      "name": "人类学家",
+      "description": "精通文化体系、仪式、亲缘关系、信仰系统与民族志方法,构建真实可信、有生活气息而非凭空捏造的文化社会"
+    },
+    "academic-geographer": {
+      "name": "地理学家",
+      "description": "精通自然与人文地理、气候系统、制图学与空间分析,构建地形、气候、资源与聚落分布在科学上自洽的地理世界"
+    },
+    "academic-historian": {
+      "name": "历史学家",
+      "description": "精通历史分析、分期方法、物质文化与史学方法,基于一手与二手文献验证历史一致性,并为设定补充真实的时代细节"
+    },
+    "academic-narratologist": {
+      "name": "叙事学家",
+      "description": "精通叙事理论、故事结构、人物弧光与文学分析,建议植根于从普罗普到坎贝尔再到现代叙事学的成熟框架"
+    },
+    "academic-psychologist": {
+      "name": "心理学家",
+      "description": "精通人类行为、人格理论、动机与认知模式,基于临床与研究框架构建心理可信的人物与互动"
+    },
+    "design-brand-guardian": {
+      "name": "品牌守护者",
+      "description": "品牌策略与守护专家,专注于品牌识别构建、一致性维护与战略品牌定位"
+    },
+    "design-image-prompt-engineer": {
+      "name": "图像提示词工程师",
+      "description": "摄影类 AI 提示词工程专家,擅长撰写细致、富有画面感的提示词,将视觉概念精准转化为语言,借助生成式 AI 工具产出高质量的专业摄影作品"
+    },
+    "design-inclusive-visuals-specialist": {
+      "name": "包容性视觉专家",
+      "description": "多元呈现专家,能够规避 AI 系统性偏见,生成文化准确、积极正向且不刻板的图像与视频"
+    },
+    "design-ui-designer": {
+      "name": "UI 设计师",
+      "description": "UI 设计专家,精通视觉设计体系、组件库与像素级界面打磨,打造美观、一致、无障碍且体现品牌识别的用户界面"
+    },
+    "design-ux-architect": {
+      "name": "UX 架构师",
+      "description": "技术架构与 UX 双重专家,为开发者提供扎实的基础、CSS 体系与清晰的落地指引"
+    },
+    "design-ux-researcher": {
+      "name": "UX 研究员",
+      "description": "用户体验研究专家,精通用户行为分析、可用性测试与数据驱动的设计洞察,输出可落地的研究结论以提升产品可用性与用户满意度"
+    },
+    "design-visual-storyteller": {
+      "name": "视觉叙事师",
+      "description": "视觉传达专家,专注通过设计构建引人入胜的视觉叙事、多媒体内容与品牌故事,将复杂信息转化为打动受众、激发情感共鸣的视觉故事"
+    },
+    "design-whimsy-injector": {
+      "name": "趣味注入师",
+      "description": "创意设计专家,专注为品牌体验注入个性、惊喜与趣味元素,通过出其不意的小心思打造令人愉悦、令人记住的差异化体验"
+    },
+    "engineering-ai-data-remediation-engineer": {
+      "name": "AI 数据修复工程师",
+      "description": "自愈数据管道专家,使用本地隔离的小型语言模型与语义聚类自动检测、分类并大规模修复数据异常。专注于修复层：拦截异常数据、通过 Ollama 生成确定性修复逻辑并保证零数据丢失。不是通用数据工程师,而是数据出问题、管道不能停时的外科手术式专家"
+    },
+    "engineering-ai-engineer": {
+      "name": "AI 工程师",
+      "description": "AI/ML 工程专家,专注机器学习模型开发、部署与生产系统集成,致力于构建智能特性、数据管道与 AI 驱动的应用,强调实用、可扩展的工程方案"
+    },
+    "engineering-autonomous-optimization-architect": {
+      "name": "自治优化架构师",
+      "description": "智能系统治理者,持续对 API 进行影子性能测试,同时通过严格的财务与安全护栏防止成本失控"
+    },
+    "engineering-backend-architect": {
+      "name": "后端架构师",
+      "description": "高级后端架构师,精通可扩展系统设计、数据库架构、API 开发与云基础设施,构建稳健、安全、高性能的服务端应用与微服务"
+    },
+    "engineering-cms-developer": {
+      "name": "CMS 开发",
+      "description": "Drupal 与 WordPress 专家,擅长主题开发、自定义插件/模块、内容架构以及以代码为先的 CMS 实施"
+    },
+    "engineering-code-reviewer": {
+      "name": "代码评审专家",
+      "description": "代码评审专家,提供建设性、可执行的反馈,聚焦正确性、可维护性、安全与性能,而非个人风格偏好"
+    },
+    "engineering-codebase-onboarding-engineer": {
+      "name": "代码库入职工程师",
+      "description": "开发者入职专家,通过阅读源码、追踪调用路径并只陈述代码中的事实,帮助新工程师快速理解陌生代码库"
+    },
+    "engineering-data-engineer": {
+      "name": "数据工程师",
+      "description": "数据工程专家,擅长构建可靠的数据管道、Lakehouse 架构与可扩展的数据基础设施,精通 ETL/ELT、Apache Spark、dbt、流式系统与云数据平台,将原始数据转化为可信、可分析的数据资产"
+    },
+    "engineering-database-optimizer": {
+      "name": "数据库优化专家",
+      "description": "数据库专家,专注于 PostgreSQL、MySQL 以及 Supabase、PlanetScale 等现代数据库的 schema 设计、查询优化、索引策略与性能调优"
+    },
+    "engineering-devops-automator": {
+      "name": "DevOps 自动化工程师",
+      "description": "DevOps 工程专家,专注于基础设施自动化、CI/CD 管道开发与云运维"
+    },
+    "engineering-email-intelligence-engineer": {
+      "name": "邮件智能工程师",
+      "description": "邮件结构化处理专家,从原始邮件线程中提取结构化、可供 AI 智能体与自动化系统直接推理的数据"
+    },
+    "engineering-embedded-firmware-engineer": {
+      "name": "嵌入式固件工程师",
+      "description": "裸机与 RTOS 固件专家,精通 ESP32/ESP-IDF、PlatformIO、Arduino、ARM Cortex-M、STM32 HAL/LL、Nordic nRF5/nRF Connect SDK、FreeRTOS、Zephyr"
+    },
+    "engineering-feishu-integration-developer": {
+      "name": "飞书集成开发",
+      "description": "飞书开放平台全栈集成专家,精通飞书机器人、小程序、审批流、多维表格、消息卡片、Webhook、SSO 鉴权与流程自动化,在飞书生态内打造企业级协作与自动化解决方案"
+    },
+    "engineering-filament-optimization-specialist": {
+      "name": "Filament 优化专家",
+      "description": "Filament PHP 后台界面重构与优化专家,聚焦真正影响可用性与效率的结构性改造,而非表面调整"
+    },
+    "engineering-frontend-developer": {
+      "name": "前端开发",
+      "description": "前端开发专家,精通现代 Web 技术、React/Vue/Angular 框架、UI 实现与性能优化"
+    },
+    "engineering-git-workflow-master": {
+      "name": "Git 工作流大师",
+      "description": "Git 工作流、分支策略与版本控制最佳实践专家,涵盖 Conventional Commits、rebase、worktree 及 CI 友好的分支管理"
+    },
+    "engineering-incident-response-commander": {
+      "name": "故障响应指挥官",
+      "description": "事故指挥专家,专注生产故障管理、结构化响应协同、复盘主持、SLO/SLI 跟踪与值班机制设计,为可靠的工程组织保驾护航"
+    },
+    "engineering-minimal-change-engineer": {
+      "name": "最小改动工程师",
+      "description": "专注最小可行 diff 的工程专家,只修改被要求的部分,拒绝范围蔓延,宁可保留三行相似代码也不轻易做不成熟的抽象,确保 bug 修复 PR 不会演变成重构雪崩"
+    },
+    "engineering-mobile-app-builder": {
+      "name": "移动应用开发",
+      "description": "移动应用开发专家,精通原生 iOS/Android 开发与跨平台框架"
+    },
+    "engineering-rapid-prototyper": {
+      "name": "快速原型工程师",
+      "description": "极速 POC 与 MVP 开发专家,擅长使用高效的工具与框架快速验证产品想法"
+    },
+    "engineering-security-engineer": {
+      "name": "安全工程师",
+      "description": "应用安全工程专家,专注现代 Web、API 与云原生应用的威胁建模、漏洞评估、安全代码审查、安全架构设计与事件响应"
+    },
+    "engineering-senior-developer": {
+      "name": "高级开发",
+      "description": "高端实施专家,精通 Laravel/Livewire/FluxUI、高级 CSS 与 Three.js 集成"
+    },
+    "engineering-software-architect": {
+      "name": "软件架构师",
+      "description": "软件架构专家,专注于系统设计、领域驱动设计、架构模式与技术决策,构建可扩展、可维护的系统"
+    },
+    "engineering-solidity-smart-contract-engineer": {
+      "name": "Solidity 智能合约工程师",
+      "description": "Solidity 开发专家,精通 EVM 智能合约架构、Gas 优化、可升级代理模式、DeFi 协议开发,以及以太坊和 L2 链上的安全优先合约设计"
+    },
+    "engineering-sre": {
+      "name": "SRE 站点可靠性工程师",
+      "description": "站点可靠性工程专家,精通 SLO、错误预算、可观测性、混沌工程与降负载,为大规模生产系统保驾护航"
+    },
+    "engineering-technical-writer": {
+      "name": "技术文档工程师",
+      "description": "技术写作专家,专注开发者文档、API 参考、README 与教程,将复杂的工程概念转化为开发者真正会读、会用的清晰、准确、好读的文档"
+    },
+    "engineering-threat-detection-engineer": {
+      "name": "威胁检测工程师",
+      "description": "检测工程专家,专注于 SIEM 规则开发、MITRE ATT&CK 覆盖映射、威胁狩猎、告警调优以及面向安全运营团队的 detection-as-code 流水线"
+    },
+    "engineering-voice-ai-integration-engineer": {
+      "name": "语音 AI 集成工程师",
+      "description": "语音转写端到端流水线专家,基于 Whisper 类模型与云端 ASR 服务,从原始音频接入、预处理、文本清洗、字幕生成、说话人分离到向应用、API、CMS 的结构化集成全程覆盖"
+    },
+    "engineering-wechat-mini-program-developer": {
+      "name": "微信小程序开发",
+      "description": "微信小程序开发专家,精通 WXML/WXSS/WXS、小程序 API、支付系统、订阅消息及完整的微信生态"
+    },
+    "finance-bookkeeper-controller": {
+      "name": "簿记与财务主管",
+      "description": "簿记与财务主管专家,专注日常账务、财务对账、月结流程与内控,确保账务的准确、完整与及时,持续保持 GAAP 合规与审计就绪状态"
+    },
+    "finance-financial-analyst": {
+      "name": "财务分析师",
+      "description": "财务分析专家,精通财务建模、预测、情景分析与数据驱动的决策支持,将原始财务数据转化为可执行的业务洞察,支撑战略规划、投资决策与运营优化"
+    },
+    "finance-fpa-analyst": {
+      "name": "FP&A 分析师",
+      "description": "财务规划与分析 (FP&A) 专家,专注于预算编制、差异分析、财务规划、滚动预测与战略决策支持,在数字与业务叙事之间架起桥梁,驱动经营表现与战略资源分配"
+    },
+    "finance-investment-researcher": {
+      "name": "投资研究员",
+      "description": "投资研究专家,精通市场研究、尽职调查、组合分析与资产估值,通过严谨的基本面与量化分析,在公开市场、一级市场与另类资产中发现投资机会、评估风险并支持数据驱动的投资决策"
+    },
+    "finance-tax-strategist": {
+      "name": "税务策略师",
+      "description": "税务策略专家,专注税务优化、多司法管辖区合规、转让定价与战略税务规划,在地方、州、联邦与国际税制下合规前提下最小化税负"
+    },
+    "blender-blender-addon-engineer": {
+      "name": "Blender 插件工程师",
+      "description": "Blender 工具链专家,构建 Python 插件、资产校验器、导出器与流水线自动化,把 DCC 中重复的工作变成可靠的一键流程"
+    },
+    "game-audio-engineer": {
+      "name": "游戏音频工程师",
+      "description": "互动音频专家,精通 FMOD/Wwise 集成、自适应音乐系统、空间音频以及跨各类游戏引擎的音频性能预算管理"
+    },
+    "game-designer": {
+      "name": "游戏设计师",
+      "description": "系统与玩法机制架构师,精通 GDD 撰写、玩家心理、经济平衡以及跨引擎、跨品类的玩法循环设计"
+    },
+    "godot-godot-gameplay-scripter": {
+      "name": "Godot 玩法脚本工程师",
+      "description": "组合与信号完整性专家,精通 GDScript 2.0、C# 集成、基于节点的架构以及面向 Godot 4 项目的类型安全信号设计"
+    },
+    "godot-godot-multiplayer-engineer": {
+      "name": "Godot 联机工程师",
+      "description": "Godot 4 网络同步专家,精通 MultiplayerAPI、场景复制、ENet/WebRTC 传输、RPC 以及实时多人游戏的权威模型"
+    },
+    "godot-godot-shader-developer": {
+      "name": "Godot Shader 开发",
+      "description": "Godot 4 视效专家,精通 Godot Shading Language、VisualShader 编辑器、CanvasItem 与 Spatial shader、后处理及 2D/3D 效果的性能优化"
+    },
+    "level-designer": {
+      "name": "关卡设计师",
+      "description": "空间叙事与节奏专家,精通跨引擎的布局理论、节奏架构、遭遇战设计与环境叙事"
+    },
+    "narrative-designer": {
+      "name": "叙事设计师",
+      "description": "故事系统与对白架构师,精通跨引擎的 GDD 对齐叙事设计、分支对白、世界观架构与环境叙事"
+    },
+    "roblox-studio-roblox-avatar-creator": {
+      "name": "Roblox 形象创作者",
+      "description": "Roblox UGC 与形象流水线专家,精通 Roblox 的 Avatar 系统、UGC 物品制作、配饰绑定、贴图规范以及创作者市场提交流程"
+    },
+    "roblox-studio-roblox-experience-designer": {
+      "name": "Roblox 体验设计师",
+      "description": "Roblox 平台 UX 与变现专家,精通参与循环设计、基于 DataStore 的进度系统、Roblox 变现体系 (Passes、Developer Products、UGC) 以及玩家留存设计"
+    },
+    "roblox-studio-roblox-systems-scripter": {
+      "name": "Roblox 系统脚本工程师",
+      "description": "Roblox 平台工程专家,精通 Luau、客户端-服务器安全模型、RemoteEvents/RemoteFunctions、DataStore 与可扩展 Roblox 体验的模块化架构"
+    },
+    "technical-artist": {
+      "name": "技术美术",
+      "description": "美术到引擎管线专家,精通 Shader、VFX 系统、LOD 管线、性能预算以及跨引擎的资源优化"
+    },
+    "unity-unity-architect": {
+      "name": "Unity 架构师",
+      "description": "数据驱动的模块化专家,精通 ScriptableObject、解耦系统设计与单一职责组件架构,服务于可扩展的 Unity 项目"
+    },
+    "unity-unity-editor-tool-developer": {
+      "name": "Unity 编辑器工具开发",
+      "description": "Unity 编辑器自动化专家,精通自定义 EditorWindow、PropertyDrawer、AssetPostprocessor、ScriptedImporter 以及为团队每周节省数小时的流水线自动化"
+    },
+    "unity-unity-multiplayer-engineer": {
+      "name": "Unity 联机工程师",
+      "description": "网络化玩法专家,精通 Netcode for GameObjects、Unity Gaming Services (Relay/Lobby)、客户端-服务器权威、延迟补偿与状态同步"
+    },
+    "unity-unity-shader-graph-artist": {
+      "name": "Unity Shader Graph 美术",
+      "description": "视效与材质专家,精通 Unity Shader Graph、HLSL、URP/HDRP 渲染管线及自定义 Pass 编写,用于实时视效"
+    },
+    "unreal-engine-unreal-multiplayer-architect": {
+      "name": "Unreal 联机架构师",
+      "description": "Unreal Engine 网络同步专家,精通 Actor 复制、GameMode/GameState 架构、服务器权威玩法、网络预测以及 UE5 专用服务器部署"
+    },
+    "unreal-engine-unreal-systems-engineer": {
+      "name": "Unreal 系统工程师",
+      "description": "性能与混合架构专家,精通 C++/Blueprint 协同、Nanite 几何、Lumen GI 与 GAS,服务于 AAA 级 Unreal 项目"
+    },
+    "unreal-engine-unreal-technical-artist": {
+      "name": "Unreal 技术美术",
+      "description": "Unreal 视觉管线专家,精通材质编辑器、Niagara VFX、PCG 程序化内容生成以及 UE5 项目的美术到引擎管线"
+    },
+    "unreal-engine-unreal-world-builder": {
+      "name": "Unreal 世界构建师",
+      "description": "开放世界与场景专家,精通 UE5 World Partition、Landscape、程序化植被、HLOD 与大规模关卡流送,打造无缝的开放世界体验"
+    },
+    "marketing-agentic-search-optimizer": {
+      "name": "Agentic 搜索优化师",
+      "description": "WebMCP 就绪度与 Agentic 任务完成专家,审计 AI 智能体能否在网站上真正完成预订、购买、注册、订阅等任务,落地 WebMCP 声明式与命令式模式,并衡量主流 AI 浏览代理上的任务完成率"
+    },
+    "marketing-ai-citation-strategist": {
+      "name": "AI 引用策略师",
+      "description": "AI 推荐引擎优化 (AEO/GEO) 专家,审计品牌在 ChatGPT、Claude、Gemini、Perplexity 中的可见度,定位为何被对手抢走引用,并通过内容优化提升 AI 引用率"
+    },
+    "marketing-app-store-optimizer": {
+      "name": "应用商店优化师",
+      "description": "应用商店营销专家,专注应用商店优化 (ASO)、转化率优化与应用曝光提升"
+    },
+    "marketing-baidu-seo-specialist": {
+      "name": "百度 SEO 专家",
+      "description": "百度搜索优化专家,专注中文搜索引擎排名、百度生态整合、ICP 合规、中文关键词研究以及面向中国市场的移动优先索引"
+    },
+    "marketing-bilibili-content-strategist": {
+      "name": "B 站内容策略师",
+      "description": "B 站营销专家,专注 UP 主成长、弹幕文化运营、B 站算法优化、社区建设以及在中国头部视频社区平台的品牌内容策略"
+    },
+    "marketing-book-co-author": {
+      "name": "图书合著者",
+      "description": "面向创始人、专家与操盘手的思想领导力图书合作者,将语音、碎片与定位整合为结构化的第一人称章节"
+    },
+    "marketing-carousel-growth-engine": {
+      "name": "轮播图增长引擎",
+      "description": "自动化 TikTok 与 Instagram 轮播图生成专家,用 Playwright 解析任意网址,通过 Gemini 图像生成爆款六图轮播,经 Upload-Post API 直接发布并自动匹配热门音乐,抓取数据并通过数据驱动的学习循环持续迭代"
+    },
+    "marketing-china-ecommerce-operator": {
+      "name": "中国电商运营",
+      "description": "中国电商运营专家,覆盖淘宝、天猫、拼多多与京东生态,深耕商品标题与详情优化、直播电商、店铺运营、618/双 11 大促与跨平台策略"
+    },
+    "marketing-china-market-localization-strategist": {
+      "name": "中国市场本地化策略师",
+      "description": "全栈中国市场本地化专家,将实时趋势信号转化为可执行的 GTM 策略,覆盖抖音、小红书、微信、B 站等主流平台"
+    },
+    "marketing-content-creator": {
+      "name": "内容创作者",
+      "description": "多平台内容策略与创作专家,负责编辑日历、撰写打动人心的文案、运营品牌叙事,并针对各数字渠道优化内容互动表现"
+    },
+    "marketing-cross-border-ecommerce": {
+      "name": "跨境电商专家",
+      "description": "跨境电商全链路策略师,覆盖亚马逊、Shopee、Lazada、AliExpress、Temu、TikTok Shop 运营、国际物流与海外仓、合规与税务、多语种 listing 优化、品牌出海与 DTC 独立站建设"
+    },
+    "marketing-douyin-strategist": {
+      "name": "抖音策略师",
+      "description": "抖音短视频营销专家,深耕推荐算法机制、爆款视频策划、直播带货全流程,并通过内容矩阵策略驱动品牌全域增长"
+    },
+    "marketing-growth-hacker": {
+      "name": "增长黑客",
+      "description": "增长策略专家,通过数据驱动的实验快速获取用户,构建病毒式循环、优化转化漏斗,为业务找到可规模化的增长渠道"
+    },
+    "marketing-instagram-curator": {
+      "name": "Instagram 内容运营",
+      "description": "Instagram 营销专家,专注视觉叙事、社区建设与多格式内容优化,精于美学塑造,驱动有意义的互动"
+    },
+    "marketing-kuaishou-strategist": {
+      "name": "快手策略师",
+      "description": "快手营销策略专家,擅长面向下沉市场的短视频内容、直播带货、社区信任构建与草根受众增长"
+    },
+    "marketing-linkedin-content-creator": {
+      "name": "LinkedIn 内容创作者",
+      "description": "LinkedIn 内容策略专家,专注思想领导力打造、个人品牌建设与高互动专业内容,精通 LinkedIn 算法与文化,为创始人、求职者、开发者等带来入站机会"
+    },
+    "marketing-livestream-commerce-coach": {
+      "name": "直播电商教练",
+      "description": "资深直播电商教练,精通抖音、快手、淘宝直播、视频号的主播培训与直播间运营,涵盖话术设计、商品排序、付费与自然流量配比、转化逼单技巧与实时数据驱动优化"
+    },
+    "marketing-podcast-strategist": {
+      "name": "播客策略师",
+      "description": "中文播客市场内容策略与运营专家,深耕小宇宙、喜马拉雅等主流音频平台,覆盖节目定位、音频制作、用户增长、多平台分发与商业化,帮助创作者打造高粘性音频内容品牌"
+    },
+    "marketing-private-domain-operator": {
+      "name": "私域运营",
+      "description": "企业微信私域生态构建专家,深耕 SCRM 系统、分层社群运营、小程序商城集成、用户生命周期管理与全链路转化优化"
+    },
+    "marketing-reddit-community-builder": {
+      "name": "Reddit 社区运营",
+      "description": "Reddit 营销专家,专注真实社区互动、价值驱动内容创作与长期关系建设,精于 Reddit 文化的运营拿捏"
+    },
+    "marketing-seo-specialist": {
+      "name": "SEO 专家",
+      "description": "搜索引擎优化策略专家,精通技术 SEO、内容优化、外链权威建设与自然搜索增长,通过数据驱动的搜索策略带来可持续流量"
+    },
+    "marketing-short-video-editing-coach": {
+      "name": "短视频剪辑教练",
+      "description": "实战型短视频剪辑教练,覆盖完整后期管线,精通剪映专业版、Premiere Pro、DaVinci Resolve 与 Final Cut Pro,涵盖构图与镜头语言、调色、声音工程、动态图形与 VFX、字幕设计、多平台导出优化、剪辑工作流提效以及 AI 辅助剪辑"
+    },
+    "marketing-social-media-strategist": {
+      "name": "社交媒体策略师",
+      "description": "面向 LinkedIn、Twitter 等专业平台的社交媒体策略专家,负责跨平台战役、社区建设、实时互动运营与思想领导力策略"
+    },
+    "marketing-tiktok-strategist": {
+      "name": "TikTok 策略师",
+      "description": "TikTok 营销专家,专注爆款内容创作、算法优化与社区建设,精通 TikTok 独特的文化与功能,驱动品牌增长"
+    },
+    "marketing-twitter-engager": {
+      "name": "Twitter 互动专家",
+      "description": "Twitter 营销专家,专注实时互动、思想领导力构建与社区驱动增长,通过真实对话参与与爆款 thread 树立品牌权威"
+    },
+    "marketing-video-optimization-specialist": {
+      "name": "视频优化专家",
+      "description": "视频营销策略师,专注于 YouTube 算法优化、观众留存、章节切分、缩略图创意以及跨平台视频分发"
+    },
+    "marketing-wechat-official-account": {
+      "name": "微信公众号运营",
+      "description": "微信公众号策略专家,专注内容营销、订阅者运营与转化优化,精通多格式内容并通过持续价值输出建立忠诚社群"
+    },
+    "marketing-weibo-strategist": {
+      "name": "微博策略师",
+      "description": "新浪微博全域运营专家,深耕热搜机制、超话社区管理、舆情监测、粉丝经济与微博广告,帮助品牌在中国头部公共舆论平台上获得爆量与持续增长"
+    },
+    "marketing-xiaohongshu-specialist": {
+      "name": "小红书专家",
+      "description": "小红书营销专家,专注生活方式内容、趋势驱动策略与真实社区互动,精于微内容创作,通过美学叙事驱动爆发式增长"
+    },
+    "marketing-zhihu-strategist": {
+      "name": "知乎策略师",
+      "description": "知乎营销专家,专注思想领导力、社区可信度与知识驱动的互动,精通问答策略,通过真实的专业分享建立品牌权威"
+    },
+    "paid-media-auditor": {
+      "name": "付费投放审计师",
+      "description": "全面的付费投放审计专家,沿账户结构、追踪、出价、创意、人群与竞争定位等 200+ 检查点系统性评估 Google Ads、Microsoft Ads 与 Meta 账户,输出带优先级与预期影响的可执行审计报告"
+    },
+    "paid-media-creative-strategist": {
+      "name": "广告创意策略师",
+      "description": "付费投放创意专家,专注于 Google、Meta、Microsoft 与程序化平台的广告文案、RSA 优化、资产组设计与创意测试框架,在数据表现与说服力文案之间架起桥梁"
+    },
+    "paid-media-paid-social-strategist": {
+      "name": "付费社媒策略师",
+      "description": "跨平台付费社媒投放专家,覆盖 Meta (Facebook/Instagram)、LinkedIn、TikTok、Pinterest、X、Snapchat,设计从拉新到再营销的全漏斗社媒广告方案,匹配平台化的创意与人群策略"
+    },
+    "paid-media-ppc-strategist": {
+      "name": "PPC 投放策略师",
+      "description": "资深付费投放策略师,精通 Google、Microsoft、Amazon 平台上大规模搜索、购物与 Performance Max 广告的账户架构、预算分配框架与出价策略,可扩展月度预算从 1 万到 1000 万美元以上"
+    },
+    "paid-media-programmatic-buyer": {
+      "name": "程序化广告买手",
+      "description": "展示广告与程序化媒体购买专家,覆盖管理位、Google Display Network、DV360、Trade Desk 等 DSP、合作媒体 (newsletter、品牌植入) 以及通过 Demandbase、6Sense 等平台的 ABM 展示广告策略"
+    },
+    "paid-media-search-query-analyst": {
+      "name": "搜索词分析师",
+      "description": "搜索词分析、否定关键词体系与意图映射专家,将原始搜索词数据转化为可落地的优化动作,在付费搜索账户中剔除浪费、放大高意图流量"
+    },
+    "paid-media-tracking-specialist": {
+      "name": "追踪与衡量专家",
+      "description": "转化追踪架构、标签管理与归因建模专家,精通 Google Tag Manager、GA4、Google Ads、Meta CAPI、LinkedIn Insight Tag 与服务端方案,确保每一次转化被正确记录、每一分广告支出可衡量"
+    },
+    "product-behavioral-nudge-engine": {
+      "name": "行为助推引擎",
+      "description": "行为心理学专家,通过调整软件交互的节奏与风格,最大化用户动力与成功率"
+    },
+    "product-feedback-synthesizer": {
+      "name": "用户反馈整合师",
+      "description": "用户反馈采集、分析与整合专家,从多渠道反馈中提炼可执行的产品洞察,将定性反馈转化为可量化的优先级与战略建议"
+    },
+    "product-manager": {
+      "name": "产品经理",
+      "description": "全方位产品负责人,贯通从需求发现、策略制定到路线图、相关方对齐、上市与结果衡量的完整产品生命周期,在业务目标、用户需求与技术现实之间找到平衡,做对的事并按时交付"
+    },
+    "product-sprint-prioritizer": {
+      "name": "迭代优先级专家",
+      "description": "产品经理专家,专注敏捷迭代规划、需求优先级排序与资源分配,通过数据驱动的优先级框架最大化团队速率与业务价值交付"
+    },
+    "product-trend-researcher": {
+      "name": "趋势研究员",
+      "description": "市场情报分析专家,专注于新兴趋势识别、竞争分析与机会评估,为产品战略与创新决策提供可执行的洞察"
+    },
+    "project-management-experiment-tracker": {
+      "name": "实验跟踪专家",
+      "description": "项目管理专家,专注于实验设计、执行跟踪与数据驱动决策,通过系统化实验与严谨分析管理 A/B 测试、功能实验与假设验证"
+    },
+    "project-management-jira-workflow-steward": {
+      "name": "Jira 工作流管家",
+      "description": "交付运营专家,在软件团队中推行 Jira 关联的 Git 工作流、可追溯的提交、结构化的 PR 与适配发布的分支策略"
+    },
+    "project-management-project-shepherd": {
+      "name": "项目牧羊人",
+      "description": "项目管理专家,专注跨职能项目协同、时间线管理与相关方对齐,从立项到收尾全程牧羊,统筹多团队的资源、风险与沟通"
+    },
+    "project-management-studio-operations": {
+      "name": "工作室运营",
+      "description": "运营管理专家,专注工作室日常效率、流程优化与资源协调,确保运营顺畅、产能稳定,为各团队提供成功所需的工具与流程"
+    },
+    "project-management-studio-producer": {
+      "name": "工作室制片人",
+      "description": "高级战略型负责人,专注高层级的创意与技术项目编排、资源分配与多项目组合管理,将创意愿景与商业目标对齐,统筹复杂的跨职能事项并保障工作室高效运转"
+    },
+    "project-manager-senior": {
+      "name": "高级项目经理",
+      "description": "将规格转化为任务并记忆历史项目的高级项目经理,专注于现实可达成的范围、零后台任务并严格遵守规格要求"
+    },
+    "sales-account-strategist": {
+      "name": "客户策略师",
+      "description": "售后客户策略专家,专注 land-and-expand 执行、决策链梳理、QBR 主持与 NRR 提升,通过系统化扩张规划与多线索客户开发,把成交单变成长期平台关系"
+    },
+    "sales-coach": {
+      "name": "销售教练",
+      "description": "销售教练专家,专注于销售代表培养、Pipeline review 主持、电话辅导、deal 策略与预测准确率,通过结构化教练方法与行为反馈让每个代表与每个 deal 都更上一层楼"
+    },
+    "sales-deal-strategist": {
+      "name": "Deal 策略师",
+      "description": "高级 Deal 策略师,专注 MEDDPICC 资格判断、竞争定位与复杂 B2B 销售周期的胜利计划,对机会打分、暴露 pipeline 风险,构建经得起 forecast review 的 deal 策略"
+    },
+    "sales-discovery-coach": {
+      "name": "销售探索教练",
+      "description": "销售团队探索方法论教练,涵盖问题设计、现状梳理、差距量化与能挖出真实购买动机的通话结构"
+    },
+    "sales-engineer": {
+      "name": "售前工程师",
+      "description": "高级售前工程师,专注技术探索、Demo 设计、POC 范围界定、竞争 battlecard 与将产品能力映射到业务结果,赢下技术决策,推动交易闭环"
+    },
+    "sales-outbound-strategist": {
+      "name": "外呼策略师",
+      "description": "信号驱动的外呼专家,设计多渠道触达节奏、定义 ICP,通过基于深度研究的个性化建立 pipeline,而非粗放堆量"
+    },
+    "sales-pipeline-analyst": {
+      "name": "Pipeline 分析师",
+      "description": "收入运营分析师,专注 pipeline 健康度诊断、deal 速率分析、预测准确率与数据驱动的销售辅导,将 CRM 数据变为能在错失季度目标前提前暴露风险的 pipeline 洞察"
+    },
+    "sales-proposal-strategist": {
+      "name": "方案策略师",
+      "description": "战略型提案架构师,把 RFP 与销售机会转化为有说服力的胜利叙事,擅长制胜主题打造、竞争定位、执行摘要撰写,做出能说服而不仅仅是合规的提案"
+    },
+    "macos-spatial-metal-engineer": {
+      "name": "macOS 空间/Metal 工程师",
+      "description": "原生 Swift 与 Metal 专家,为 macOS 与 Vision Pro 构建高性能 3D 渲染系统与空间计算体验"
+    },
+    "terminal-integration-specialist": {
+      "name": "终端集成专家",
+      "description": "终端仿真、文本渲染优化与 SwiftTerm 集成专家,服务现代 Swift 应用"
+    },
+    "visionos-spatial-engineer": {
+      "name": "visionOS 空间工程师",
+      "description": "原生 visionOS 空间计算专家,精通 SwiftUI 容积界面与 Liquid Glass 设计落地"
+    },
+    "xr-cockpit-interaction-specialist": {
+      "name": "XR 座舱交互专家",
+      "description": "XR 沉浸式座舱式控制系统的设计与开发专家"
+    },
+    "xr-immersive-developer": {
+      "name": "XR 沉浸式开发",
+      "description": "WebXR 与沉浸式技术开发专家,专注基于浏览器的 AR/VR/XR 应用"
+    },
+    "xr-interface-architect": {
+      "name": "XR 界面架构师",
+      "description": "面向沉浸式 AR/VR/XR 环境的空间交互设计师与界面策略师"
+    },
+    "accounts-payable-agent": {
+      "name": "应付账款 Agent",
+      "description": "自治支付处理专家,执行供应商付款、外包发票与周期性账单,支持加密货币、法币、稳定币等任意支付通道,可通过工具调用接入 AI Agent 工作流"
+    },
+    "agentic-identity-trust": {
+      "name": "Agentic 身份与信任架构师",
+      "description": "为多 Agent 环境中的自治 AI Agent 设计身份、认证与信任校验体系,确保每个 Agent 能证明自己是谁、被授权做什么以及实际做了什么"
+    },
+    "agents-orchestrator": {
+      "name": "Agent 编排器",
+      "description": "自治流水线管理者,统筹整个开发工作流,担任流程的总指挥"
+    },
+    "automation-governance-architect": {
+      "name": "自动化治理架构师",
+      "description": "以治理优先的业务自动化架构师 (n8n 优先),在实施前先审计价值、风险与可维护性"
+    },
+    "blockchain-security-auditor": {
+      "name": "区块链安全审计师",
+      "description": "智能合约安全审计专家,专注于 DeFi 协议与区块链应用的漏洞检测、形式化验证、攻击分析与完整审计报告撰写"
+    },
+    "compliance-auditor": {
+      "name": "合规审计师",
+      "description": "技术合规审计专家,专注 SOC 2、ISO 27001、HIPAA、PCI-DSS 等审计的全流程,从就绪评估到证据收集再到认证落地"
+    },
+    "corporate-training-designer": {
+      "name": "企业培训设计师",
+      "description": "企业培训体系设计与课程开发专家,精通培训需求分析、教学设计方法、混合式学习项目设计、内训师培养、领导力项目以及培训效果评估与持续优化"
+    },
+    "customer-service": {
+      "name": "客户服务",
+      "description": "面向各行业的友善、专业客户服务专家,以温度、效率与真诚的客户满意度承诺处理咨询、投诉、账户支持、FAQ 与无缝升级"
+    },
+    "data-consolidation-agent": {
+      "name": "数据汇总 Agent",
+      "description": "将提取的销售数据汇总到实时报表大盘的 AI Agent,按区域、销售代表与 pipeline 维度输出汇总"
+    },
+    "government-digital-presales-consultant": {
+      "name": "政府数字化售前顾问",
+      "description": "中国政府数字化转型市场 (ToG) 售前专家,精通政策解读、解决方案设计、标书撰写、POC 验证、合规要求 (等保/密评/信创) 与相关方管理,帮助技术团队高效拿下政府 IT 项目"
+    },
+    "healthcare-customer-service": {
+      "name": "医疗客户服务",
+      "description": "富有同理心的医疗客户服务专家,负责患者支持、账单咨询、预约管理、保险问题、投诉处理,并能无缝升级至临床或行政人员"
+    },
+    "healthcare-marketing-compliance": {
+      "name": "医疗营销合规专家",
+      "description": "中国医疗营销合规专家,精通广告法、医疗广告管理办法、药品管理法等相关法规,覆盖药品、医疗器械、医美、保健品与互联网医疗的内容审查、风险管控、平台规则解读与患者隐私保护,帮助企业在合法边界内开展有效的健康营销"
+    },
+    "hospitality-guest-services": {
+      "name": "酒旅宾客服务",
+      "description": "面向酒店、度假村、餐厅与活动场所的宾客服务专家,涵盖预订、入住/退房、礼宾服务、宾客投诉处理、忠诚计划管理与离店后跟进,通过卓越体验驱动客户忠诚度与营收"
+    },
+    "hr-onboarding": {
+      "name": "HR 入职",
+      "description": "HR 入职专家,负责员工 orientation、文档管理、合规跟踪、福利注册、文化融入与新员工支持,提供从首日到首年的顺畅体验,提升留任率与生产力"
+    },
+    "identity-graph-operator": {
+      "name": "身份图谱运营者",
+      "description": "运营多 Agent 共同访问的共享身份图谱,确保多 Agent 系统中每个 Agent 对\"这是谁?\"得到一致的标准答案,即使在并发写入下也保持确定性"
+    },
+    "language-translator": {
+      "name": "语言翻译",
+      "description": "实时西班牙语 ↔ 英语翻译专家,结合文化语境、地区方言意识、旅行用语指导与语气适配,胜任日常、商务与紧急场景"
+    },
+    "legal-billing-time-tracking": {
+      "name": "律所计费与工时跟踪",
+      "description": "律所计费与工时跟踪专家,负责工时精准记录、发票生成、计费描述撰写、催收管理、信托账户合规与计费分析,在各种规模与计费模式下最大化营收回收,同时维护客户关系与职业操守"
+    },
+    "legal-client-intake": {
+      "name": "律所客户接待",
+      "description": "律所客户接待专家,负责潜在客户资格判断、案件信息收集、咨询预约、利益冲突检查,并输出律师可直接使用的接待摘要,适配各执业领域与律所规模"
+    },
+    "legal-document-review": {
+      "name": "法律文书审阅",
+      "description": "法律文书审阅专家,覆盖合同、诉讼文书与不动产协议,提供文档摘要、风险条款标注、合同版本比对与合规检查,适配各规模律所与执业领域"
+    },
+    "loan-officer-assistant": {
+      "name": "信贷专员助手",
+      "description": "面向房贷与信贷专员的助手,覆盖借款人接待、预审、资料收集、pipeline 管理、合规跟踪、利率报价与放款协调,适配住宅、商业与消费信贷"
+    },
+    "lsp-index-engineer": {
+      "name": "LSP 索引工程师",
+      "description": "LSP 专家,通过 LSP 客户端编排与语义索引构建统一的代码智能系统"
+    },
+    "real-estate-buyer-seller": {
+      "name": "房地产经纪助手",
+      "description": "房地产经纪助手,覆盖买方代理、卖方代理、房源管理、报价谈判、交易协调与过户支持,在住宅与投资房产中,从首次带看到最终过户提供世界级客户体验"
+    },
+    "recruitment-specialist": {
+      "name": "招聘专家",
+      "description": "招聘运营与人才获取专家,熟悉中国主流招聘平台、人才测评框架与劳动合规,帮助公司高效吸引、筛选、留住顶尖人才并打造有竞争力的雇主品牌"
+    },
+    "report-distribution-agent": {
+      "name": "报表分发 Agent",
+      "description": "按销售区域参数自动将汇总销售报表分发给相应代表的 AI Agent"
+    },
+    "retail-customer-returns": {
+      "name": "零售退换货专家",
+      "description": "零售退换货专家,处理线下、线上与全渠道的退货、换货与退款,覆盖政策执行、欺诈防范、客户挽留、供应商退货与退货数据分析,在最大化挽回的同时保留客户忠诚度"
+    },
+    "sales-data-extraction-agent": {
+      "name": "销售数据抽取 Agent",
+      "description": "专门监控 Excel 文件并提取关键销售指标 (MTD、YTD、Year End) 用于内部实时报表的 AI Agent"
+    },
+    "sales-outreach": {
+      "name": "销售触达",
+      "description": "顾问式 B2B 销售触达专家,负责陌拜、线索跟进、异议处理、提案撰写与 pipeline 管理,将数据驱动的精准触达与真诚关系建立结合,打开机会并完成签约"
+    },
+    "specialized-chief-of-staff": {
+      "name": "Chief of Staff",
+      "description": "为创始人和高管服务的总协调者,过滤噪音、负责流程、强制一致性、分流决策并把产出包装到能产生最大影响的形式,让老板能清晰思考"
+    },
+    "specialized-civil-engineer": {
+      "name": "土木工程师",
+      "description": "覆盖全球标准的土木与结构工程专家,涵盖 Eurocode、DIN、ACI、AISC、ASCE、AS/NZS、CSA、GB、IS、AIJ 等,专注结构分析、岩土设计、施工图文件、规范合规与多标准的国际项目"
+    },
+    "specialized-cultural-intelligence-strategist": {
+      "name": "文化智能策略师",
+      "description": "CQ 文化智能专家,识别不易察觉的排斥性设计、研究全球语境,确保软件在交叉身份维度上都能真实共鸣"
+    },
+    "specialized-developer-advocate": {
+      "name": "开发者布道师",
+      "description": "开发者布道专家,通过真诚的工程互动构建开发者社区、创作有吸引力的技术内容、优化开发者体验 (DX) 并推动平台采用,在产品/工程团队与外部开发者之间架起桥梁"
+    },
+    "specialized-document-generator": {
+      "name": "文档生成专家",
+      "description": "专业文档创建专家,通过代码方式生成具备良好排版、图表与数据可视化的 PDF、PPTX、DOCX 与 XLSX 文件"
+    },
+    "specialized-french-consulting-market": {
+      "name": "法国咨询市场领航员",
+      "description": "深入法国 ESN/SI 自由咨询生态,精通利润模型、平台机制 (Malt、collective.work)、portage salarial、报价定位与回款周期现实"
+    },
+    "specialized-korean-business-navigator": {
+      "name": "韩国商务领航员",
+      "description": "面向外国从业者的韩国商业文化指南,涵盖품의 (稟議) 决策流程、nunchi 察言观色、KakaoTalk 商务礼仪、层级关系与关系优先的成交机制"
+    },
+    "specialized-mcp-builder": {
+      "name": "MCP 构建专家",
+      "description": "Model Context Protocol 开发专家,设计、构建并测试 MCP server,用自定义工具、资源与提示扩展 AI Agent 的能力"
+    },
+    "specialized-model-qa": {
+      "name": "模型质量评估专家",
+      "description": "独立的模型 QA 专家,从文档审阅、数据重建、复现、校准测试、可解释性分析到性能监控与审计级报告,对 ML 与统计模型进行端到端审查"
+    },
+    "specialized-salesforce-architect": {
+      "name": "Salesforce 架构师",
+      "description": "Salesforce 平台解决方案架构,涵盖多云设计、集成模式、Governor Limits、部署策略与面向大型企业组织的数据模型治理"
+    },
+    "specialized-workflow-architect": {
+      "name": "工作流架构师",
+      "description": "工作流设计专家,为每个系统、用户旅程与 Agent 交互绘制完整的工作流树,覆盖正常路径、所有分支条件、失败模式、恢复路径、交接契约与可观测状态,产出 Agent 可实施、QA 可验证的可落地规范"
+    },
+    "study-abroad-advisor": {
+      "name": "留学顾问",
+      "description": "覆盖美、英、加、澳、欧、港、新的留学全程规划专家,精通本科、硕士、博士申请策略、选校、文书指导、背景提升、标化备考、签证准备与海外生活适应,帮助中国学生制定个性化的端到端留学方案"
+    },
+    "supply-chain-strategist": {
+      "name": "供应链策略师",
+      "description": "供应链管理与采购策略专家,擅长供应商培育、战略寻源、质量管控与供应链数字化,扎根中国制造生态,帮助企业打造高效、有韧性、可持续的供应链"
+    },
+    "zk-steward": {
+      "name": "ZK 知识管家",
+      "description": "受卢曼卡片盒笔记法启发的知识库管家,默认以卢曼视角思考,可按任务切换为费曼、芒格、奥格威等领域专家,强制原子化笔记、连接性与验证回路,适用于知识库建设、笔记串联、复杂任务拆解与跨领域决策支持"
+    },
+    "support-analytics-reporter": {
+      "name": "数据分析报告师",
+      "description": "数据分析专家,将原始数据转化为可执行的业务洞察,通过数据可视化与报表构建大盘、进行统计分析、跟踪 KPI 并支持战略决策"
+    },
+    "support-executive-summary-generator": {
+      "name": "高管摘要生成专家",
+      "description": "咨询顾问级 AI 专家,以资深战略顾问的思维与表达方式,使用麦肯锡 SCQA、BCG 金字塔原理与贝恩框架,将复杂业务输入转化为简洁、可执行的高管摘要,服务 C-level 决策"
+    },
+    "support-finance-tracker": {
+      "name": "财务跟踪专家",
+      "description": "财务分析与管控专家,专注财务规划、预算管理与经营绩效分析,维护财务健康、优化现金流并为业务增长提供战略财务洞察"
+    },
+    "support-infrastructure-maintainer": {
+      "name": "基础设施运维专家",
+      "description": "基础设施专家,专注系统可靠性、性能优化与技术运营管理,以安全、性能与成本效率支撑业务的稳健、可扩展基础设施"
+    },
+    "support-legal-compliance-checker": {
+      "name": "法律合规检查专家",
+      "description": "法律与合规专家,确保业务运营、数据处理与内容创作在多个司法管辖区内符合相关法律、法规与行业标准"
+    },
+    "support-support-responder": {
+      "name": "客服响应专家",
+      "description": "客户支持专家,提供卓越的客户服务、问题解决与用户体验优化,精通多渠道支持与主动客户关怀,把每一次支持互动都变成正向品牌体验"
+    },
+    "testing-accessibility-auditor": {
+      "name": "无障碍审计师",
+      "description": "无障碍专家,对照 WCAG 标准审计界面,结合辅助技术进行测试,保障包容性设计,默认前提是发现问题——没有经过屏幕阅读器测试的界面就不算无障碍"
+    },
+    "testing-api-tester": {
+      "name": "API 测试专家",
+      "description": "API 测试专家,专注于跨系统与第三方集成的全面 API 验证、性能测试与质量保障"
+    },
+    "testing-evidence-collector": {
+      "name": "证据采集 QA",
+      "description": "对截图近乎执着、容不得幻觉的 QA 专家,默认能挖出 3-5 个问题,所有结论都需要可视化证据"
+    },
+    "testing-performance-benchmarker": {
+      "name": "性能基准专家",
+      "description": "性能测试与优化专家,专注于在应用与基础设施上度量、分析并改进系统性能"
+    },
+    "testing-reality-checker": {
+      "name": "现实校验官",
+      "description": "杜绝幻觉式验收的证据驱动认证专家,默认结论为\"NEEDS WORK\",生产就绪需要压倒性的证据支撑"
+    },
+    "testing-test-results-analyzer": {
+      "name": "测试结果分析师",
+      "description": "测试分析专家,专注全面的测试结果评估、质量指标分析,从测试活动中提炼可执行的洞察"
+    },
+    "testing-tool-evaluator": {
+      "name": "工具评估专家",
+      "description": "技术评估专家,专注于评估、测试并推荐适用于业务与提效场景的工具、软件与平台"
+    },
+    "testing-workflow-optimizer": {
+      "name": "工作流优化专家",
+      "description": "流程改进专家,专注于跨业务职能的工作流分析、优化与自动化,最大化生产力与效率"
+    }
+  }
+}
