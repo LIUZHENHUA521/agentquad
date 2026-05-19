@@ -1039,6 +1039,54 @@ export function openDb(arg = ':memory:') {
     ptStmts.delete.run(id)
   }
 
+  // ─── pack registry ──────────────────────────────────────────────
+  // installPack / uninstallPack / listInstalledPacks operate on the
+  // `pack` column of prompt_templates. install is idempotent on
+  // (pack, name); uninstall only deletes builtin=1 rows so any user
+  // copies (builtin=0, created via createTemplate) survive.
+  const findByPackSlug = db.prepare(
+    `SELECT id FROM prompt_templates WHERE pack = ? AND name = ? LIMIT 1`,
+  )
+  const deletePack = db.prepare(
+    `DELETE FROM prompt_templates WHERE builtin = 1 AND pack = ?`,
+  )
+  const listPackIds = db.prepare(
+    `SELECT DISTINCT pack FROM prompt_templates WHERE pack IS NOT NULL`,
+  )
+
+  function installPack(packId, entries) {
+    if (!packId || typeof packId !== 'string') throw new Error('packId required')
+    if (!Array.isArray(entries)) throw new Error('entries must be array')
+    const now = Date.now()
+    const insert = db.transaction((items) => {
+      items.forEach((e, i) => {
+        if (findByPackSlug.get(packId, e.name)) return // idempotent on (pack, name)
+        ptStmts.insert.run({
+          id: randomUUID(),
+          name: e.name,
+          description: e.description || '',
+          content: e.content,
+          builtin: 1,
+          sort_order: 1000 + i,
+          pack: packId,
+          category: e.category || null,
+          created_at: now,
+          updated_at: now,
+        })
+      })
+    })
+    insert(entries)
+  }
+
+  function uninstallPack(packId) {
+    if (!packId) throw new Error('packId required')
+    deletePack.run(packId)
+  }
+
+  function listInstalledPacks() {
+    return listPackIds.all().map(r => r.pack).filter(Boolean)
+  }
+
   // ─── pending_questions ──────────────────────────────────────────
   // 配合 ask_user MCP 工具：AI 在 PTY 里发起问题时，写一行 pending；
   // 用户在 OpenClaw（微信）回复后，通过 submit_user_reply 回填。
@@ -1536,6 +1584,9 @@ export function openDb(arg = ':memory:') {
     createTemplate,
     updateTemplate,
     deleteTemplate,
+    installPack,
+    uninstallPack,
+    listInstalledPacks,
     createTodo,
     getTodo,
     updateTodo,
