@@ -101,7 +101,6 @@ CREATE TABLE IF NOT EXISTS prompt_templates (
   updated_at  INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_pt_sort ON prompt_templates(sort_order);
-CREATE INDEX IF NOT EXISTS idx_pt_pack ON prompt_templates(pack);
 
 CREATE TABLE IF NOT EXISTS wiki_runs (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
