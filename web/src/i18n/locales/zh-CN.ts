@@ -945,6 +945,25 @@ const zh = {
         dueDate: '截止日期',
       },
     },
+    templatePacks: {
+      sectionTitle: '扩展员工包',
+      sectionDesc: '一次性引入第三方维护的 prompt 角色集合。',
+      install: '安装',
+      uninstall: '卸载',
+      installing: '安装中…',
+      uninstalling: '卸载中…',
+      installedCount: '已安装 {{n}} 个员工',
+      availableCount: '{{n}} 个可选员工',
+      attribution: '来源：{{src}} · {{license}}',
+      installedOk: '已安装 {{n}} 个员工',
+      uninstalledOk: '已卸载（你手动复制过的副本保留）',
+      packs: {
+        'agency-agents': {
+          name: 'Agency Agents',
+          desc: '180+ 个细分角色（前端、后端、营销、设计、专项…）。英文 body，中文名称与简介。',
+        },
+      },
+    },
     telegramProbe: {
       title: '抓 supergroup ID',
       hint: '请到目标 Telegram 群里发条任意消息（@bot 或随便发都行）。收到的所有 chat 都会列在下面，点选你要的那一行 → 自动填回 supergroupId。',

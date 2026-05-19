@@ -949,6 +949,25 @@ const en = {
         dueDate: 'Due date',
       },
     },
+    templatePacks: {
+      sectionTitle: 'Expansion Packs',
+      sectionDesc: 'Bulk-import prompt agent collections maintained externally.',
+      install: 'Install',
+      uninstall: 'Uninstall',
+      installing: 'Installing…',
+      uninstalling: 'Uninstalling…',
+      installedCount: '{{n}} agents installed',
+      availableCount: '{{n}} agents available',
+      attribution: 'Source: {{src}} · {{license}}',
+      installedOk: 'Installed {{n}} agents',
+      uninstalledOk: 'Uninstalled (your manual copies are preserved)',
+      packs: {
+        'agency-agents': {
+          name: 'Agency Agents',
+          desc: '180+ specialized roles (frontend, backend, marketing, design, specialized…). English body, Chinese names+descriptions.',
+        },
+      },
+    },
     telegramProbe: {
       title: 'Grab supergroup ID',
       hint: 'Send any message in the target Telegram group (@bot or anything). All received chats will appear below; click the row you want -> the supergroupId is auto-filled.',

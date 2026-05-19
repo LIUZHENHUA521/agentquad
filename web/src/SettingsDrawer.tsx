@@ -14,6 +14,7 @@ import { TelegramProbeModal } from './TelegramProbeModal'
 import telegramSetupMd from '../../docs/TELEGRAM-setup.md?raw'
 import larkSetupMd from '../../docs/LARK.md?raw'
 import { AgentIcon } from './components/AgentIcon'
+import AgencyPackSection from './AgencyPackSection'
 import './SettingsDrawer.css'
 
 const { Text } = Typography
@@ -624,6 +625,14 @@ export default function SettingsDrawer({ open, onClose }: Props) {
               showSearch
             />
           </Form.Item>
+
+          <AgencyPackSection onChanged={async () => {
+            try {
+              setTemplates(await listTemplates())
+            } catch {
+              setTemplates([])
+            }
+          }} />
 
           <Form.Item
             name="defaultAiTool"
