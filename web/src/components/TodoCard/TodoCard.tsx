@@ -1,11 +1,12 @@
-import { useState } from 'react'
-import { Button, Tooltip, Dropdown, Popconfirm, Tag } from 'antd'
+import { useEffect, useMemo, useState } from 'react'
+import { Button, Tooltip, Dropdown, Popconfirm, Tag, Input } from 'antd'
 import { Plus, Trash2, Clock, Play, Code, ChevronDown, ChevronRight, CornerDownLeft, AlertTriangle, CheckCircle2, RotateCcw, Bot } from 'lucide-react'
 import { useSortable, SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import dayjs from 'dayjs'
 import { useTranslation } from 'react-i18next'
 import { updateTodo, type Todo, type AiTool, type StageTag, type LiveSession, type PromptTemplate, type EditorKind } from '../../api'
+import { templatesToGroupedOptions, templateFilterOption } from '../../templateGrouping'
 import { useAppConfigStore } from '../../store/appConfigStore'
 import { StageTagChip } from '../StageTagChip'
 import { AgentIcon } from '../AgentIcon'
@@ -85,38 +86,47 @@ export function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo =
   const lastSeenMap = useUnreadStore(s => s.lastSeenAt)
   const liveSessionsMap = useAiSessionStore(s => s.sessions)
 
-  // 派活下拉菜单：列出所有 agents（templates），+ "No agent / 自由模式" 兜底；
-  // 工具固定走 settings 里的 default AI tool —— 用户不再每次都需要选工具。
+  // 派活选择器：184+ agents 用 Antd flat Dropdown menu 是滚轮地狱——改成
+  // popupRender 自定义面板：顶部 search + 永远置顶的"自由模式"行 + 按 category
+  // 分组的 agent 列表。分组/搜索复用 templateGrouping 里的 helper，跟 Settings
+  // 抽屉 / TodoManage 表单的指派 Agent Select 保持一致。
   const defaultTool = (useAppConfigStore((s) => s.defaultAiTool) || 'claude') as AiTool
   const currentAgentId = (todo.appliedTemplateIds || [])[0] || null
-  const NO_AGENT_KEY = '__noAgent__'
-  const aiMenuItems = (() => {
-    const items: { key: string; icon?: React.ReactNode; label: React.ReactNode }[] = []
-    items.push({
-      key: NO_AGENT_KEY,
-      label: (
-        <span style={{ opacity: currentAgentId ? 0.7 : 1, fontStyle: 'italic' }}>
-          {t('todo:card.dispatchNoAgent', { defaultValue: '自由模式（不指派 agent）' })}
-        </span>
-      ),
-    })
-    for (const tpl of agents) {
-      items.push({
-        key: tpl.id,
-        label: (
-          <span>
-            {tpl.name}
-            {tpl.id === currentAgentId ? (
-              <span style={{ marginLeft: 6, fontSize: 10, color: 'var(--ant-color-primary)' }}>
-                {t('todo:card.dispatchCurrentMark', { defaultValue: '· 当前' })}
-              </span>
-            ) : null}
-          </span>
-        ),
-      })
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const [pickerSearch, setPickerSearch] = useState('')
+
+  // 关闭面板时清掉搜索词，避免下次再开看到上次留下来的过滤态
+  useEffect(() => {
+    if (!pickerOpen) setPickerSearch('')
+  }, [pickerOpen])
+
+  const pickerGroups = useMemo(
+    () => templatesToGroupedOptions(agents, (k, fb) => t(k as any, { defaultValue: fb as any }) as string),
+    [agents, t],
+  )
+  const filteredPickerGroups = useMemo(() => {
+    const q = pickerSearch.trim()
+    if (!q) return pickerGroups
+    return pickerGroups
+      .map((g) => ({ ...g, options: g.options.filter((opt) => templateFilterOption(q, opt)) }))
+      .filter((g) => g.options.length > 0)
+  }, [pickerGroups, pickerSearch])
+
+  const handlePickAgent = async (agentId: string | null) => {
+    setPickerOpen(false)
+    setPickerSearch('')
+    // 跟当前已绑定的不一样 → 先把 todo.appliedTemplateIds 更新，再启动；
+    // 完全一致就直接启动（保持现有 agent 不动）。
+    try {
+      if ((currentAgentId || null) !== (agentId || null)) {
+        await updateTodo(todo.id, { appliedTemplateIds: agentId ? [agentId] : [] })
+      }
+    } catch (e: any) {
+      message.error(e?.message || t('errors:stageTagUpdateFailed'))
+      return
     }
-    return items
-  })()
+    onAiExec(todo, defaultTool)
+  }
 
   const handleStageTagChange = async (next: StageTag | null) => {
     try {
@@ -192,25 +202,103 @@ export function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo =
             </Button>
           </Tooltip>
           <Dropdown
-            menu={{
-              items: aiMenuItems,
-              onClick: async ({ key }) => {
-                const agentId = key === NO_AGENT_KEY ? null : key
-                // 跟当前已绑定的不一样 → 先把 todo.appliedTemplateIds 更新，再启动；
-                // 完全一致就直接启动（保持现有 agent 不动）。
-                try {
-                  if ((currentAgentId || null) !== (agentId || null)) {
-                    await updateTodo(todo.id, { appliedTemplateIds: agentId ? [agentId] : [] })
-                  }
-                } catch (e: any) {
-                  message.error(e?.message || t('errors:stageTagUpdateFailed'))
-                  return
-                }
-                onAiExec(todo, defaultTool)
-              },
-            }}
             trigger={['click']}
+            open={pickerOpen}
+            onOpenChange={setPickerOpen}
             disabled={agents.length === 0}
+            popupRender={() => (
+              <div
+                style={{
+                  background: 'var(--surface-2, white)',
+                  border: '1px solid var(--border, #d9d9d9)',
+                  borderRadius: 8,
+                  padding: 8,
+                  width: 320,
+                  maxHeight: 420,
+                  overflow: 'auto',
+                  boxShadow: '0 6px 16px rgba(0,0,0,0.08)',
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') {
+                    setPickerOpen(false)
+                  }
+                }}
+              >
+                <Input
+                  placeholder={t('settings:template.searchPlaceholder', { defaultValue: '搜索员工名 / 描述…' })}
+                  value={pickerSearch}
+                  onChange={(e) => setPickerSearch(e.target.value)}
+                  allowClear
+                  autoFocus
+                  size="small"
+                  style={{ marginBottom: 8 }}
+                />
+                {/* 自由模式 — 永远置顶，不参与搜索过滤 */}
+                <div
+                  onClick={() => handlePickAgent(null)}
+                  style={{
+                    cursor: 'pointer',
+                    padding: '6px 8px',
+                    borderRadius: 4,
+                    opacity: currentAgentId ? 0.7 : 1,
+                    fontStyle: 'italic',
+                    background: currentAgentId == null ? 'var(--surface-3, #f5f5f5)' : 'transparent',
+                  }}
+                  onMouseEnter={(e) => {
+                    (e.currentTarget as HTMLDivElement).style.background = 'var(--surface-3, #f5f5f5)'
+                  }}
+                  onMouseLeave={(e) => {
+                    (e.currentTarget as HTMLDivElement).style.background =
+                      currentAgentId == null ? 'var(--surface-3, #f5f5f5)' : 'transparent'
+                  }}
+                >
+                  {t('todo:card.dispatchNoAgent', { defaultValue: '自由模式（不指派 agent）' })}
+                </div>
+                {filteredPickerGroups.length === 0 && pickerSearch.trim() !== '' && (
+                  <div style={{ padding: 16, textAlign: 'center', color: 'var(--text-secondary, #999)' }}>
+                    {t('settings:template.emptySearch', { defaultValue: '没有匹配的员工' })}
+                  </div>
+                )}
+                {filteredPickerGroups.map((g) => (
+                  <div key={g.title} style={{ marginTop: 8 }}>
+                    <div style={{ fontSize: 11, color: 'var(--text-secondary, #999)', padding: '4px 8px' }}>
+                      {g.label} · {g.options.length}
+                    </div>
+                    {g.options.map((opt) => {
+                      const isCurrent = opt.value === currentAgentId
+                      return (
+                        <div
+                          key={opt.value}
+                          onClick={() => handlePickAgent(opt.value)}
+                          style={{
+                            cursor: 'pointer',
+                            padding: '6px 8px',
+                            borderRadius: 4,
+                            fontWeight: isCurrent ? 600 : 400,
+                            background: isCurrent ? 'var(--surface-3, #f5f5f5)' : 'transparent',
+                          }}
+                          onMouseEnter={(e) => {
+                            (e.currentTarget as HTMLDivElement).style.background = 'var(--surface-3, #f5f5f5)'
+                          }}
+                          onMouseLeave={(e) => {
+                            (e.currentTarget as HTMLDivElement).style.background = isCurrent
+                              ? 'var(--surface-3, #f5f5f5)'
+                              : 'transparent'
+                          }}
+                        >
+                          {opt.label}
+                          {isCurrent && (
+                            <span style={{ marginLeft: 6, fontSize: 10, color: 'var(--ant-color-primary)' }}>
+                              {t('todo:card.dispatchCurrentMark', { defaultValue: '· 当前' })}
+                            </span>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                ))}
+              </div>
+            )}
           >
             <Tooltip title={agents.length === 0 ? t('todo:card.dispatchNoAgentTooltip', { defaultValue: '还没招过 agent，去抽屉创建一个' }) : ''}>
               <Button size="small" icon={<Play size={13} />} className="todo-primary-action">
