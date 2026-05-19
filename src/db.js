@@ -95,10 +95,13 @@ CREATE TABLE IF NOT EXISTS prompt_templates (
   content     TEXT NOT NULL,
   builtin     INTEGER NOT NULL DEFAULT 0,
   sort_order  REAL NOT NULL DEFAULT 0,
+  pack        TEXT,
+  category    TEXT,
   created_at  INTEGER NOT NULL,
   updated_at  INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_pt_sort ON prompt_templates(sort_order);
+CREATE INDEX IF NOT EXISTS idx_pt_pack ON prompt_templates(pack);
 
 CREATE TABLE IF NOT EXISTS wiki_runs (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -235,7 +238,25 @@ function ruleShouldProduceOn(rule, dateStr) {
   return false
 }
 
-export function openDb(file = ':memory:') {
+// Resolve the SQLite file path from either:
+//   - a legacy string argument (file path, e.g. ':memory:' or '/tmp/x.db'); or
+//   - an options object `{ dataDir, file }` — `dataDir` is treated as a directory
+//     and we put `data.db` inside it. `file` (if supplied) overrides everything.
+// Falls back to the AGENTQUAD_DATA_DIR env var, then ':memory:'.
+function resolveDbFile(arg) {
+  if (typeof arg === 'string') return arg
+  if (arg && typeof arg === 'object') {
+    if (arg.file) return arg.file
+    if (arg.dataDir) return `${arg.dataDir.replace(/\/+$/, '')}/data.db`
+  }
+  if (process.env.AGENTQUAD_DATA_DIR) {
+    return `${process.env.AGENTQUAD_DATA_DIR.replace(/\/+$/, '')}/data.db`
+  }
+  return ':memory:'
+}
+
+export function openDb(arg = ':memory:') {
+  const file = resolveDbFile(arg)
   const db = new Database(file)
   db.pragma('journal_mode = WAL')
   db.exec(SCHEMA)
@@ -314,6 +335,17 @@ export function openDb(file = ':memory:') {
   ]) {
     if (!tfCols.includes(name)) db.exec(`ALTER TABLE transcript_files ADD COLUMN ${name} ${type}`)
   }
+
+  // prompt_templates: pack/category columns added in the agency-agents-pack feature
+  // (see docs/superpowers/plans/2026-05-19-agency-agents-pack.md).
+  const ptColumns = db.prepare(`PRAGMA table_info(prompt_templates)`).all().map(c => c.name)
+  if (!ptColumns.includes('pack')) {
+    db.exec(`ALTER TABLE prompt_templates ADD COLUMN pack TEXT`)
+  }
+  if (!ptColumns.includes('category')) {
+    db.exec(`ALTER TABLE prompt_templates ADD COLUMN category TEXT`)
+  }
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_pt_pack ON prompt_templates(pack)`)
 
   const stmts = {
     insert: db.prepare(`
@@ -946,7 +978,7 @@ export function openDb(file = ':memory:') {
   const ptStmts = {
     list: db.prepare(`SELECT * FROM prompt_templates ORDER BY builtin DESC, sort_order ASC, created_at ASC`),
     get: db.prepare(`SELECT * FROM prompt_templates WHERE id = ?`),
-    insert: db.prepare(`INSERT INTO prompt_templates (id, name, description, content, builtin, sort_order, created_at, updated_at) VALUES (@id, @name, @description, @content, @builtin, @sort_order, @created_at, @updated_at)`),
+    insert: db.prepare(`INSERT INTO prompt_templates (id, name, description, content, builtin, sort_order, pack, category, created_at, updated_at) VALUES (@id, @name, @description, @content, @builtin, @sort_order, @pack, @category, @created_at, @updated_at)`),
     update: db.prepare(`UPDATE prompt_templates SET name = @name, description = @description, content = @content, sort_order = @sort_order, updated_at = @updated_at WHERE id = @id`),
     delete: db.prepare(`DELETE FROM prompt_templates WHERE id = ?`),
     countAll: db.prepare(`SELECT COUNT(*) AS n FROM prompt_templates`),
@@ -957,10 +989,12 @@ export function openDb(file = ':memory:') {
     return {
       id: r.id,
       name: r.name,
-      description: r.description,
+      description: r.description || '',
       content: r.content,
       builtin: !!r.builtin,
-      sortOrder: r.sort_order,
+      sortOrder: typeof r.sort_order === 'number' ? r.sort_order : 0,
+      pack: r.pack ?? null,
+      category: r.category ?? null,
       createdAt: r.created_at,
       updatedAt: r.updated_at,
     }
@@ -977,6 +1011,8 @@ export function openDb(file = ':memory:') {
       content: data.content || '',
       builtin: data.builtin ? 1 : 0,
       sort_order: Number.isFinite(data.sortOrder) ? data.sortOrder : now,
+      pack: data.pack ?? null,
+      category: data.category ?? null,
       created_at: now,
       updated_at: now,
     }
@@ -1198,6 +1234,8 @@ export function openDb(file = ':memory:') {
         content: s.content,
         builtin: 1,
         sort_order: i,
+        pack: null,
+        category: null,
         created_at: now,
         updated_at: now,
       })
@@ -1479,8 +1517,20 @@ export function openDb(file = ':memory:') {
     return { today, startOfTodayMs }
   }
 
+  // `raw` is exposed as a callable Proxy so both styles work:
+  //   db.raw()                    → returns the underlying better-sqlite3 handle
+  //   db.raw.prepare(...) / .close() / .open  → forwarded to the handle (legacy callers)
+  const rawProxy = new Proxy(function rawAccessor() { return db }, {
+    get(_target, prop) {
+      const value = db[prop]
+      return typeof value === 'function' ? value.bind(db) : value
+    },
+    has(_target, prop) { return prop in db },
+    apply() { return db },
+  })
+
   return {
-    raw: db,
+    raw: rawProxy,
     listTemplates,
     getTemplate,
     createTemplate,
