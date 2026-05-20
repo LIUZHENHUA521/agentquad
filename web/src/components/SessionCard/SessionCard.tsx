@@ -152,15 +152,31 @@ export function SessionCard({
           </Popconfirm>
         )}
         {columnStatus === 'pending_confirm' && (
-          <Button size="small" onClick={(e) => { e.stopPropagation(); onCancel?.(session, parent) }} danger>
-            Cancel
-          </Button>
+          <Popconfirm
+            title={t('common:confirm.cancelSession', { defaultValue: '停止当前 session？' })}
+            okText={t('common:confirm.yes', { defaultValue: '停' })}
+            cancelText={t('common:confirm.no', { defaultValue: '不停' })}
+            onConfirm={(e) => { e?.stopPropagation(); onCancel?.(session, parent) }}
+            onCancel={(e) => e?.stopPropagation()}
+          >
+            <Button size="small" danger onClick={(e) => e.stopPropagation()}>
+              Cancel
+            </Button>
+          </Popconfirm>
         )}
         {/* "Open" 按钮已删除 —— 跟 idle / running 列对齐，点卡片本身就进 AI 看板 */}
         {columnStatus === 'idle' && (
-          <Button size="small" onClick={(e) => { e.stopPropagation(); onClose?.(session, parent) }}>
-            × Close
-          </Button>
+          <Popconfirm
+            title={t('common:confirm.closeIdleSession', { defaultValue: '关闭这条 idle session？' })}
+            okText={t('common:confirm.yes', { defaultValue: '关' })}
+            cancelText={t('common:confirm.no', { defaultValue: '不关' })}
+            onConfirm={(e) => { e?.stopPropagation(); onClose?.(session, parent) }}
+            onCancel={(e) => e?.stopPropagation()}
+          >
+            <Button size="small" onClick={(e) => e.stopPropagation()}>
+              × Close
+            </Button>
+          </Popconfirm>
         )}
         {/* Re-open 按钮已删除 —— 直接点卡片任意位置即可回到 AI 看板（reopen 语义）*/}
       </div>
