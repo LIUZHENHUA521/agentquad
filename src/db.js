@@ -926,8 +926,11 @@ export function openDb(arg = ':memory:') {
         const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
         const total = db.prepare(`SELECT COUNT(*) AS n FROM transcript_files tf ${whereSql}`).get(...params).n
         const rows = db.prepare(`
-          SELECT tf.*, SUBSTR(tf.first_user_prompt, MAX(1, INSTR(tf.first_user_prompt, ?) - 16), 64) AS snippet
+          SELECT tf.*,
+            SUBSTR(tf.first_user_prompt, MAX(1, INSTR(tf.first_user_prompt, ?) - 24), 96) AS snippet,
+            td.title AS bound_todo_title
           FROM transcript_files tf
+          LEFT JOIN todos td ON td.id = tf.bound_todo_id
           ${whereSql}
           ORDER BY tf.started_at DESC
           LIMIT ? OFFSET ?
@@ -947,10 +950,12 @@ export function openDb(arg = ':memory:') {
       const total = db.prepare(`SELECT COUNT(*) AS n FROM transcript_files tf ${whereSql}`).get(...params).n
       const rows = db.prepare(`
         SELECT tf.*, (
-          SELECT snippet(transcript_fts, 0, '<mark>', '</mark>', '…', 16)
+          SELECT snippet(transcript_fts, 0, '<mark>', '</mark>', '…', 32)
           FROM transcript_fts WHERE file_id = tf.id AND transcript_fts MATCH ? LIMIT 1
-        ) AS snippet
+        ) AS snippet,
+          td.title AS bound_todo_title
         FROM transcript_files tf
+        LEFT JOIN todos td ON td.id = tf.bound_todo_id
         ${whereSql}
         ORDER BY tf.started_at DESC NULLS LAST
         LIMIT ? OFFSET ?
@@ -965,8 +970,9 @@ export function openDb(arg = ':memory:') {
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
     const total = db.prepare(`SELECT COUNT(*) AS n FROM transcript_files tf ${whereSql}`).get(...params).n
     const rows = db.prepare(`
-      SELECT tf.*, NULL AS snippet
+      SELECT tf.*, NULL AS snippet, td.title AS bound_todo_title
       FROM transcript_files tf
+      LEFT JOIN todos td ON td.id = tf.bound_todo_id
       ${whereSql}
       ORDER BY tf.started_at DESC
       LIMIT ? OFFSET ?

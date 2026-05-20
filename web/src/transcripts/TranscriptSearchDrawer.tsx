@@ -1,14 +1,15 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { Drawer, Input, Select, Button, Tag, Space, Modal, Empty, Spin, Typography, Tooltip } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { useAppMessages } from '../design/useAppMessages'
 import { ReloadOutlined, LinkOutlined, DisconnectOutlined, SearchOutlined, CopyOutlined } from '@ant-design/icons'
 import {
-  scanTranscripts, searchTranscripts, bindTranscript, unbindTranscript, previewTranscript,
+  scanTranscripts, searchTranscripts, unbindTranscript, previewTranscript,
   getTranscriptStats, listTodos, type TranscriptFile, type Todo, type AiTool,
 } from '../api'
 import { buildResumeCommand, type ResumeTool } from './resumeCommand'
 import { AgentIcon } from '../components/AgentIcon'
+import BindTodoModal from './BindTodoModal'
 
 const TOOL_DISPLAY: Record<AiTool, string> = { claude: 'Claude', codex: 'Codex', cursor: 'Cursor' }
 const toolOptionLabel = (tool: AiTool) => (
@@ -90,7 +91,7 @@ function HighlightText({ text, query }: { text: string; query: string }) {
 
 export default function TranscriptSearchDrawer({ open, onClose, preselectTodoId, initialQuery, initialCwd, onBindingChanged }: Props) {
   const { t } = useTranslation(['transcript', 'common', 'errors'])
-  const { message, modal } = useAppMessages()
+  const { message } = useAppMessages()
   const [q, setQ] = useState('')
   const [tool, setTool] = useState<AiTool | ''>('')
   const [cwd, setCwd] = useState('')
@@ -102,7 +103,6 @@ export default function TranscriptSearchDrawer({ open, onClose, preselectTodoId,
   const [unboundCount, setUnboundCount] = useState(0)
   const [todos, setTodos] = useState<Todo[]>([])
   const [bindTargetFile, setBindTargetFile] = useState<TranscriptFile | null>(null)
-  const [bindTodoId, setBindTodoId] = useState<string>('')
   const [previewFile, setPreviewFile] = useState<TranscriptFile | null>(null)
   const [previewTurns, setPreviewTurns] = useState<{ role: string; content: string }[]>([])
   const [previewTotal, setPreviewTotal] = useState(0)
@@ -161,31 +161,11 @@ export default function TranscriptSearchDrawer({ open, onClose, preselectTodoId,
     return () => clearTimeout(id)
   }, [open, q, tool, cwd, unboundOnly])
 
-  useEffect(() => {
-    if (bindTargetFile && preselectTodoId) setBindTodoId(preselectTodoId)
-  }, [bindTargetFile, preselectTodoId])
-
-  async function submitBind(force = false) {
-    if (!bindTargetFile || !bindTodoId) return
-    try {
-      const r = await bindTranscript(bindTargetFile.id, bindTodoId, force)
-      if (r.conflict) {
-        const other = todos.find(td => td.id === r.currentTodoId)
-        modal.confirm({
-          title: t('transcript:searchDrawer.conflictTitle'),
-          content: t('transcript:searchDrawer.conflictContent', { title: other?.title || r.currentTodoId }),
-          okText: t('transcript:searchDrawer.conflictOk'),
-          onOk: async () => submitBind(true),
-        })
-        return
-      }
-      message.success(t('transcript:searchDrawer.bound'))
-      setBindTargetFile(null)
-      setBindTodoId('')
-      await doSearch()
-      await refreshStats()
-      onBindingChanged?.()
-    } catch (e) { message.error((e as Error).message) }
+  async function handleBound() {
+    setBindTargetFile(null)
+    await doSearch()
+    await refreshStats()
+    onBindingChanged?.()
   }
 
   async function handleUnbind(f: TranscriptFile) {
@@ -264,8 +244,6 @@ export default function TranscriptSearchDrawer({ open, onClose, preselectTodoId,
       message.error(t('transcript:searchDrawer.copyFailed'))
     }
   }
-
-  const todoOptions = useMemo(() => todos.map(td => ({ label: td.title, value: td.id })), [todos])
 
   return (
     <>
@@ -350,7 +328,7 @@ export default function TranscriptSearchDrawer({ open, onClose, preselectTodoId,
                       )}
                       <Space size={4} style={{ marginTop: 8 }}>
                         <Button size="small" onClick={() => handlePreview(f)}>{t('transcript:searchDrawer.preview')}</Button>
-                        <Button size="small" type="primary" icon={<LinkOutlined />} onClick={() => { setBindTargetFile(f); setBindTodoId(preselectTodoId || '') }}>
+                        <Button size="small" type="primary" icon={<LinkOutlined />} onClick={() => setBindTargetFile(f)}>
                           {boundTodo ? t('transcript:searchDrawer.rebind') : t('transcript:searchDrawer.bindToTodo')}
                         </Button>
                         {boundTodo && (
@@ -376,23 +354,14 @@ export default function TranscriptSearchDrawer({ open, onClose, preselectTodoId,
         </Space>
       </Drawer>
 
-      <Modal
+      <BindTodoModal
         open={!!bindTargetFile}
-        title={t('transcript:searchDrawer.bindModalTitle')}
-        onCancel={() => { setBindTargetFile(null); setBindTodoId('') }}
-        onOk={() => submitBind(false)}
-        okButtonProps={{ disabled: !bindTodoId }}
-      >
-        <Select
-          showSearch
-          style={{ width: '100%' }}
-          placeholder={t('transcript:searchDrawer.pickTodoPlaceholder')}
-          value={bindTodoId || undefined}
-          onChange={setBindTodoId}
-          filterOption={(input, option) => String(option?.label || '').toLowerCase().includes(input.toLowerCase())}
-          options={todoOptions}
-        />
-      </Modal>
+        file={bindTargetFile}
+        todos={todos}
+        preselectTodoId={preselectTodoId}
+        onClose={() => setBindTargetFile(null)}
+        onBound={handleBound}
+      />
 
       <Modal
         open={!!previewFile}

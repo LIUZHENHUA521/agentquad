@@ -31,6 +31,7 @@ const zh = {
       quickActions: '快捷操作',
       jumpToTodo: '跳转待办',
       focusSession: '专注会话',
+      transcripts: 'AI 历史会话',
       drawers: '功能面板',
       view: '视图',
       system: '系统',
@@ -52,6 +53,11 @@ const zh = {
     },
     meta: {
       done: '已完成',
+      unbound: '未绑定',
+    },
+    transcript: {
+      searchHint: '输入 ≥ 3 字搜会话',
+      noBoundTodo: '未绑定 todo',
     },
     subtaskLabel: '↳ {{parent}} / {{title}}',
   },

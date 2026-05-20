@@ -33,6 +33,18 @@ export function SessionFocus() {
   // 由 AiTerminalMini 在 mount 后回填；切换 focus session 时 AiTerminalMini 卸载会先推 null。
   const [autoModeController, setAutoModeController] = useState<AutoModeController | null>(null)
 
+  // 命令面板跨会话搜索命中后,openFocus 会把关键词放到 focusStore.pendingInitialKeyword;
+  // 这里在 focusedSessionId 变化时 consume 一次,透传给 SessionViewer → TranscriptView。
+  const [initialKeyword, setInitialKeyword] = useState<string | null>(null)
+  useEffect(() => {
+    if (!focusedSessionId) {
+      setInitialKeyword(null)
+      return
+    }
+    const kw = useFocusStore.getState().consumeInitialKeyword()
+    setInitialKeyword(kw)
+  }, [focusedSessionId])
+
   // 进入聚焦视图时自动标记已读，让 pending → idle
   useEffect(() => {
     if (!focusedSessionId) return
@@ -127,6 +139,7 @@ export function SessionFocus() {
             fillHeight
             viewerRole="primary"
             onAutoModeReady={setAutoModeController}
+            initialKeyword={initialKeyword}
           />
         ) : (
           <div className="session-focus-empty">{t('session:focus.noActiveSession')}</div>

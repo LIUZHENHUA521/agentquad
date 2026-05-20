@@ -27,6 +27,8 @@ interface Props {
   viewerRole?: 'primary' | 'secondary'
   /** AiTerminalMini.onAutoModeReady 透传：让 FocusSubbar 顶栏拿到 permission mode 控制器。 */
   onAutoModeReady?: (controller: AutoModeController | null) => void
+  /** 一次性透传给 TranscriptView 的预填关键词（CommandPalette 跨会话搜索命中后打开 SessionFocus 时使用）。 */
+  initialKeyword?: string | null
 }
 
 type ViewMode = 'live' | 'transcript'
@@ -89,6 +91,7 @@ export default function SessionViewer(props: Props) {
           fillHeight={fillHeight}
           cwd={props.cwd}
           active={mode === 'transcript'}
+          initialKeyword={props.initialKeyword}
         />
       </div>
     </div>

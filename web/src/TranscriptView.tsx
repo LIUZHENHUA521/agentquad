@@ -34,6 +34,10 @@ interface Props {
   cwd?: string | null
   /** Chat tab 是否可见。不可见时不打开 SSE 长连接，避免占用浏览器同源 6 并发池 */
   active?: boolean
+  /** 由父容器(SessionFocus)在打开新 focus session 时一次性提供的预填关键词;
+   *  mount / sessionId 切换时如果有值就 setKeyword(initialKeyword)。
+   *  用户后续手 typed 不会被它覆盖。 */
+  initialKeyword?: string | null
 }
 
 interface SlashCommand {
@@ -619,7 +623,7 @@ function PermissionCard({
   )
 }
 
-export default function TranscriptView({ todoId, sessionId, onFork, autoRefreshMs = 0, resumeTarget = null, onSessionRecovered, fillHeight, cwd, active = true }: Props) {
+export default function TranscriptView({ todoId, sessionId, onFork, autoRefreshMs = 0, resumeTarget = null, onSessionRecovered, fillHeight, cwd, active = true, initialKeyword = null }: Props) {
   const { t } = useTranslation(['transcript', 'common', 'errors'])
   const { message } = useAppMessages()
   const [data, setData] = useState<TranscriptResponse | null>(null)
@@ -627,8 +631,19 @@ export default function TranscriptView({ todoId, sessionId, onFork, autoRefreshM
   const [sending, setSending] = useState(false)
   const [resuming, setResuming] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [keyword, setKeyword] = useState('')
+  const [keyword, setKeyword] = useState(() => initialKeyword || '')
   const [searchIdx, setSearchIdx] = useState(0)
+  // sessionId 切换时(包括首次 mount 后父组件改了 prop),如果 SessionFocus 透传了新的 initialKeyword 就预填。
+  // 用 ref 跟踪上一次的 sessionId,避免在 sessionId 不变时 prop 抖动覆盖用户已 typed 的 keyword。
+  const lastInitSessionIdRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (sessionId === lastInitSessionIdRef.current) return
+    lastInitSessionIdRef.current = sessionId
+    if (initialKeyword) {
+      setKeyword(initialKeyword)
+      setSearchIdx(0)
+    }
+  }, [sessionId, initialKeyword])
   const [collapsedTools, setCollapsedTools] = useState<Record<number, boolean>>({})
   const [allToolsCollapsed, setAllToolsCollapsed] = useState(true)
   const [composer, setComposer] = useState(() => readDraft(todoId, sessionId)?.text ?? '')

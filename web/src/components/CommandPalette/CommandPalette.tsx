@@ -4,9 +4,11 @@ import { useTranslation } from 'react-i18next'
 import { useDispatchStore } from '../../store/dispatchStore'
 import { useTheme } from '../../design/ThemeProvider'
 import { useAiSessionStore } from '../../store/aiSessionStore'
-import { listTodos, updateTodo, type Todo } from '../../api'
+import { listTodos, updateTodo, type Todo, type TranscriptFile } from '../../api'
 import { useAppMessages } from '../../design/useAppMessages'
 import { BarChart3, BookOpen, Settings, BarChartBig, Bot, Send, Moon } from 'lucide-react'
+import { TranscriptResultsGroup } from './TranscriptResultsGroup'
+import BindTodoModal from '../../transcripts/BindTodoModal'
 import './CommandPalette.css'
 
 interface TodoEntry {
@@ -30,6 +32,8 @@ export function CommandPalette() {
 
   const [search, setSearch] = useState('')
   const [allTodos, setAllTodos] = useState<Todo[]>([])
+  // 未绑定的 transcript 命中:命令面板关掉,弹这个 modal 让用户选 todo
+  const [bindTarget, setBindTarget] = useState<{ file: TranscriptFile; query: string } | null>(null)
 
   useEffect(() => {
     if (open) {
@@ -82,6 +86,24 @@ export function CommandPalette() {
     }
   }
 
+  // transcript 命中 + 已绑定 todo → 找出 todo 上对应的 sessionId(by nativeSessionId),跳 SessionFocus
+  function jumpToTranscript(file: TranscriptFile, query: string) {
+    const todoId = file.bound_todo_id
+    if (!todoId) return
+    const todo = allTodos.find(td => td.id === todoId)
+    if (!todo) {
+      // 绑定到了归档 / 不可见的 todo,这里不静默吞掉
+      message.warning(t('palette:transcript.noBoundTodo'))
+      return
+    }
+    let sessionId: string | null = null
+    for (const s of (todo.aiSessions || [])) {
+      if (s.nativeSessionId === file.native_id && s.tool === file.tool) { sessionId = s.sessionId; break }
+    }
+    if (!sessionId && todo.aiSession?.nativeSessionId === file.native_id) sessionId = todo.aiSession.sessionId
+    useDispatchStore.getState().openFocus(todoId, sessionId, { initialKeyword: query, initialTab: 'conversation' })
+  }
+
   const seenTodoIds = new Set<string>()
   const todos: TodoEntry[] = []
   sessions.forEach((s) => {
@@ -98,9 +120,37 @@ export function CommandPalette() {
     })
   })
 
-  if (!open) return null
+  // BindTodoModal 必须独立于 cmdk-overlay 渲染:onPickUnbound 时 palette 已关掉,但 modal 还要继续显示。
+  const bindModalNode = (
+    <BindTodoModal
+      open={!!bindTarget}
+      file={bindTarget?.file ?? null}
+      todos={allTodos}
+      onClose={() => setBindTarget(null)}
+      onBound={async (todoId, file) => {
+        const query = bindTarget?.query || ''
+        setBindTarget(null)
+        // 绑定后端已经把 native_id 写到 todo.aiSessions[*].nativeSessionId,但前端 allTodos 是旧的。
+        // 重新拉一次拿到 sessionId 才能让 SessionFocus 渲染对应 transcript;失败就降级到 openFocus(todoId, null)。
+        let sessionId: string | null = null
+        try {
+          const fresh = await listTodos({})
+          setAllTodos(fresh)
+          const todo = fresh.find(td => td.id === todoId)
+          for (const s of (todo?.aiSessions || [])) {
+            if (s.nativeSessionId === file.native_id && s.tool === file.tool) { sessionId = s.sessionId; break }
+          }
+          if (!sessionId && todo?.aiSession?.nativeSessionId === file.native_id) sessionId = todo.aiSession.sessionId
+        } catch { /* fall through with sessionId=null */ }
+        useDispatchStore.getState().openFocus(todoId, sessionId, { initialKeyword: query, initialTab: 'conversation' })
+      }}
+    />
+  )
+
+  if (!open) return bindModalNode
 
   return (
+    <>
     <div
       className="cmdk-overlay"
       onClick={(e) => {
@@ -192,6 +242,15 @@ export function CommandPalette() {
             </Command.Group>
           )}
 
+          <TranscriptResultsGroup
+            query={search}
+            onPickBound={(file, q) => { jumpToTranscript(file, q) }}
+            onPickUnbound={(file, q) => {
+              closePalette()
+              setBindTarget({ file, query: q })
+            }}
+          />
+
           <Command.Group heading={t('palette:groups.drawers')}>
             <Command.Item onSelect={() => { openDrawer('report'); closePalette() }}>
               <span className="cmdk-icon"><BarChart3 size={14} /></span>
@@ -245,5 +304,7 @@ export function CommandPalette() {
         </Command.List>
       </Command>
     </div>
+    {bindModalNode}
+    </>
   )
 }

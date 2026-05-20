@@ -34,6 +34,7 @@ const en = {
       quickActions: 'Quick actions',
       jumpToTodo: 'Jump to todo',
       focusSession: 'Focus session',
+      transcripts: 'AI history',
       drawers: 'Drawers',
       view: 'View',
       system: 'System',
@@ -55,6 +56,11 @@ const en = {
     },
     meta: {
       done: 'Done',
+      unbound: 'Unbound',
+    },
+    transcript: {
+      searchHint: 'Type ≥ 3 chars to search history',
+      noBoundTodo: 'No bound todo',
     },
     subtaskLabel: '↳ {{parent}} / {{title}}',
   },

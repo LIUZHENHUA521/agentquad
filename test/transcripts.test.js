@@ -308,6 +308,24 @@ describe('transcripts service', () => {
     expect(r.items[0].snippet).toMatch(/<mark>he<\/mark>/i)
   })
 
+  it('search returns bound_todo_title via LEFT JOIN todos (null when unbound)', async () => {
+    writeClaudeFile(path.join(tmp, 'claude'), '/p')
+    await service.scanFull()
+    // 未绑定时:bound_todo_title 为 null,bound_todo_id 也是 null
+    const before = service.search({})
+    expect(before.total).toBeGreaterThan(0)
+    expect(before.items[0].bound_todo_id).toBeNull()
+    expect(before.items[0].bound_todo_title).toBeNull()
+
+    // 绑定到一个 todo 后,标题应该被 JOIN 出来
+    const t = db.createTodo({ title: 'titled todo', quadrant: 1 })
+    service.bind(before.items[0].id, t.id)
+    const after = service.search({})
+    const bound = after.items.find(it => it.bound_todo_id === t.id)
+    expect(bound).toBeTruthy()
+    expect(bound.bound_todo_title).toBe('titled todo')
+  })
+
   it('bind returns 409-style conflict when reassigning, force=true moves', async () => {
     writeClaudeFile(path.join(tmp, 'claude'), '/p')
     const a = db.createTodo({ title: 'a', quadrant: 1 })

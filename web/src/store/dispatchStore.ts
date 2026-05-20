@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { useFocusStore } from './focusStore'
+import { useFocusStore, type SetFocusOpts } from './focusStore'
 import type { AiTool } from '../api'
 
 export type DrawerKey = 'settings' | 'stats' | 'wiki' | 'report' | 'statsReports' | 'template'
@@ -41,7 +41,7 @@ interface DispatchState {
   togglePalette: () => void
 
   /** Open the session focus overlay for the given todo (and its session, if known). Closes palette + drawers. */
-  openFocus: (todoId: string, sessionId?: string | null) => void
+  openFocus: (todoId: string, sessionId?: string | null, opts?: SetFocusOpts) => void
 
   /** When set, TodoManage should scroll/focus this todo and clear the field */
   jumpToTodoId: string | null
@@ -86,10 +86,10 @@ export const useDispatchStore = create<DispatchState>((set, get) => ({
   closePalette: () => set(() => ({ palette: false })),
   togglePalette: () => set((s) => ({ palette: !s.palette })),
 
-  openFocus: (todoId, sessionId) => {
+  openFocus: (todoId, sessionId, opts) => {
     // Close any open palette/drawers, then activate focus mode
     set(() => ({ palette: false, settings: false, stats: false, wiki: false, report: false, statsReports: false, template: false }))
-    useFocusStore.getState().setFocus(todoId, sessionId ?? null)
+    useFocusStore.getState().setFocus(todoId, sessionId ?? null, opts)
   },
 
   jumpToTodoId: null,

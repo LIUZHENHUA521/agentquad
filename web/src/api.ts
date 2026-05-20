@@ -777,6 +777,7 @@ export interface TranscriptFile {
   first_user_prompt: string | null
   turn_count: number
   bound_todo_id: string | null
+  bound_todo_title?: string | null
   indexed_at: number
   snippet?: string | null
 }
