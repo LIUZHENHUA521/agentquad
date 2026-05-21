@@ -15,6 +15,7 @@ import telegramSetupMd from '../../docs/TELEGRAM-setup.md?raw'
 import larkSetupMd from '../../docs/LARK.md?raw'
 import { AgentIcon } from './components/AgentIcon'
 import AgencyPackSection from './AgencyPackSection'
+import AgentConfigEditor from './AgentConfigEditor'
 import { templatesToGroupedOptions, templateFilterOption } from './templateGrouping'
 import './SettingsDrawer.css'
 
@@ -132,6 +133,8 @@ export default function SettingsDrawer({ open, onClose, onTemplatesChanged }: Pr
   const [activeTab, setActiveTab] = useState<'run' | 'tools' | 'telegram' | 'lark' | 'pricing'>('run')
   const [templates, setTemplates] = useState<PromptTemplate[]>([])
   const [viewingTool, setViewingTool] = useState<ToolKey>('claude')
+  const [configEditorOpen, setConfigEditorOpen] = useState(false)
+  const [configEditorTool, setConfigEditorTool] = useState<ToolKey>('claude')
   const [dispatchDraft, setDispatchDraft] = useState<{
     lark: DispatchChannelConfig
     telegram: DispatchChannelConfig
@@ -473,6 +476,15 @@ export default function SettingsDrawer({ open, onClose, onTemplatesChanged }: Pr
         <Space size={[8, 8]} wrap>
           <Tag color={sourceColor}>{sourceText}</Tag>
           <Button size="small" onClick={() => handleRedetectTool(tool)}>{t('settings:tools.redetect')}</Button>
+          <Button
+            size="small"
+            onClick={() => {
+              setConfigEditorTool(tool)
+              setConfigEditorOpen(true)
+            }}
+          >
+            {t('settings:tools.editConfig', { defaultValue: '编辑配置文件' })}
+          </Button>
         </Space>
         {!meta.missing && (
           <div style={{ marginTop: 6, fontSize: 12, color: 'var(--text-secondary)' }}>
@@ -1374,6 +1386,12 @@ export default function SettingsDrawer({ open, onClose, onTemplatesChanged }: Pr
             form.setFieldValue('telegramAllowedChatIds', hit.chatId + (cur ? '\n' + cur : ''))
           }
         }}
+      />
+
+      <AgentConfigEditor
+        open={configEditorOpen}
+        tool={configEditorTool}
+        onClose={() => setConfigEditorOpen(false)}
       />
 
     </Drawer>

@@ -24,6 +24,7 @@ import { createTranscriptsRouter } from "./routes/transcripts.js";
 import { createTranscriptsService } from "./transcripts/index.js";
 import { createTodosRouter } from "./routes/todos.js";
 import { createUploadsRouter } from "./routes/uploads.js";
+import { createAgentConfigRouter } from "./routes/agent-config.js";
 import { createTemplatesRouter } from "./routes/templates.js";
 import { createTemplatePacksRouter } from "./routes/templatePacks.js";
 import { createRecurringRulesRouter } from "./routes/recurringRules.js";
@@ -1183,6 +1184,9 @@ export function createServer(opts = {}) {
 
 	// 图片粘贴/拖拽上传：单独提一个 JSON body limit（30MB）覆盖全局 2MB 限制
 	app.use("/api/uploads", express.json({ limit: "30mb" }), createUploadsRouter({ logger: console }))
+
+	// 每个 agent 的原文配置文件读写（settings.json / config.toml / mcp.json 等）
+	app.use("/api/agent-config", createAgentConfigRouter({ logger: console }))
 
 	app.use("/api/todos", createTodosRouter({
 		db,

@@ -1075,3 +1075,45 @@ export function subscribeProbeChatId(callbacks: {
   es.onerror = (e) => callbacks.onError?.(e)
   return () => es.close()
 }
+
+// ── Agent config file editor ────────────────────────────────────────────────
+export type AgentConfigTool = 'claude' | 'codex' | 'cursor'
+
+export interface AgentConfigFileMeta {
+  id: string
+  label: string
+  path: string
+  format: 'json' | 'toml' | string
+  exists: boolean
+  size: number
+  mtime: number
+}
+
+export interface AgentConfigFileContent extends AgentConfigFileMeta {
+  content: string
+  backup?: string | null
+}
+
+export async function listAgentConfigFiles(tool: AgentConfigTool): Promise<AgentConfigFileMeta[]> {
+  const body = await jsonFetch<{ ok: true; files: AgentConfigFileMeta[] }>(`/api/agent-config/${tool}`)
+  return body.files
+}
+
+export async function readAgentConfigFile(tool: AgentConfigTool, id: string): Promise<AgentConfigFileContent> {
+  const body = await jsonFetch<{ ok: true } & AgentConfigFileContent>(
+    `/api/agent-config/${tool}/file?id=${encodeURIComponent(id)}`,
+  )
+  return body
+}
+
+export async function writeAgentConfigFile(
+  tool: AgentConfigTool,
+  id: string,
+  content: string,
+): Promise<AgentConfigFileContent> {
+  const body = await jsonFetch<{ ok: true } & AgentConfigFileContent>(`/api/agent-config/${tool}/file`, {
+    method: 'PUT',
+    body: JSON.stringify({ id, content }),
+  })
+  return body
+}
