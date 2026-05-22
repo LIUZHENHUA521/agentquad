@@ -1388,8 +1388,17 @@ export function createServer(opts = {}) {
 		})
 		larkBotHolder.current = bot
 		openclawBridge.setLarkBot?.(bot)
-		bot.start?.()
-		console.log(`[lark] bot started; chatId=${lark.chatId || '(unset)'}`)
+		// bot.start 之前是 fire-and-forget,失败时悄无声息,WS 连不上也写一行"started"
+		// 误导诊断。改成 await + 错误 log,顺手解决"是不是真的 started"问题。
+		Promise.resolve(bot.start?.())
+			.then((r) => {
+				if (r && r.ok === false) {
+					console.warn(`[lark] bot start returned not-ok: reason=${r.reason || 'unknown'} detail=${r.detail || ''}`)
+				} else {
+					console.log(`[lark] bot started; chatId=${lark.chatId || '(unset)'}`)
+				}
+			})
+			.catch((e) => console.warn(`[lark] bot start threw: ${e.message}`))
 	}
 
 	async function stopLarkStack() {

@@ -1018,6 +1018,25 @@ export async function testLark(input: { appId?: string; appSecret?: string } = {
   return await r.json() as LarkTestResult
 }
 
+export interface LarkLiveStatus {
+  enabled: boolean
+  chatId: string
+  eventSubscribeEnabled: boolean
+  running: boolean
+  eventStatus?: { running: boolean; reason: string | null; detail?: string | null } | null
+  pendingReactionSessions?: number
+  lastEventAt?: number
+  idleMs?: number
+  watchdogIdleMs?: number
+  consecutiveWatchdogRestarts?: number
+  lastWatchdogRestartAt?: number | null
+}
+
+export async function getLarkStatus(): Promise<{ ok: boolean; status?: LarkLiveStatus }> {
+  const r = await fetch(BASE + '/api/config/lark/status')
+  return await r.json()
+}
+
 export interface ProbeStartResult {
   ok: boolean
   durationSec?: number

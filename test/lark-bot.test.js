@@ -1113,3 +1113,197 @@ describe("adaptWizardResponseToLark (Lark card-callback shape adapter)", () => {
   })
 })
 
+describe('lark-bot inbound-event watchdog', () => {
+  function makeWatchdogBot({ idleMs = 1000, checkIntervalMs = 100, backoffMs = 5000 } = {}) {
+    const cfg = {
+      lark: {
+        enabled: true,
+        appId: 'cli_w',
+        appSecret: 'secret',
+        chatId: 'oc_w',
+        eventSubscribeEnabled: true,
+        watchdogIdleMs: idleMs,
+        watchdogCheckIntervalMs: checkIntervalMs,
+        watchdogBackoffMs: backoffMs,
+      },
+    }
+    const eventClient = {
+      start: vi.fn().mockResolvedValue({ ok: true, action: 'started' }),
+      stop: vi.fn().mockResolvedValue({ ok: true }),
+      describe: vi.fn(() => ({ running: true, reason: null })),
+    }
+    const wizard = { handleInbound: vi.fn().mockResolvedValue({ action: 'handled' }) }
+    const logger = { warn: vi.fn(), info: vi.fn() }
+    const bot = createLarkBot({
+      getConfig: () => cfg,
+      wizard,
+      logger,
+      apiClientFactory: vi.fn(() => ({
+        addReaction: vi.fn().mockResolvedValue({ ok: true, payload: { reaction_id: 'r' } }),
+      })),
+      eventClientFactory: vi.fn(() => eventClient),
+    })
+    return { bot, eventClient, wizard, logger, cfg }
+  }
+
+  it('does not restart when events keep arriving', async () => {
+    vi.useFakeTimers()
+    try {
+      const { bot, eventClient } = makeWatchdogBot({ idleMs: 1000, checkIntervalMs: 100 })
+      await bot.start()
+      expect(eventClient.start).toHaveBeenCalledTimes(1)
+
+      // 反复发事件,每次推进 200ms,total 2000ms 远超 idleMs=1000 但因为有事件不该重启
+      for (let i = 0; i < 10; i++) {
+        await bot.handleEvent({ event_id: `e${i}`, event: { message: { message_id: `m${i}`, chat_id: 'other' } } })
+        await vi.advanceTimersByTimeAsync(200)
+      }
+      expect(eventClient.stop).not.toHaveBeenCalled()
+      // start 仍然只被调一次(原始的)
+      expect(eventClient.start).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('restarts when no events arrive for longer than watchdogIdleMs', async () => {
+    vi.useFakeTimers()
+    try {
+      const { bot, eventClient, logger } = makeWatchdogBot({ idleMs: 1000, checkIntervalMs: 100 })
+      await bot.start()
+      expect(eventClient.start).toHaveBeenCalledTimes(1)
+
+      // 不发任何事件,推进 1500ms → 超 idleMs → 至少一次 tick 该触发 stop+start
+      await vi.advanceTimersByTimeAsync(1500)
+      expect(eventClient.stop).toHaveBeenCalled()
+      expect(eventClient.start).toHaveBeenCalledTimes(2)
+      expect(logger.warn).toHaveBeenCalledWith(expect.stringMatching(/watchdog restart: no inbound events/))
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('counts ignored / dedup events as "WS alive" (resets idle)', async () => {
+    vi.useFakeTimers()
+    try {
+      // chatId 不匹配会走 ignored_chat 早 return,但仍要 reset idle
+      const { bot, eventClient } = makeWatchdogBot({ idleMs: 1000, checkIntervalMs: 100 })
+      await bot.start()
+
+      await vi.advanceTimersByTimeAsync(500)
+      // event 的 chatId = 'other', 配置的 = 'oc_w' → ignored_chat;但 noteEventReceived 该跑
+      const r = await bot.handleEvent({ event_id: 'x', event: { message: { message_id: 'mx', chat_id: 'other' } } })
+      expect(r.action).toBe('ignored_chat')
+      await vi.advanceTimersByTimeAsync(800)  // total 1300ms,但中间有事件 → 不该重启
+      expect(eventClient.stop).not.toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('enters backoff after 3 consecutive failed restarts', async () => {
+    vi.useFakeTimers()
+    try {
+      const { bot, eventClient, logger } = makeWatchdogBot({
+        idleMs: 1000, checkIntervalMs: 100, backoffMs: 5000,
+      })
+      await bot.start()
+
+      // 第 1 次重启
+      await vi.advanceTimersByTimeAsync(1500)
+      expect(eventClient.start.mock.calls.length).toBe(2)
+
+      // 第 2 / 3 次重启(每次再等 1500ms,期间不发事件)
+      await vi.advanceTimersByTimeAsync(1500)
+      await vi.advanceTimersByTimeAsync(1500)
+      expect(eventClient.start.mock.calls.length).toBe(4) // 1 original + 3 watchdog
+
+      // 进 backoff:再等 1500ms 不该再重启
+      await vi.advanceTimersByTimeAsync(1500)
+      expect(eventClient.start.mock.calls.length).toBe(4)
+
+      // 等过 backoffMs (5000ms 后) 再 tick → 重启再来一次
+      await vi.advanceTimersByTimeAsync(5000)
+      expect(eventClient.start.mock.calls.length).toBeGreaterThanOrEqual(5)
+      expect(logger.warn).toHaveBeenCalledWith(expect.stringMatching(/watchdog restart/))
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('event after successful restart clears the consecutive-restart counter (exits backoff)', async () => {
+    vi.useFakeTimers()
+    try {
+      const { bot, eventClient } = makeWatchdogBot({
+        idleMs: 1000, checkIntervalMs: 100, backoffMs: 5000,
+      })
+      await bot.start()
+
+      // 触发 3 次重启进 backoff
+      await vi.advanceTimersByTimeAsync(1500)
+      await vi.advanceTimersByTimeAsync(1500)
+      await vi.advanceTimersByTimeAsync(1500)
+      expect(eventClient.start.mock.calls.length).toBe(4)
+
+      // 一条事件进来 → 计数器重置
+      await bot.handleEvent({ event_id: 'recover', event: { message: { message_id: 'mr', chat_id: 'oc_w' } } })
+
+      // 再次 idle 超阈值 → 立刻能重启(不再 backoff)
+      await vi.advanceTimersByTimeAsync(1500)
+      expect(eventClient.start.mock.calls.length).toBeGreaterThanOrEqual(5)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('stop() cancels the watchdog interval', async () => {
+    vi.useFakeTimers()
+    try {
+      const { bot, eventClient } = makeWatchdogBot({ idleMs: 1000, checkIntervalMs: 100 })
+      await bot.start()
+      await bot.stop()
+
+      // stop 之后再过很久,即便 idle 也不该触发任何 start (running=false 兜底)
+      await vi.advanceTimersByTimeAsync(10000)
+      expect(eventClient.start).toHaveBeenCalledTimes(1) // 只有最初那次
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('watchdogIdleMs=0 disables watchdog', async () => {
+    vi.useFakeTimers()
+    try {
+      const { bot, eventClient } = makeWatchdogBot({ idleMs: 0, checkIntervalMs: 100 })
+      await bot.start()
+      await vi.advanceTimersByTimeAsync(60_000)
+      expect(eventClient.stop).not.toHaveBeenCalled()
+      expect(eventClient.start).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('describe() exposes lastEventAt + idleMs + watchdog state', async () => {
+    vi.useFakeTimers()
+    const baseTime = new Date('2026-05-22T00:00:00Z').getTime()
+    vi.setSystemTime(baseTime)
+    try {
+      const { bot } = makeWatchdogBot({ idleMs: 1800000 })
+      await bot.start()
+      const initial = bot.describe()
+      expect(initial.lastEventAt).toBe(baseTime)
+      expect(initial.idleMs).toBe(0)
+      expect(initial.watchdogIdleMs).toBe(1800000)
+      expect(initial.consecutiveWatchdogRestarts).toBe(0)
+      expect(initial.lastWatchdogRestartAt).toBeNull()
+
+      vi.setSystemTime(baseTime + 5 * 60_000)
+      const later = bot.describe()
+      expect(later.idleMs).toBe(5 * 60_000)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
+

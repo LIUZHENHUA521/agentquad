@@ -8,7 +8,7 @@ import { useEffect, useMemo, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { markdownComponents } from './markdownComponents'
-import { getConfig, updateConfig, AppConfig, pickDirectory, ToolDiagnostic, testTelegram, testLark, listTemplates, EDITOR_KINDS, EDITOR_LABELS, isEditorKind, type EditorKind, type ProbeHit, type DispatchChannelConfig, type PromptTemplate } from './api'
+import { getConfig, updateConfig, AppConfig, pickDirectory, ToolDiagnostic, testTelegram, testLark, getLarkStatus, listTemplates, EDITOR_KINDS, EDITOR_LABELS, isEditorKind, type EditorKind, type LarkLiveStatus, type ProbeHit, type DispatchChannelConfig, type PromptTemplate } from './api'
 import { useAppConfigStore } from './store/appConfigStore'
 import { TelegramProbeModal } from './TelegramProbeModal'
 import telegramSetupMd from '../../docs/TELEGRAM-setup.md?raw'
@@ -130,6 +130,7 @@ export default function SettingsDrawer({ open, onClose, onTemplatesChanged }: Pr
   const [larkSecretSource, setLarkSecretSource] = useState<'agentquad' | 'missing'>('missing')
   const [larkTesting, setLarkTesting] = useState(false)
   const [larkTestResult, setLarkTestResult] = useState<string | null>(null)
+  const [larkStatus, setLarkStatus] = useState<LarkLiveStatus | null>(null)
   const [activeTab, setActiveTab] = useState<'run' | 'tools' | 'telegram' | 'lark' | 'pricing'>('run')
   const [templates, setTemplates] = useState<PromptTemplate[]>([])
   const [viewingTool, setViewingTool] = useState<ToolKey>('claude')
@@ -246,6 +247,24 @@ export default function SettingsDrawer({ open, onClose, onTemplatesChanged }: Pr
       })
       .catch((e) => setErr(e.message))
   }, [open, form])
+
+  // Lark long-connection 健康轮询:仅在抽屉打开且当前 Lark Tab 时跑,30s 一刷。
+  // 用来给"WS 自报 running 但事件不流"的 silent failure 提供可见性。
+  useEffect(() => {
+    if (!open || activeTab !== 'lark') {
+      setLarkStatus(null)
+      return
+    }
+    let cancelled = false
+    const pull = () => {
+      getLarkStatus()
+        .then((r) => { if (!cancelled && r?.ok) setLarkStatus(r.status || null) })
+        .catch(() => { /* swallow — UI 会显示"未知" */ })
+    }
+    pull()
+    const id = window.setInterval(pull, 30_000)
+    return () => { cancelled = true; window.clearInterval(id) }
+  }, [open, activeTab])
 
   const handleSave = async () => {
     try {
@@ -1072,6 +1091,60 @@ export default function SettingsDrawer({ open, onClose, onTemplatesChanged }: Pr
     </>
   )
 
+  const larkLiveStatusCard = (() => {
+    if (!larkStatus) return null
+    if (!larkStatus.enabled || !larkStatus.running) {
+      return (
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 12 }}
+          message={t('settings:lark.liveStatusTitle')}
+          description={t('settings:lark.liveStatusBotStopped')}
+        />
+      )
+    }
+    const watchdogIdleMs = larkStatus.watchdogIdleMs ?? 30 * 60_000
+    const idleMs = larkStatus.idleMs ?? 0
+    const hasEver = !!larkStatus.lastEventAt
+    const minutes = Math.floor(idleMs / 60_000)
+    const seconds = Math.floor((idleMs % 60_000) / 1000)
+    const lastLabel = !hasEver
+      ? t('settings:lark.liveStatusNoEvents')
+      : minutes >= 1
+        ? t('settings:lark.liveStatusMinutesAgo', { n: minutes })
+        : t('settings:lark.liveStatusSecondsAgo', { n: seconds })
+    const isStale = watchdogIdleMs > 0 && idleMs >= watchdogIdleMs
+    const restarts = larkStatus.consecutiveWatchdogRestarts || 0
+    return (
+      <Alert
+        type={isStale || restarts > 0 ? 'warning' : 'success'}
+        showIcon
+        style={{ marginBottom: 12 }}
+        message={t('settings:lark.liveStatusTitle')}
+        description={
+          <div style={{ fontSize: 13 }}>
+            <div>{t('settings:lark.liveStatusDesc')}</div>
+            <div style={{ marginTop: 8 }}>
+              <strong>{t('settings:lark.liveStatusLastEventLabel')}:</strong>{' '}
+              <span style={{ color: isStale ? '#cf1322' : undefined }}>{lastLabel}</span>
+            </div>
+            {isStale && (
+              <div style={{ marginTop: 4, color: '#cf1322' }}>
+                {t('settings:lark.liveStatusStale', { threshold: Math.round(watchdogIdleMs / 60_000) })}
+              </div>
+            )}
+            {restarts > 0 && (
+              <div style={{ marginTop: 4 }}>
+                {t('settings:lark.liveStatusWatchdogRestarts', { n: restarts })}
+              </div>
+            )}
+          </div>
+        }
+      />
+    )
+  })()
+
   const larkTab = (
     <>
       {setupGuide(larkSetupMd)}
@@ -1082,6 +1155,7 @@ export default function SettingsDrawer({ open, onClose, onTemplatesChanged }: Pr
         message={t('settings:lark.adaptInfoTitle')}
         description={t('settings:lark.adaptInfoDesc')}
       />
+      {larkLiveStatusCard}
 
       <div className="settings-card">
         <div className="settings-card-header">{t('settings:section.larkBasic')}</div>

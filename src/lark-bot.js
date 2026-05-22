@@ -173,6 +173,14 @@ export function normalizeCardAction(raw = {}) {
   }
 }
 
+// Lark WSClient 长连接静默死掉时,SDK 自报 running=true 但事件不流。watchdog 默认
+// 30 分钟无入站事件就 stop + start 重连;连续 3 次重连依然没事件则进 backoff,
+// 1 小时再试一次,防止真断网时无限重启刷日志。
+const DEFAULT_WATCHDOG_IDLE_MS = 30 * 60_000
+const DEFAULT_WATCHDOG_CHECK_INTERVAL_MS = 5 * 60_000
+const DEFAULT_WATCHDOG_BACKOFF_MS = 60 * 60_000
+const WATCHDOG_BACKOFF_AFTER_RESTARTS = 3
+
 export function createLarkBot({
   getConfig,
   wizard,
@@ -191,6 +199,71 @@ export function createLarkBot({
   let running = false
   let apiClient = null
   let eventClient = null
+
+  let lastEventAt = Date.now()
+  let watchdogTimer = null
+  let lastWatchdogRestartAt = 0
+  let consecutiveWatchdogRestarts = 0
+
+  function noteEventReceived() {
+    lastEventAt = Date.now()
+    if (consecutiveWatchdogRestarts > 0) {
+      logger.info?.(`[lark-bot] event flow recovered after ${consecutiveWatchdogRestarts} watchdog restart(s)`)
+      consecutiveWatchdogRestarts = 0
+    }
+  }
+
+  function watchdogConfig() {
+    const lark = getConfig()?.lark || {}
+    const numOr = (v, d) => (Number.isFinite(v) && v >= 0 ? v : d)
+    return {
+      idleMs: numOr(lark.watchdogIdleMs, DEFAULT_WATCHDOG_IDLE_MS),
+      checkIntervalMs: numOr(lark.watchdogCheckIntervalMs, DEFAULT_WATCHDOG_CHECK_INTERVAL_MS),
+      backoffMs: numOr(lark.watchdogBackoffMs, DEFAULT_WATCHDOG_BACKOFF_MS),
+    }
+  }
+
+  function ensureWatchdog() {
+    if (watchdogTimer) return
+    const { checkIntervalMs } = watchdogConfig()
+    if (checkIntervalMs <= 0) return
+    watchdogTimer = setInterval(() => {
+      watchdogTick().catch((e) => logger.warn?.(`[lark-bot] watchdog tick threw: ${e.message}`))
+    }, checkIntervalMs)
+    if (watchdogTimer?.unref) watchdogTimer.unref()
+  }
+
+  function cancelWatchdog() {
+    if (!watchdogTimer) return
+    clearInterval(watchdogTimer)
+    watchdogTimer = null
+  }
+
+  async function watchdogTick() {
+    if (!running) return
+    const { idleMs, backoffMs } = watchdogConfig()
+    if (idleMs <= 0) return  // 0 = 禁用 watchdog
+    const idle = Date.now() - lastEventAt
+    if (idle < idleMs) return
+
+    if (consecutiveWatchdogRestarts >= WATCHDOG_BACKOFF_AFTER_RESTARTS) {
+      if (Date.now() - lastWatchdogRestartAt < backoffMs) return
+    }
+
+    const idleMin = Math.round(idle / 60_000)
+    logger.warn?.(`[lark-bot] watchdog restart: no inbound events for ${idleMin}min (attempt ${consecutiveWatchdogRestarts + 1})`)
+    lastWatchdogRestartAt = Date.now()
+    consecutiveWatchdogRestarts += 1
+    try {
+      await stop()
+      const r = await start()
+      if (!r?.ok) {
+        logger.warn?.(`[lark-bot] watchdog restart failed: ${r?.reason || 'unknown'}`)
+      }
+    } catch (e) {
+      logger.warn?.(`[lark-bot] watchdog restart threw: ${e.message}`)
+    }
+  }
 
   function credentialsFromConfig() {
     const lark = getConfig()?.lark || {}
@@ -274,6 +347,9 @@ export function createLarkBot({
   }
 
   async function handleEvent(raw) {
+    // 任何到达 handler 的事件都证明 WS 是活的（包括将被去重 / ignored 的）。
+    // watchdog 依赖这条来判断长连接是否还在工作。
+    noteEventReceived()
     const ev = normalizeEvent(raw)
     if (!ev.eventId) {
       return { ok: true, action: 'duplicate' }
@@ -449,6 +525,7 @@ export function createLarkBot({
   }
 
   async function handleCardAction(raw) {
+    noteEventReceived()
     const ev = normalizeCardAction(raw)
     logger.info?.(`[lark-bot] card action received: callbackData=${ev.callbackData || 'null'} chatId=${ev.chatId || 'null'} from=${ev.fromUserId || 'null'}`)
     if (!ev.chatId || !ev.callbackData) {
@@ -500,11 +577,15 @@ export function createLarkBot({
     const result = await eventClient.start()
     if (!result?.ok) return result
     running = true
+    // 启动时刷一次 lastEventAt,避免 watchdog 把"从未收到事件"误判为"长时间无事件"立刻触发重启
+    lastEventAt = Date.now()
+    ensureWatchdog()
     return { ok: true, action: 'started' }
   }
 
   async function stop() {
     running = false
+    cancelWatchdog()
     const current = eventClient
     eventClient = null
     if (current?.stop) await current.stop()
@@ -533,6 +614,7 @@ export function createLarkBot({
   function describe() {
     const cfg = getConfig()?.lark || {}
     const eventStatus = eventClient?.describe?.() || null
+    const { idleMs: watchdogIdleMs } = watchdogConfig()
     return {
       enabled: !!cfg.enabled,
       chatId: cfg.chatId || '',
@@ -540,10 +622,23 @@ export function createLarkBot({
       running,
       eventStatus,
       pendingReactionSessions: pendingReactions.size,
+      lastEventAt,
+      idleMs: Date.now() - lastEventAt,
+      watchdogIdleMs,
+      consecutiveWatchdogRestarts,
+      lastWatchdogRestartAt: lastWatchdogRestartAt || null,
     }
   }
 
-  return { start, stop, sendMessage, replyInThread, sendCard, replyWithCard, handleEvent, handleCardAction, clearReactionsForSession, describe, __test__: { normalizeEvent, normalizeCardAction, _peekPendingReactions: () => new Map(pendingReactions) } }
+  return {
+    start, stop, sendMessage, replyInThread, sendCard, replyWithCard,
+    handleEvent, handleCardAction, clearReactionsForSession, describe,
+    __test__: {
+      normalizeEvent, normalizeCardAction,
+      _peekPendingReactions: () => new Map(pendingReactions),
+      _triggerWatchdog: () => watchdogTick(),
+    },
+  }
 }
 
 export { BUSY_REACTION_EMOJIS, pickBusyReactionEmoji }
