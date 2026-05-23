@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// quadtodo-hook-version: 3
+// quadtodo-hook-version: 4
 /**
  * AgentQuad Claude Code hook —— 把 PTY 内 Claude Code 的状态事件转推到微信。
  *
@@ -37,15 +37,13 @@ function logLine(obj) {
 }
 
 const event = (process.argv[2] || 'unknown').toLowerCase()
-const SESSION_ID = process.env.QUADTODO_SESSION_ID
-if (!SESSION_ID) {
-  logLine({ event, status: 'skipped_no_env', argv: process.argv.slice(2) })
-  process.exit(0)
-}
+const SESSION_ID = process.env.QUADTODO_SESSION_ID || null
+// v4: 即使没有 QUADTODO_SESSION_ID 也要继续 — 本地终端直起的 codex 没有这个 env，
+// 但 AgentQuad 的 local-session-auto-capture 需要靠这次 POST 才能感知到会话。
 
 const QUADTODO_URL = process.env.QUADTODO_URL || 'http://127.0.0.1:5677'
 const ENDPOINT = `${QUADTODO_URL}/api/openclaw/hook`
-logLine({ event, status: 'fired', sessionId: SESSION_ID, todoTitle: process.env.QUADTODO_TODO_TITLE })
+logLine({ event, status: SESSION_ID ? 'fired' : 'fired_local', sessionId: SESSION_ID, todoTitle: process.env.QUADTODO_TODO_TITLE })
 
 let raw = ''
 process.stdin.setEncoding('utf8')

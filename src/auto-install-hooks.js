@@ -42,26 +42,31 @@ export function maybeAutoInstallHooks({ config, logger = console, homeDir = home
     if (!existsSync(claudeHome)) {
       result.claude = 'no-claude-dir'
     } else {
-      const current = getInstalledHookVersion()
-      if (current == null || current < EXPECTED_HOOK_VERSION) {
-        // Version missing or stale: force a full deploy + re-install.
-        // bootstrapClaudeHooks respects the .uninstalled marker by default.
-        // We intentionally call it with respectUninstallMarker=false here so
-        // that "version upgrade" always wins — if the user uninstalled an OLD
-        // version and we have a newer one, we should still upgrade.
-        // But to stay conservative and not override explicit user opt-out,
-        // keep respectUninstallMarker=true for the "not installed at all" case,
-        // and only force-install when upgrading from a known older version.
-        const forceInstall = current != null && current < EXPECTED_HOOK_VERSION
-        const bootstrapResult = bootstrapClaudeHooks({ respectUninstallMarker: !forceInstall })
-        if (bootstrapResult.skipped) {
-          result.claude = `skipped: ${bootstrapResult.reason}`
-        } else {
-          result.claude = current == null ? 'installed' : `upgraded ${current}→${EXPECTED_HOOK_VERSION}`
-          logger?.info?.({ from: current, to: EXPECTED_HOOK_VERSION }, '[auto-install] claude hooks updated')
-        }
-      } else {
+      // 始终调用 bootstrap：它内部 deployHookScript 会按 quadtodo-hook-version 自动判断
+      // 是否需要覆盖 notify.js，install 部分也对 settings.json 幂等。这样 notify.js
+      // 脚本版本升级（独立于 settings.json 的 EXPECTED_HOOK_VERSION）也能被检测到。
+      // 仅当 settings.json 版本过旧（< EXPECTED_HOOK_VERSION）时才强制忽略
+      // .uninstalled marker，避免在脚本版本升级时清掉用户显式 opt-out。
+      const settingsVer = getInstalledHookVersion()
+      const forceInstall = settingsVer != null && settingsVer < EXPECTED_HOOK_VERSION
+      const bootstrapResult = bootstrapClaudeHooks({ respectUninstallMarker: !forceInstall })
+      if (bootstrapResult.skipped) {
+        result.claude = `skipped: ${bootstrapResult.reason}`
+      } else if (
+        bootstrapResult.alreadyInstalled &&
+        bootstrapResult.scriptResult?.action === 'unchanged'
+      ) {
         result.claude = 'up-to-date'
+      } else {
+        const scriptAction = bootstrapResult.scriptResult?.action
+        result.claude = scriptAction === 'upgraded'
+          ? `script ${bootstrapResult.scriptResult.previousVersion}→${bootstrapResult.scriptResult.version}`
+          : settingsVer == null ? 'installed' : 'refreshed'
+        logger?.info?.({
+          scriptAction,
+          settingsVer,
+          expected: EXPECTED_HOOK_VERSION,
+        }, '[auto-install] claude hooks updated')
       }
     }
   } catch (e) {
