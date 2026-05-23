@@ -839,12 +839,22 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
     }
 
     try {
-      await pty.spawn({
+      // 走 spawnSession() —— 跟 POST /exec 同一条路径，确保：
+      //   - sessions.set(sessionId, …) → WS 广播能把 PTY 输出推到接管的 xterm
+      //   - todoSessionMap / nativeSessionMap 同步 → stop-by-todo / 重复 resume 检测正常
+      //   - db.updateTodo({ status: 'ai_running' }) → 看板状态翻新
+      //   - GET /sessions 能看到 → dashboard 不漏
+      //   - onSessionSpawned(…) → Telegram/Lark topic 自动建
+      //   - 30s spawn 兜底 timer
+      // 复用现有 sessionId，让 db.setAiSessionFields(…, { source: 'adopted' })
+      // 后置覆盖到同一行；prompt 必须传 string，传空串即可（resume 路径不会用到）。
+      spawnSession({
+        todoId,
         tool: session.tool,
         cwd: todo.workDir || defaultCwd,
         resumeNativeId: session.nativeSessionId,
         sessionId,
-        todoId,
+        prompt: '',
       })
       db.setAiSessionFields(todoId, sessionId, { source: 'adopted' })
       return res.json({
