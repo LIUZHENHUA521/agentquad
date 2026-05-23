@@ -57,6 +57,7 @@ import {
 	getInstalledHookVersion,
 	EXPECTED_HOOK_VERSION,
 } from "./openclaw-hook-installer.js";
+import { startLocalSessionTick } from "./local-session-tick.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -562,6 +563,10 @@ export function createServer(opts = {}) {
 	// 来反查 AgentQuad session / todoId / cwd。
 	const codexSidecar = createCodexSidecar();
 	codexSidecar.restoreFromDisk();
+
+	// 定期扫描 codex local-capture session：静默超过 30 分钟则标为 done。
+	// setInterval 已调用 .unref()，不会阻止进程退出；close() 时主动清除。
+	const stopLocalSessionTick = startLocalSessionTick({ db, logger: console });
 	let ptyRef = null;
 	const pty =
 		injectedPty ||
@@ -1541,6 +1546,9 @@ export function createServer(opts = {}) {
 		reactionTracker: reactionTrackerProxy,                // Stop hook → 清 telegram "✍" reaction
 		sessionInputDispatcher,                               // Stop / session-end → 触发 dispatcher flush / cleanup
 		getConfig: () => loadConfig({ rootDir: configRootDir }),
+		// config 直接传入当前快照，让 local-capture 自动建单能读到 localSessions 默认值，
+		// 而不必依赖 getConfig?.() 的懒加载路径（configRootDir 为 null 时 getConfig 返回 {}）。
+		config: loadConfig({ rootDir: configRootDir }),
 	});
 	app.use("/api/openclaw/hook", createOpenClawHookRouter({ hookHandler: openclawHookHandler }));
 
@@ -1807,6 +1815,7 @@ export function createServer(opts = {}) {
 	}
 
 	async function close() {
+		try { stopLocalSessionTick() } catch { /* ignore */ }
 		try { pendingCoord.stop() } catch { /* ignore */ }
 		try { telegramBotHolder.current?.stop?.() } catch { /* ignore */ }
 		await stopLarkStack()
