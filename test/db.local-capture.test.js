@@ -102,3 +102,38 @@ describe('createLocalCaptureTodo', () => {
     expect(all.length).toBe(1)
   })
 })
+
+describe('renameLocalCaptureTitleIfMatches', () => {
+  let db
+  beforeEach(() => { db = openDb(':memory:') })
+
+  it('当前 title 仍是 Phase 1 模板时才 rename', () => {
+    const todo = db.createLocalCaptureTodo({
+      tool: 'claude',
+      nativeSessionId: 'n-rename-1',
+      cwd: '/x/proj',
+      defaults: {}
+    })
+    const ok = db.renameLocalCaptureTitleIfMatches(todo.id, '[本地 claude] proj · "帮我做 Y…"')
+    expect(ok).toBe(true)
+    expect(db.getTodo(todo.id).title).toBe('[本地 claude] proj · "帮我做 Y…"')
+  })
+
+  it('用户已经改过标题就不动', () => {
+    const todo = db.createLocalCaptureTodo({
+      tool: 'claude',
+      nativeSessionId: 'n-rename-2',
+      cwd: '/x/proj',
+      defaults: {}
+    })
+    db.updateTodo(todo.id, { title: '用户改的标题' })
+    const ok = db.renameLocalCaptureTitleIfMatches(todo.id, '[本地 claude] proj · "应当被忽略…"')
+    expect(ok).toBe(false)
+    expect(db.getTodo(todo.id).title).toBe('用户改的标题')
+  })
+
+  it('不存在的 todoId 返回 false', () => {
+    const ok = db.renameLocalCaptureTitleIfMatches(99999, '[本地 claude] x · "y"')
+    expect(ok).toBe(false)
+  })
+})

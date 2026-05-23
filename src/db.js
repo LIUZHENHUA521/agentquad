@@ -648,6 +648,14 @@ export function openDb(arg = ':memory:') {
     })()
   }
 
+  function renameLocalCaptureTitleIfMatches(todoId, newTitle) {
+    const todo = getTodo(todoId)
+    if (!todo) return false
+    if (!LOCAL_CAPTURE_TITLE_RE.test(todo.title)) return false
+    updateTodo(todoId, { title: newTitle })
+    return true
+  }
+
   /**
    * Preview/describe the impact of merging. 不做任何修改。
    * 返回 { targetId, sources[], movedChildren, movedComments, movedSessions, movedSessionLogs,
@@ -1715,6 +1723,7 @@ export function openDb(arg = ':memory:') {
     unarchiveTodo,
     findTodoByNativeSessionId,
     createLocalCaptureTodo,
+    renameLocalCaptureTitleIfMatches,
     describeMergeTodos,
     mergeTodos,
     bulkUpdateTodos,
