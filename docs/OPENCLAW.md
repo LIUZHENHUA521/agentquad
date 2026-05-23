@@ -123,3 +123,16 @@ agentquad start
 | `submit_user_reply` | OpenClaw skill | 把用户微信回复路由到 pending question |
 | `list_pending_questions` | OpenClaw skill / 调试 | 列当前未回答 |
 | `cancel_pending_question` | OpenClaw skill / 用户 | 取消一条 pending |
+
+---
+
+## Hook Events
+
+### SessionStart (claude)
+
+Fires once on every `claude` invocation, before any user input or assistant turn. AgentQuad uses this hook to:
+
+- Auto-create a todo card for locally-started sessions (see [LOCAL-SESSIONS.md](LOCAL-SESSIONS.md))
+- Flip `aiSessions[].status` to `running` for local-capture / adopted sessions
+
+Codex has no equivalent event; codex local sessions are captured on the first `UserPromptSubmit` instead.
