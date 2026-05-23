@@ -125,6 +125,22 @@
 
 ### A. 自动建 todo（核心）
 
+#### A.1 标题生成策略（两阶段）
+
+| 阶段 | 触发时机 | 标题模板 | 示例 |
+|------|---------|---------|------|
+| Phase 1（建卡瞬间） | claude: SessionStart<br>codex: 首次 UserPromptSubmit | `[本地 ${tool}] ${cwd basename} · HH:mm` | `[本地 claude] crazyCombo · 14:35` |
+| Phase 2（拿到首句 prompt） | UserPromptSubmit | 将 Phase 1 标题 rename 为：<br>`[本地 ${tool}] ${cwd basename} · "${prompt前30字}…"` | `[本地 claude] crazyCombo · "帮我看看 X 是什么意思…"` |
+
+说明：
+
+- **codex 的 Phase 1 和 Phase 2 是同一时刻**（都靠 UserPromptSubmit），所以 codex 一次性命名带 prompt 摘要，不会经历 rename。
+- **claude 的 Phase 1**（SessionStart）此时还没有 prompt，只能用 cwd+时间。**Phase 2** 等首次 UserPromptSubmit 触发时 rename。
+- **用户手动改过标题的保护**：Phase 2 rename 之前先检查 db 里当前 title 是否仍然匹配 Phase 1 的正则模板 `/^\[本地 (claude|codex)\] .+ · \d{2}:\d{2}$/`，**只在仍匹配时才 rename**。这样不需要在 schema 加任何新标记字段，用户一旦自己改了标题就自动免疫后续 rename。
+- prompt 截断：去首尾空白、压缩中间连续空白为单空格，截 30 字后追加 `…`；包含换行/反引号等特殊字符按字符串字面量保留（不需要转义，db 字段就是字符串）。
+
+#### A.2 主流程
+
 入口：`src/openclaw-hook.js` 主 handler。在原有「反查 todo」之后插入分支：
 
 ```js
@@ -162,6 +178,25 @@ async function handleHookEvent(payload) {
 - codex: `UserPromptSubmit` (首次) | `Stop`
 
 为避免错过任何一种触发，**任意一个上述事件都能触发创建**——`createLocalCaptureTodo` 内部用 `findTodoByNativeSessionId` + 事务保证幂等。
+
+#### A.3 状态映射（hook event → aiSessions[].status）
+
+**关键约束**：本地直起的 claude/codex，PTY 在用户自己的 terminal，AgentQuad 看不到 PTY 流。所以 `computeEffectiveStatus` 里依赖 `lastOutputAt` 的活性兜底**对本地 capture session 不生效**——状态只能靠离散 hook 事件切换。
+
+| 目标状态 | claude（本地 capture） | codex（本地 capture） |
+|----------|---------------------|---------------------|
+| `running` | `SessionStart` / `UserPromptSubmit` 翻为 running | `UserPromptSubmit` 翻为 running |
+| `pending_confirm` | `Notification` hook（claude 权限弹窗，payload 自带 prompt+选项） | ❌ **拿不到**——codex hook 协议无等价事件 |
+| `idle` | `Stop` hook（一回合结束） | `Stop` hook |
+| `done` | `SessionEnd` hook | `Stop` + 30min 静默超时（见 B 节） |
+
+实现层：`src/openclaw-hook.js` 现有按 event 分发的逻辑里，每个 case 在更新原 todo 之外，也要更新通过 auto-create 拿到的 todo（**逻辑路径完全复用**，因为返回的 todo 引用一致）。
+
+**用户可见后果**：
+
+- **claude 本地会话**：在 web 端「进行中 / 待确认 / 空闲」三栏的切换跟 web 端创建的会话完全一致。
+- **codex 本地会话**：永远不会出现在「待确认」栏，即便 codex 在本地终端正等用户对工具调用确认。这是 codex hook 协议的硬限制。
+- **任何工具接管后**（详见 C 节），PTY 转交 AgentQuad，`computeEffectiveStatus` 重新生效，pending_confirm 检测自动启用——所以 codex 会话**接管之后**就能进「待确认」栏。
 
 #### `createLocalCaptureTodo` 幂等性
 
@@ -290,16 +325,20 @@ server 启动时（`src/server.js` bootstrap 段）扫 `~/.claude.json` 当前 v
 
 ## 验收标准
 
-1. **claude 实时**：新 cwd 直起 `claude` → ≤2s web 端出现 `[本地 claude] xxx @ HH:mm` 卡片，status=running
-2. **codex 首 prompt 后**：新 cwd 直起 `codex` → 用户输入第一句话回车后 ≤2s 出现卡片
-3. **默认路由生效**：config 配了 defaultTelegramRoute → claude 首次 Stop hook → 飞书/Telegram 收到带 cwd basename 的推送
-4. **幂等**：人工触发 5 次同 nativeSessionId 的 hook → DB 中只有 1 张 todo
-5. **跳过开关**：`AGENTQUAD_SKIP_CAPTURE=1 claude` → 不建 todo，但既有 web 端创建的 session 通知仍正常
-6. **接管**：web 卡上「接管」→ confirm → 后端 spawn `claude --resume`，xterm 看到流；source 变 adopted，按钮消失
-7. **收尾**：
-   - claude 在本地按 Ctrl+C / 退出 → SessionEnd hook → todo 状态变 completed
-   - codex 在本地退出 → 30min 后状态变 completed
-8. **不回归**：现有 web 端创建会话、现有 telegram/lark 推送行为 100% 不变；所有现有测试 pass
+1. **claude 实时建卡**：新 cwd 直起 `claude` → ≤2s web 端出现 `[本地 claude] <cwd basename> · HH:mm` 卡片（Phase 1 模板），status=running
+2. **claude Phase 2 rename**：claude 卡片出现后，用户在终端输入第一句话回车 → ≤2s 卡片标题 rename 为 `[本地 claude] <basename> · "<prompt前30字>…"`
+3. **手动改 title 保护**：claude SessionStart 后用户立即手动把 title 改成别的，再输入 prompt → 标题**不被自动覆盖**
+4. **codex 一次到位**：新 cwd 直起 `codex` → 用户输入第一句话回车 → ≤2s 出现卡片 `[本地 codex] <basename> · "<prompt前30字>…"`
+5. **状态切换 (claude)**：
+   - 一回合结束 → 卡片落「空闲」栏
+   - 工具授权弹窗触发 Notification hook → 卡片落「待确认」栏，能看到 prompt 文本和选项
+   - SessionEnd → 卡片状态 done，从活跃列表移除
+6. **状态切换 (codex)**：一回合结束 → 落「空闲」栏；30min 静默 → done；**确认 codex 永远不进「待确认」栏**（codex hook 协议限制）
+7. **默认路由生效**：config 配了 defaultTelegramRoute → claude 首次 Stop hook → 飞书/Telegram 收到带 cwd basename 的推送
+8. **幂等**：人工触发 5 次同 nativeSessionId 的 hook → DB 中只有 1 张 todo
+9. **跳过开关**：`AGENTQUAD_SKIP_CAPTURE=1 claude` → 不建 todo，但既有 web 端创建的 session 通知仍正常
+10. **接管**：web 卡上「接管」→ confirm → 后端 spawn `claude --resume`，xterm 看到流；source 变 adopted，按钮消失；接管后 codex 也能进「待确认」栏（PTY 回归 AgentQuad）
+11. **不回归**：现有 web 端创建会话、现有 telegram/lark 推送行为 100% 不变；所有现有测试 pass
 
 ## 文件改动清单（实现指引）
 
