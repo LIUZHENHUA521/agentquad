@@ -254,6 +254,37 @@ function resolveDbFile(arg) {
   return ':memory:'
 }
 
+// ── Local-capture title helpers (exported for use by Task 4 rename guard, Task 6 hook) ──
+
+export const LOCAL_CAPTURE_TITLE_RE = /^\[本地 (claude|codex)\] .+ · \d{2}:\d{2}$/
+
+function formatHHmm(date = new Date()) {
+  const hh = String(date.getHours()).padStart(2, '0')
+  const mm = String(date.getMinutes()).padStart(2, '0')
+  return `${hh}:${mm}`
+}
+
+export function summarizePrompt(prompt, maxChars = 30) {
+  if (!prompt) return null
+  const collapsed = String(prompt).trim().replace(/\s+/g, ' ')
+  if (!collapsed) return null
+  return collapsed.length > maxChars ? `${collapsed.slice(0, maxChars)}…` : collapsed
+}
+
+function cwdBasename(cwd) {
+  if (!cwd) return '(unknown)'
+  const parts = String(cwd).split(/[\\/]/).filter(Boolean)
+  return parts.length ? parts[parts.length - 1] : cwd
+}
+
+export function buildLocalCaptureTitle({ tool, cwd, initialPrompt, now = new Date() }) {
+  const basename = cwdBasename(cwd)
+  const summary = summarizePrompt(initialPrompt)
+  return summary
+    ? `[本地 ${tool}] ${basename} · "${summary}"`
+    : `[本地 ${tool}] ${basename} · ${formatHHmm(now)}`
+}
+
 export function openDb(arg = ':memory:') {
   const file = resolveDbFile(arg)
   const db = new Database(file)
@@ -586,6 +617,35 @@ export function openDb(arg = ':memory:') {
       }
     }
     return null
+  }
+
+  /**
+   * 自动捕获本地 AI 会话，创建对应的 todo 卡片。
+   * 幂等：相同 nativeSessionId 只创建一次。
+   */
+  function createLocalCaptureTodo({ tool, nativeSessionId, cwd, initialPrompt = null, defaults = {}, now = new Date() }) {
+    return db.transaction(() => {
+      const existing = findTodoByNativeSessionId(nativeSessionId)
+      if (existing) return existing
+
+      const session = {
+        sessionId: randomUUID(),
+        nativeSessionId,
+        tool,
+        status: 'running',
+        startedAt: now.getTime(),
+        source: 'local-capture',
+        telegramRoute: defaults.defaultTelegramRoute ?? null,
+        larkRoute: defaults.defaultLarkRoute ?? null
+      }
+
+      return createTodo({
+        title: buildLocalCaptureTitle({ tool, cwd, initialPrompt, now }),
+        description: initialPrompt ? String(initialPrompt).slice(0, 200) : '',
+        workDir: cwd || null,
+        aiSessions: [session]
+      })
+    })()
   }
 
   /**
@@ -1654,6 +1714,7 @@ export function openDb(arg = ':memory:') {
     archiveTodo,
     unarchiveTodo,
     findTodoByNativeSessionId,
+    createLocalCaptureTodo,
     describeMergeTodos,
     mergeTodos,
     bulkUpdateTodos,
