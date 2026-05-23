@@ -7,6 +7,7 @@ export type StageTag = 'dev' | 'review' | 'test' | 'release' | 'blocked'
 export type RecurringFrequency = 'daily' | 'weekly' | 'monthly'
 export type AiTool = 'claude' | 'codex' | 'cursor'
 export type AiStatus = 'running' | 'idle' | 'done' | 'failed' | 'stopped' | 'pending_confirm'
+export type AiSessionSource = 'web' | 'local-capture' | 'adopted'
 
 export interface AiSession {
   sessionId: string
@@ -30,6 +31,7 @@ export interface AiSession {
     channel?: string | null
   } | null
   localResume?: { openedAt: number }
+  source?: AiSessionSource    // 缺省视为 'web'（向后兼容）
 }
 
 export interface Todo {
@@ -553,7 +555,32 @@ export async function sendAiInput(sessionId: string, data: string): Promise<void
   })
 }
 
-export async function getStatus(): Promise<{ version: string; activeSessions: number }> {
+export async function adoptLocalSession(todoId: number, sessionId: string): Promise<{
+  ok: boolean
+  sessionId: string
+  nativeSessionId: string
+}> {
+  const r = await fetch(BASE + '/api/ai-terminal/adopt-local', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ todoId, sessionId })
+  })
+  if (!r.ok) {
+    let detail = ''
+    try { detail = JSON.stringify(await r.json()) } catch { /* ignore */ }
+    throw new Error(`adoptLocalSession ${r.status}: ${detail}`)
+  }
+  return r.json()
+}
+
+export interface ServerStatus {
+  ok: boolean
+  version: string
+  activeSessions: number
+  hookOutdated?: boolean       // 新增：claude hooks 已升级，提示用户重装
+}
+
+export async function getStatus(): Promise<ServerStatus> {
   return jsonFetch('/api/status')
 }
 
