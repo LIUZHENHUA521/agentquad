@@ -4,8 +4,7 @@ When you run `claude` or `codex` directly in a terminal (outside the AgentQuad w
 
 ## Setup
 
-1. Install hooks: `agentquad install claude` (and `agentquad install codex` if you use Codex)
-2. Configure default routes in `~/.agentquad/config.json`:
+1. Configure default routes in `~/.agentquad/config.json`:
 
    ```json
    {
@@ -17,7 +16,9 @@ When you run `claude` or `codex` directly in a terminal (outside the AgentQuad w
    }
    ```
 
-3. Restart AgentQuad: `agentquad restart`
+2. Restart AgentQuad: `agentquad restart`
+
+Hooks are installed (or upgraded) automatically on server startup when `~/.claude/` or `~/.codex/` exists. If you'd rather manage hooks yourself, set `localSessions.autoInstallHooks: false` and run `agentquad install claude` / `agentquad install codex` manually.
 
 ## Behavior
 
