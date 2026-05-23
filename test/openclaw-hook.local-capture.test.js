@@ -156,3 +156,89 @@ describe('openclaw-hook local capture', () => {
     expect(db.getTodo(t.id).title).toBe('我自己改的标题')
   })
 })
+
+describe('local capture status mapping', () => {
+  let db, handler
+  beforeEach(() => {
+    db = openDb(':memory:')
+    handler = makeHandler({ db })
+  })
+
+  async function fire(event, extra = {}) {
+    await handler.handle({
+      source: extra.tool === 'codex' ? 'codex' : 'claude',
+      path: 'hook-event',
+      hookPayload: {
+        hook_event_name: event,
+        session_id: 'native-status',
+        cwd: '/x',
+        tool: extra.tool || 'claude',
+        ...extra.payload
+      }
+    })
+  }
+
+  it('claude SessionStart → running', async () => {
+    await fire('SessionStart')
+    expect(db.findTodoByNativeSessionId('native-status').aiSessions[0].status).toBe('running')
+  })
+
+  it('claude Notification → pending_confirm', async () => {
+    await fire('SessionStart')
+    await fire('Notification', { payload: { message: '需要批准 Bash', tool_input: { command: 'ls' } } })
+    expect(db.findTodoByNativeSessionId('native-status').aiSessions[0].status).toBe('pending_confirm')
+  })
+
+  it('claude Stop → idle + lastStopAt', async () => {
+    await fire('SessionStart')
+    await fire('Stop')
+    const s = db.findTodoByNativeSessionId('native-status').aiSessions[0]
+    expect(s.status).toBe('idle')
+    expect(s.lastStopAt).toBeGreaterThan(0)
+  })
+
+  it('claude SessionEnd → done + completedAt', async () => {
+    await fire('SessionStart')
+    await fire('SessionEnd')
+    const s = db.findTodoByNativeSessionId('native-status').aiSessions[0]
+    expect(s.status).toBe('done')
+    expect(s.completedAt).toBeGreaterThan(0)
+  })
+
+  it('codex Stop → idle 且记录 lastStopAt', async () => {
+    await fire('UserPromptSubmit', { tool: 'codex', payload: { prompt: 'hi' } })
+    await fire('Stop', { tool: 'codex' })
+    const s = db.findTodoByNativeSessionId('native-status').aiSessions[0]
+    expect(s.status).toBe('idle')
+    expect(s.lastStopAt).toBeGreaterThan(0)
+  })
+
+  it('codex 不进 pending_confirm', async () => {
+    await fire('UserPromptSubmit', { tool: 'codex', payload: { prompt: 'hi' } })
+    await fire('Stop', { tool: 'codex' })
+    expect(db.findTodoByNativeSessionId('native-status').aiSessions[0].status).not.toBe('pending_confirm')
+  })
+
+  it('source=web 的 session 不被 hook 翻状态（保护现有 PTY 状态机）', async () => {
+    // 模拟 web 端建的 session：先手动建一个 source='web' 的 todo
+    const todo = db.createTodo({
+      title: 'web-session',
+      aiSessions: [{
+        sessionId: 'web-sid',
+        nativeSessionId: 'native-web-1',
+        tool: 'claude',
+        status: 'running',
+        source: 'web'
+      }]
+    })
+    // 触发 Stop hook
+    await handler.handle({
+      source: 'claude', path: 'hook-event',
+      hookPayload: { hook_event_name: 'Stop', session_id: 'native-web-1', cwd: '/x', tool: 'claude' }
+    })
+    // status 不应被翻成 idle —— web session 由 PTY 状态机管理
+    const s = db.getTodo(todo.id).aiSessions[0]
+    expect(s.status).toBe('running')
+    expect(s.lastStopAt).toBeUndefined()
+  })
+})

@@ -329,20 +329,44 @@ export function createOpenClawHookHandler(deps = {}) {
           db.renameLocalCaptureTitleIfMatches(todo.id, newTitle)
         }
       }
-      return todo
+    } else if (ls.autoCapture?.enabled && shouldCaptureEvent(tool, event)) {
+      todo = db.createLocalCaptureTodo({
+        tool,
+        nativeSessionId: sessionId,
+        cwd,
+        initialPrompt: event === 'UserPromptSubmit' ? prompt : null,
+        defaults: ls,
+        now: nowFn()
+      })
     }
 
-    if (!ls.autoCapture?.enabled) return null
-    if (!shouldCaptureEvent(tool, event)) return null
+    // Hook event → aiSessions[0].status mapping (Task 7).
+    // Restrict to source ∈ {local-capture, adopted} so we don't fight the existing
+    // PTY-driven state machine for web-created sessions (source='web').
+    if (todo) {
+      const session = todo.aiSessions?.[0]
+      if (session && (session.source === 'local-capture' || session.source === 'adopted')) {
+        const nowMs = nowFn().getTime()
+        const patch = {}
 
-    todo = db.createLocalCaptureTodo({
-      tool,
-      nativeSessionId: sessionId,
-      cwd,
-      initialPrompt: event === 'UserPromptSubmit' ? prompt : null,
-      defaults: ls,
-      now: nowFn()
-    })
+        if (event === 'SessionStart' || event === 'UserPromptSubmit') {
+          patch.status = 'running'
+        } else if (event === 'Notification' && tool === 'claude') {
+          patch.status = 'pending_confirm'
+        } else if (event === 'Stop') {
+          patch.status = 'idle'
+          patch.lastStopAt = nowMs
+        } else if (event === 'SessionEnd' && tool === 'claude') {
+          patch.status = 'done'
+          patch.completedAt = nowMs
+        }
+
+        if (Object.keys(patch).length) {
+          db.setAiSessionFields(todo.id, session.sessionId, patch)
+        }
+      }
+    }
+
     return todo
   }
 
