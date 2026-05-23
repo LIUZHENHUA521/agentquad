@@ -137,3 +137,41 @@ describe('renameLocalCaptureTitleIfMatches', () => {
     expect(ok).toBe(false)
   })
 })
+
+describe('setAiSessionFields', () => {
+  let db
+  beforeEach(() => { db = openDb(':memory:') })
+
+  it('能更新 aiSessions[i] 的 status / source / lastStopAt', () => {
+    const todo = db.createLocalCaptureTodo({
+      tool: 'claude', nativeSessionId: 'n-up-1', cwd: '/x', defaults: {}
+    })
+    const sid = todo.aiSessions[0].sessionId
+    const ok = db.setAiSessionFields(todo.id, sid, {
+      status: 'pending_confirm',
+      lastStopAt: 1234567890,
+      source: 'adopted'
+    })
+    expect(ok).toBe(true)
+    const fresh = db.getTodo(todo.id).aiSessions[0]
+    expect(fresh.status).toBe('pending_confirm')
+    expect(fresh.lastStopAt).toBe(1234567890)
+    expect(fresh.source).toBe('adopted')
+    // 既有字段不被丢
+    expect(fresh.nativeSessionId).toBe('n-up-1')
+  })
+
+  it('未知 sessionId 返回 false 且不破坏其它 session', () => {
+    const todo = db.createLocalCaptureTodo({
+      tool: 'claude', nativeSessionId: 'n-up-2', cwd: '/x', defaults: {}
+    })
+    const ok = db.setAiSessionFields(todo.id, 'no-such-sid', { status: 'done' })
+    expect(ok).toBe(false)
+    expect(db.getTodo(todo.id).aiSessions[0].status).toBe('running')
+  })
+
+  it('未知 todoId 返回 false', () => {
+    const ok = db.setAiSessionFields(99999, 'sid', { status: 'done' })
+    expect(ok).toBe(false)
+  })
+})

@@ -656,6 +656,17 @@ export function openDb(arg = ':memory:') {
     return true
   }
 
+  function setAiSessionFields(todoId, sessionId, patch) {
+    const todo = getTodo(todoId)
+    if (!todo) return false
+    const sessions = normalizeAiSessions(todo.aiSessions)
+    const idx = sessions.findIndex(s => s.sessionId === sessionId)
+    if (idx < 0) return false
+    sessions[idx] = { ...sessions[idx], ...patch }
+    updateTodo(todoId, { aiSessions: sessions })
+    return true
+  }
+
   /**
    * Preview/describe the impact of merging. 不做任何修改。
    * 返回 { targetId, sources[], movedChildren, movedComments, movedSessions, movedSessionLogs,
@@ -1724,6 +1735,7 @@ export function openDb(arg = ':memory:') {
     findTodoByNativeSessionId,
     createLocalCaptureTodo,
     renameLocalCaptureTitleIfMatches,
+    setAiSessionFields,
     describeMergeTodos,
     mergeTodos,
     bulkUpdateTodos,
