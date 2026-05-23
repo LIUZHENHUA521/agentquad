@@ -131,6 +131,16 @@ const DEFAULT_LARK_CONFIG = {
 	notificationCooldownMs: 600_000,
 };
 
+export const DEFAULT_LOCAL_SESSIONS_CONFIG = Object.freeze({
+	autoCapture: Object.freeze({
+		enabled: true,
+		redactCwd: 'basename'    // 'basename' | 'full' | 'none'
+	}),
+	defaultTelegramRoute: null,
+	defaultLarkRoute: null,
+	skipEnvVar: 'AGENTQUAD_SKIP_CAPTURE'
+});
+
 function detectBinary(name) {
 	try {
 		const result = execSync(`command -v ${name}`, {
@@ -452,6 +462,14 @@ export function normalizeConfig(cfg = {}) {
 			...(cfg.wiki || {}),
 		},
 		dispatch: normalizeDispatch(cfg.dispatch),
+		localSessions: {
+			...DEFAULT_LOCAL_SESSIONS_CONFIG,
+			...(cfg.localSessions ?? {}),
+			autoCapture: {
+				...DEFAULT_LOCAL_SESSIONS_CONFIG.autoCapture,
+				...(cfg.localSessions?.autoCapture ?? {})
+			}
+		},
 	};
 }
 
