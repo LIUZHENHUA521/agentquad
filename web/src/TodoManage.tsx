@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import {
-  Button, Space, Tag, Drawer, Form, Input, DatePicker, Empty, Image,
+  Alert, Button, Space, Tag, Drawer, Form, Input, DatePicker, Empty, Image,
   Radio, Popconfirm, Spin, Tooltip, Select, Switch, Segmented, Modal,
 } from 'antd'
 import { useTranslation } from 'react-i18next'
@@ -41,6 +41,7 @@ import {
   uploadImage,
   stopAiExec,
   ApiError,
+  getStatus,
 } from './api'
 import { renderAppliedTemplates } from './promptRender'
 import { templatesToGroupedOptions, templateFilterOption } from './templateGrouping'
@@ -77,6 +78,45 @@ import {
 } from './components/StatusBoard'
 import { SortableTodoCard } from './components/TodoCard'
 import './TodoManage.css'
+
+// ─── HookOutdatedBanner ───────────────────────────────────────────────────────
+const HOOK_OUTDATED_DISMISS_KEY = 'aq-hook-outdated-dismissed'
+
+function HookOutdatedBanner() {
+  const [show, setShow] = useState(false)
+
+  useEffect(() => {
+    if (localStorage.getItem(HOOK_OUTDATED_DISMISS_KEY) === '1') return
+    let cancelled = false
+    getStatus()
+      .then((s) => { if (!cancelled && s.hookOutdated) setShow(true) })
+      .catch(() => { /* swallow; status endpoint may not be reachable */ })
+    return () => { cancelled = true }
+  }, [])
+
+  if (!show) return null
+
+  return (
+    <Alert
+      type="warning"
+      showIcon
+      closable
+      message={
+        <>
+          claude hooks 已升级。请运行{' '}
+          <code>agentquad install claude</code>{' '}
+          让本地直起的会话自动同步到 web 端。
+        </>
+      }
+      onClose={() => {
+        localStorage.setItem(HOOK_OUTDATED_DISMISS_KEY, '1')
+        setShow(false)
+      }}
+      style={{ borderRadius: 0, marginBottom: 4 }}
+    />
+  )
+}
+// ─────────────────────────────────────────────────────────────────────────────
 
 const { TextArea } = Input
 
@@ -1153,6 +1193,7 @@ export default function TodoManage() {
 
   return (
     <div className="todo-manage-shell">
+      <HookOutdatedBanner />
       <div className="todo-manage__main">
       {!isMobile && (
         <TopbarDispatch
