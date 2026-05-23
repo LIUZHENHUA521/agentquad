@@ -52,7 +52,11 @@ import { buildTelegramCommands } from "./telegram-commands.js";
 import { createProbeRegistry, isMaskedToken, maskBotToken } from "./telegram-config-service.js";
 import { isMaskedLarkAppSecret, larkAppSecretSource, maskLarkAppSecret } from "./lark-config-service.js";
 import { createLarkApiClient } from "./lark-api-client.js";
-import { inspectHooks as inspectClaudeHooks } from "./openclaw-hook-installer.js";
+import {
+	inspectHooks as inspectClaudeHooks,
+	getInstalledHookVersion,
+	EXPECTED_HOOK_VERSION,
+} from "./openclaw-hook-installer.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -647,10 +651,15 @@ export function createServer(opts = {}) {
 	app.use(express.json({ limit: "2mb" }));
 
 	app.get("/api/status", (_req, res) => {
+		const installedHookVersion = (() => {
+			try { return getInstalledHookVersion(); } catch { return null; }
+		})();
+		const hookOutdated = installedHookVersion != null && installedHookVersion < EXPECTED_HOOK_VERSION;
 		res.json({
 			ok: true,
 			version: loadVersion(),
 			activeSessions: ait.sessions.size,
+			hookOutdated,
 		});
 	});
 

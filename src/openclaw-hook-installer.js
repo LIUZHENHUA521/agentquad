@@ -339,6 +339,43 @@ export function bootstrapHooks({
   }
 }
 
+/**
+ * 读取已安装 hooks 的版本号（从 ~/.claude/settings.json 的 _quadtodoManaged entry）。
+ *
+ * 返回：
+ *   - null 当文件不存在 OR 没有任何 managed entry（"没装" ≠ "装的是旧版"）
+ *   - 否则返回所有 managed entry 中的最小版本号（任一 entry 落后即视为整体落后）
+ *
+ * Task 10 的 /api/status 用这个值与 EXPECTED_HOOK_VERSION 比，决定是否给前端发"请重装 hook"横幅。
+ */
+export function getInstalledHookVersion({ settingsPath = defaultSettingsPath() } = {}) {
+  if (!existsSync(settingsPath)) return null
+  let data
+  try {
+    data = JSON.parse(readFileSync(settingsPath, 'utf8'))
+  } catch {
+    // JSON 解析失败 → 回退到原文 regex 兜底，至少能告诉调用方"有遗留 hook 在那"
+    const raw = readFileSync(settingsPath, 'utf8')
+    const matches = [...raw.matchAll(/quadtodo-hook-version:\s*(\d+)/g)]
+    if (!matches.length) return null
+    return Math.min(...matches.map((m) => Number(m[1])))
+  }
+  const versions = []
+  const hooks = data?.hooks ?? {}
+  for (const eventName of Object.keys(hooks)) {
+    const arr = Array.isArray(hooks[eventName]) ? hooks[eventName] : []
+    for (const entry of arr) {
+      if (!entry?.[QUADTODO_MANAGED_KEY]) continue
+      const verStr = entry[QUADTODO_VERSION_KEY]
+      if (!verStr) continue
+      const m = String(verStr).match(/(\d+)/)
+      if (m) versions.push(Number(m[1]))
+    }
+  }
+  if (!versions.length) return null
+  return Math.min(...versions)
+}
+
 export const __test__ = {
   buildHookEntry,
   QUADTODO_MANAGED_KEY,
