@@ -566,7 +566,11 @@ export function createServer(opts = {}) {
 
 	// 定期扫描 codex local-capture session：静默超过 30 分钟则标为 done。
 	// setInterval 已调用 .unref()，不会阻止进程退出；close() 时主动清除。
-	const stopLocalSessionTick = startLocalSessionTick({ db, logger: console });
+	const stopLocalSessionTick = startLocalSessionTick({
+		db,
+		logger: console,
+		timeoutMs: initialConfig?.localSessions?.codexSilentTimeoutMs,
+	});
 	let ptyRef = null;
 	const pty =
 		injectedPty ||

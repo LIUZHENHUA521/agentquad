@@ -94,4 +94,22 @@ describe('runLocalSessionTick', () => {
     runLocalSessionTick({ db, now })
     expect(db.getTodo(todo.id).aiSessions[0].status).toBe('running')
   })
+
+  it('支持通过 timeoutMs 覆盖默认 30 分钟', () => {
+    const now = 1_700_000_000_000
+    const todo = db.createTodo({
+      title: 'codex-custom-timeout',
+      aiSessions: [{
+        sessionId: 's', nativeSessionId: 'n-custom', tool: 'codex',
+        status: 'idle', source: 'local-capture',
+        lastStopAt: now - 6 * 60 * 1000  // 6 min ago
+      }]
+    })
+    // 默认 30min 不会超时
+    runLocalSessionTick({ db, now })
+    expect(db.getTodo(todo.id).aiSessions[0].status).toBe('idle')
+    // 把 timeout 调到 5 分钟 → 触发
+    runLocalSessionTick({ db, now, timeoutMs: 5 * 60 * 1000 })
+    expect(db.getTodo(todo.id).aiSessions[0].status).toBe('done')
+  })
 })

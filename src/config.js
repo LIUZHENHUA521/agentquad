@@ -138,7 +138,8 @@ export const DEFAULT_LOCAL_SESSIONS_CONFIG = Object.freeze({
 	}),
 	defaultTelegramRoute: null,
 	defaultLarkRoute: null,
-	skipEnvVar: 'AGENTQUAD_SKIP_CAPTURE'
+	skipEnvVar: 'AGENTQUAD_SKIP_CAPTURE',
+	codexSilentTimeoutMs: 30 * 60 * 1000   // 新增：可覆盖 codex 静默超时（毫秒）
 });
 
 function detectBinary(name) {

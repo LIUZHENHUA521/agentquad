@@ -1,9 +1,9 @@
 // Codex local sessions don't get a SessionEnd hook. Use the most recent Stop
 // + a quiet window to call them "done" without waiting for the process to die.
 
-const CODEX_SILENT_TIMEOUT_MS = 30 * 60 * 1000
+const DEFAULT_CODEX_SILENT_TIMEOUT_MS = 30 * 60 * 1000
 
-export function runLocalSessionTick({ db, now = Date.now(), logger } = {}) {
+export function runLocalSessionTick({ db, now = Date.now(), logger, timeoutMs = DEFAULT_CODEX_SILENT_TIMEOUT_MS } = {}) {
   if (!db) return
   const todos = db.listTodos({})
   for (const todo of todos) {
@@ -13,7 +13,7 @@ export function runLocalSessionTick({ db, now = Date.now(), logger } = {}) {
       if (s.source !== 'local-capture' && s.source !== 'adopted') continue
       if (s.status !== 'idle') continue
       if (!s.lastStopAt) continue
-      if (now - s.lastStopAt < CODEX_SILENT_TIMEOUT_MS) continue
+      if (now - s.lastStopAt < timeoutMs) continue
       db.setAiSessionFields(todo.id, s.sessionId, {
         status: 'done',
         completedAt: now
@@ -23,9 +23,9 @@ export function runLocalSessionTick({ db, now = Date.now(), logger } = {}) {
   }
 }
 
-export function startLocalSessionTick({ db, intervalMs = 60_000, logger } = {}) {
+export function startLocalSessionTick({ db, intervalMs = 60_000, logger, timeoutMs } = {}) {
   const handle = setInterval(() => {
-    try { runLocalSessionTick({ db, logger }) }
+    try { runLocalSessionTick({ db, logger, timeoutMs }) }
     catch (e) { logger?.error?.({ err: e }, 'local-session-tick error') }
   }, intervalMs)
   if (typeof handle.unref === 'function') handle.unref()
