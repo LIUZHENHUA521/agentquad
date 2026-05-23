@@ -1559,6 +1559,10 @@ export function createServer(opts = {}) {
 		// config 直接传入当前快照，让 local-capture 自动建单能读到 localSessions 默认值，
 		// 而不必依赖 getConfig?.() 的懒加载路径（configRootDir 为 null 时 getConfig 返回 {}）。
 		config: loadConfig({ rootDir: configRootDir }),
+		// 本地 capture 新建 todo 后复用 web spawn 的 onSessionSpawned 副作用：
+		// 建 Telegram topic / Lark thread + 注册 openclaw-bridge route。
+		// 用 lazy 包装是因为 aiSessionHooks.onSessionSpawned 真实实现在下方才被赋值（ordering）。
+		onSessionSpawned: (info) => aiSessionHooks.onSessionSpawned(info),
 	});
 	app.use("/api/openclaw/hook", createOpenClawHookRouter({ hookHandler: openclawHookHandler }));
 

@@ -257,6 +257,8 @@ export function createOpenClawHookHandler(deps = {}) {
     getConfig = null,                  // () => app config（用于读 telegram.notificationCooldownMs）
     config = null,                     // 直接传入的 app config（local-capture 用；优先于 getConfig）
     nowFn = () => new Date(),          // 时钟注入（local-capture 测试用）
+    onSessionSpawned = null,           // local-capture: 新建 todo 后调用，复用 web spawn
+                                       //   流程创建 Telegram topic / Lark thread + 注册路由
     logger = console,
     // injectable transcript / usage helpers (codex branch testability)
     readLatestCodexTurnFresh = defaultReadLatestCodexTurnFresh,
@@ -338,6 +340,15 @@ export function createOpenClawHookHandler(deps = {}) {
         defaults: ls,
         now: nowFn()
       })
+      // 新建 → 触发 server.js wire 进来的 onSessionSpawned，复用 web spawn 的副作用：
+      // 建 Telegram topic / Lark thread + 注册 openclaw-bridge route。
+      // fire-and-forget：不阻塞 hook 主流程；失败只 warn 不抛。
+      const newSession = todo?.aiSessions?.[0]
+      if (newSession && onSessionSpawned) {
+        Promise.resolve()
+          .then(() => onSessionSpawned({ sessionId: newSession.sessionId, todoId: todo.id }))
+          .catch((e) => logger?.warn?.(`[openclaw-hook] onSessionSpawned (local-capture) failed: ${e?.message}`))
+      }
     }
 
     // Hook event → aiSessions[0].status mapping (Task 7).
@@ -585,6 +596,7 @@ export function createOpenClawHookHandler(deps = {}) {
     // Local-session auto-capture (Task 6) —— 在分发前把可能未绑定的 native session
     // 建成 todo，让后续 handler 走原路径就能解析到 sessionId/todoId。失败被吞，
     // 防止 capture 逻辑 bug 把整个 hook 拉挂。
+    let localCaptureTodo = null
     try {
       const tool = source === 'codex' ? 'codex' : 'claude'
       const hp = req?.hookPayload || {}
@@ -594,7 +606,7 @@ export function createOpenClawHookHandler(deps = {}) {
       const capturePrompt = hp.prompt || null
       const captureEnv = hp.env || null
       if (captureSessionId && captureEvent) {
-        await ensureTodoForLocalSession({
+        localCaptureTodo = await ensureTodoForLocalSession({
           tool,
           sessionId: captureSessionId,
           event: captureEvent,
@@ -606,6 +618,23 @@ export function createOpenClawHookHandler(deps = {}) {
     } catch (e) {
       // Auto-capture failure must not break the existing handler
       logger?.warn?.(`[openclaw-hook] ensureTodoForLocalSession failed: ${e?.message}`)
+    }
+
+    // 本地终端起的 claude/codex 不会有 AgentQuad sessionId（QUADTODO_SESSION_ID 未注入）。
+    // 但 ensureTodoForLocalSession 已经按 nativeSessionId 解析出 / 建出对应 todo，
+    // 其 aiSessions[0].sessionId 就是我们为这次会话合成的 AgentQuad sessionId。
+    // 这里把它注回 req，让下游 handleClaude / handleCodex 走原 broadcast 路径。
+    if (!req?.sessionId && localCaptureTodo) {
+      const localSession = localCaptureTodo.aiSessions?.[0]
+      if (localSession?.sessionId &&
+          (localSession.source === 'local-capture' || localSession.source === 'adopted')) {
+        req = {
+          ...req,
+          sessionId: localSession.sessionId,
+          todoId: localCaptureTodo.id,
+          todoTitle: localCaptureTodo.title,
+        }
+      }
     }
 
     if (source === 'codex' && req?.path === 'jsonl') return handleCodexJsonl(req)
