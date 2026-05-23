@@ -566,6 +566,29 @@ export function openDb(arg = ':memory:') {
   }
 
   /**
+   * 根据 nativeSessionId 查找 todo。
+   * 遍历 aiSessions（存于 ai_session 列的 JSON 数组），找到含指定 nativeSessionId 的
+   * 非归档 todo 并返回；不存在时返回 null。
+   */
+  function findTodoByNativeSessionId(nativeId) {
+    if (!nativeId) return null
+    // Use LIKE for cheap pre-filter then exact JS check
+    const candidates = db.prepare(`
+      SELECT * FROM todos
+      WHERE archived_at IS NULL
+        AND ai_session LIKE @needle
+    `).all({ needle: `%${nativeId}%` })
+
+    for (const row of candidates) {
+      const sessions = normalizeAiSessions(row.ai_session ? JSON.parse(row.ai_session) : [])
+      if (sessions.some(s => s.nativeSessionId === nativeId)) {
+        return rowToTodo(row)
+      }
+    }
+    return null
+  }
+
+  /**
    * Preview/describe the impact of merging. 不做任何修改。
    * 返回 { targetId, sources[], movedChildren, movedComments, movedSessions, movedSessionLogs,
    *        movedCoverage, movedTranscripts, proposedTitle }
@@ -1630,6 +1653,7 @@ export function openDb(arg = ':memory:') {
     countMissedInRange,
     archiveTodo,
     unarchiveTodo,
+    findTodoByNativeSessionId,
     describeMergeTodos,
     mergeTodos,
     bulkUpdateTodos,
