@@ -32,6 +32,12 @@ Drive it from anywhere — Web UI, Telegram, 飞书 (Lark), or WeChat (via OpenC
 
 ---
 
+## Upgrading
+
+> ⚠️ **Local-session auto-capture (new)** — If you ran `agentquad install claude` on a previous version, **re-run it** after upgrading. The hook event set added `SessionStart`, and the bundled hook script bumped its version marker. Without re-installing, locally-started `claude` sessions won't auto-create todo cards in the web UI. The web UI will show a dismissible warning banner if your installed hooks are out of date. See [`docs/LOCAL-SESSIONS.md`](./docs/LOCAL-SESSIONS.md) for the full feature.
+
+---
+
 ## Screenshots
 
 <table>
