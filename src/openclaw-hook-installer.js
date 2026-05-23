@@ -23,8 +23,14 @@ import { fileURLToPath } from 'node:url'
 import { DEFAULT_ROOT_DIR } from './config.js'
 
 const QUADTODO_MANAGED_KEY = '_quadtodoManaged'
-const HOOK_EVENTS = ['Stop', 'Notification', 'SessionEnd', 'UserPromptSubmit']
+const QUADTODO_VERSION_KEY = '_quadtodoVersion'
+// SessionStart 放在最前面：语义上"会话开始 → 运行时事件 → 会话结束"。
+// 顺序变化也会影响 installHooks().added 的返回顺序，相关测试已同步更新。
+export const HOOK_EVENTS = ['SessionStart', 'Stop', 'Notification', 'SessionEnd', 'UserPromptSubmit']
 const HOOK_VERSION_RE = /quadtodo-hook-version:\s*(\d+)/
+// Task 9: 本期把 SessionStart 加入 HOOK_EVENTS，老用户安装版本号是 1（或缺失）；
+// Task 10 会比较 EXPECTED_HOOK_VERSION 与 settings.json 里挂的版本号，提示重装。
+export const EXPECTED_HOOK_VERSION = 2
 
 function defaultHookScriptPath() {
   return join(DEFAULT_ROOT_DIR, 'claude-hooks', 'notify.js')
@@ -48,9 +54,10 @@ function parseHookVersion(content) {
   return m ? Number(m[1]) : 0 // 0 = unversioned legacy script
 }
 
-function buildHookEntry(event, hookScriptPath) {
+function buildHookEntry(event, hookScriptPath, version = EXPECTED_HOOK_VERSION) {
   // Claude Code hook 格式（参考其文档）：matchers 数组里每项有 type+command
   const eventLower = event === 'SessionEnd' ? 'session-end'
+    : event === 'SessionStart' ? 'session-start'
     : event === 'Notification' ? 'notification'
     : event === 'UserPromptSubmit' ? 'user-prompt-submit'
     : 'stop'
@@ -64,6 +71,9 @@ function buildHookEntry(event, hookScriptPath) {
       },
     ],
     [QUADTODO_MANAGED_KEY]: true,
+    // 版本字符串既能被 Task 10 通过 JSON 解析拿到，
+    // 又能被 `quadtodo-hook-version: N` 正则在原文里命中（用于快速 grep / 诊断）。
+    [QUADTODO_VERSION_KEY]: `quadtodo-hook-version: ${version}`,
   }
 }
 
@@ -332,7 +342,9 @@ export function bootstrapHooks({
 export const __test__ = {
   buildHookEntry,
   QUADTODO_MANAGED_KEY,
+  QUADTODO_VERSION_KEY,
   HOOK_EVENTS,
+  EXPECTED_HOOK_VERSION,
   parseHookVersion,
   defaultTemplatePath,
   defaultUninstallMarkerPath,

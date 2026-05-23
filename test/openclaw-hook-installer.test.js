@@ -25,11 +25,12 @@ describe('openclaw-hook-installer', () => {
     rmSync(tmp, { recursive: true, force: true })
   })
 
-  it('installs all 4 hooks when settings.json does not exist', () => {
+  it('installs all 5 hooks when settings.json does not exist', () => {
     const r = installHooks({ settingsPath, hookScriptPath })
-    expect(r.added).toEqual(['Stop', 'Notification', 'SessionEnd', 'UserPromptSubmit'])
+    expect(r.added).toEqual(['SessionStart', 'Stop', 'Notification', 'SessionEnd', 'UserPromptSubmit'])
     expect(existsSync(settingsPath)).toBe(true)
     const data = JSON.parse(readFileSync(settingsPath, 'utf8'))
+    expect(data.hooks.SessionStart).toHaveLength(1)
     expect(data.hooks.Stop).toHaveLength(1)
     expect(data.hooks.Notification).toHaveLength(1)
     expect(data.hooks.SessionEnd).toHaveLength(1)
@@ -73,6 +74,7 @@ describe('openclaw-hook-installer', () => {
     installHooks({ settingsPath, hookScriptPath })
     installHooks({ settingsPath, hookScriptPath })
     const data = JSON.parse(readFileSync(settingsPath, 'utf8'))
+    expect(data.hooks.SessionStart).toHaveLength(1)
     expect(data.hooks.Stop).toHaveLength(1)
     expect(data.hooks.Notification).toHaveLength(1)
     expect(data.hooks.SessionEnd).toHaveLength(1)
@@ -131,7 +133,7 @@ describe('openclaw-hook-installer', () => {
     installHooks({ settingsPath, hookScriptPath })
     const r = inspectHooks({ settingsPath, hookScriptPath })
     expect(r.installed).toBe(true)
-    expect(r.eventsInstalled.sort()).toEqual(['Notification', 'SessionEnd', 'Stop', 'UserPromptSubmit'])
+    expect(r.eventsInstalled.sort()).toEqual(['Notification', 'SessionEnd', 'SessionStart', 'Stop', 'UserPromptSubmit'])
   })
 
   it('inspect catches malformed JSON', () => {
@@ -287,7 +289,7 @@ describe('bootstrapHooks', () => {
     expect(r.alreadyInstalled).toBe(false)
     expect(r.scriptResult.action).toBe('installed')
     expect(r.hookResult).toBeTruthy()
-    expect(r.hookResult.added).toEqual(['Stop', 'Notification', 'SessionEnd', 'UserPromptSubmit'])
+    expect(r.hookResult.added).toEqual(['SessionStart', 'Stop', 'Notification', 'SessionEnd', 'UserPromptSubmit'])
     expect(existsSync(scriptPath)).toBe(true)
     const data = JSON.parse(readFileSync(settingsPath, 'utf8'))
     expect(data.hooks.Stop).toHaveLength(1)
