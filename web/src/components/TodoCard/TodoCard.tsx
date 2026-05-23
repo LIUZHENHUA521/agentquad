@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Button, Tooltip, Dropdown, Popconfirm, Tag, Input } from 'antd'
+import { Button, Tooltip, Dropdown, Popconfirm, Tag, Input, Modal, message } from 'antd'
 import { Plus, Trash2, Clock, Play, Code, ChevronDown, ChevronRight, CornerDownLeft, AlertTriangle, CheckCircle2, RotateCcw, Bot } from 'lucide-react'
 import { useSortable, SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import dayjs from 'dayjs'
 import { useTranslation } from 'react-i18next'
-import { updateTodo, type Todo, type AiTool, type StageTag, type LiveSession, type PromptTemplate, type EditorKind } from '../../api'
+import { updateTodo, adoptLocalSession, type Todo, type AiSession, type AiTool, type StageTag, type LiveSession, type PromptTemplate, type EditorKind } from '../../api'
 import { templatesToGroupedOptions, templateFilterOption } from '../../templateGrouping'
 import { useAppConfigStore } from '../../store/appConfigStore'
 import { StageTagChip } from '../StageTagChip'
@@ -447,6 +447,7 @@ export function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo =
                       className="todo-history-actions"
                       onClick={(e) => e.stopPropagation()}
                     >
+                      <AdoptButton todoId={todo.id} session={session} onAdopted={onRefresh} />
                       {nativeSessionId && (
                         <button
                           type="button"
@@ -529,6 +530,65 @@ export function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo =
         )}
       </div>
     </div>
+  )
+}
+
+function AdoptButton({
+  todoId,
+  session,
+  onAdopted,
+}: {
+  todoId: string | number
+  session: AiSession
+  onAdopted?: () => void
+}) {
+  const { t } = useTranslation(['todo'])
+  if (session.source !== 'local-capture' || session.status !== 'running') {
+    return null
+  }
+
+  const handleClick = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    Modal.confirm({
+      title: t('todo:card.adoptTitle', { defaultValue: '接管本地会话' }),
+      content: (
+        <div>
+          <p>
+            {t('todo:card.adoptContentResume', {
+              defaultValue: '即将通过 {{tool}} --resume {{id}}… 在 AgentQuad 中接管这个会话。',
+              tool: session.tool,
+              id: (session.nativeSessionId || '').slice(0, 8),
+            })}
+          </p>
+          <p>
+            <strong>
+              {t('todo:card.adoptContentWarning', {
+                defaultValue: '请先在本地终端按 Ctrl+C 退出 {{tool}}，否则两个进程同时持有同一 session id 会出错。',
+                tool: session.tool,
+              })}
+            </strong>
+          </p>
+          <p>{t('todo:card.adoptContentConfirm', { defaultValue: '确认继续？' })}</p>
+        </div>
+      ),
+      okText: t('todo:card.adoptOk', { defaultValue: '我已退出本地，接管' }),
+      cancelText: t('todo:card.adoptCancel', { defaultValue: '取消' }),
+      onOk: async () => {
+        try {
+          await adoptLocalSession(Number(todoId), session.sessionId)
+          message.success(t('todo:card.adoptSuccess', { defaultValue: '已接管，可在终端中继续会话' }))
+          onAdopted?.()
+        } catch (err) {
+          message.error(t('todo:card.adoptError', { defaultValue: '接管失败：{{msg}}', msg: (err as Error).message }))
+        }
+      },
+    })
+  }
+
+  return (
+    <Button size="small" onClick={handleClick}>
+      {t('todo:card.adoptLabel', { defaultValue: '接管' })}
+    </Button>
   )
 }
 
