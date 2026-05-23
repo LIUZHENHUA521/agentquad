@@ -58,6 +58,7 @@ import {
 	EXPECTED_HOOK_VERSION,
 } from "./openclaw-hook-installer.js";
 import { startLocalSessionTick } from "./local-session-tick.js";
+import { maybeAutoInstallHooks } from "./auto-install-hooks.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -563,6 +564,11 @@ export function createServer(opts = {}) {
 	// 来反查 AgentQuad session / todoId / cwd。
 	const codexSidecar = createCodexSidecar();
 	codexSidecar.restoreFromDisk();
+
+	// Auto-install / upgrade claude + codex hooks on every startup.
+	// Failures are caught inside and fall back to the hookOutdated banner in /api/status.
+	const autoInstallResult = maybeAutoInstallHooks({ config: initialConfig, logger: console })
+	console.log('[bootstrap] hook auto-install:', autoInstallResult)
 
 	// 定期扫描 codex local-capture session：静默超过 30 分钟则标为 done。
 	// setInterval 已调用 .unref()，不会阻止进程退出；close() 时主动清除。

@@ -22,5 +22,6 @@ describe('localSessions config', () => {
     expect(cfg.localSessions.defaultLarkRoute).toBeNull()
     expect(cfg.localSessions.skipEnvVar).toBe('AGENTQUAD_SKIP_CAPTURE')
     expect(cfg.localSessions.codexSilentTimeoutMs).toBe(30 * 60 * 1000)
+    expect(cfg.localSessions.autoInstallHooks).toBe(true)
   })
 })

@@ -139,7 +139,8 @@ export const DEFAULT_LOCAL_SESSIONS_CONFIG = Object.freeze({
 	defaultTelegramRoute: null,
 	defaultLarkRoute: null,
 	skipEnvVar: 'AGENTQUAD_SKIP_CAPTURE',
-	codexSilentTimeoutMs: 30 * 60 * 1000   // 新增：可覆盖 codex 静默超时（毫秒）
+	codexSilentTimeoutMs: 30 * 60 * 1000,   // 新增：可覆盖 codex 静默超时（毫秒）
+	autoInstallHooks: true   // server bootstrap 时自动装/升级 claude+codex hooks；失败兜底走 hookOutdated banner
 });
 
 function detectBinary(name) {
