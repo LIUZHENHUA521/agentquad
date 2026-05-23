@@ -815,6 +815,53 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
   })
 
 
+  // Task 11: 接管由本地 CLI 启动、被自动捕获到 DB 的 native 会话。
+  // 流程：spawn 一个新 PTY 跑 `--resume <nativeSessionId>`，然后把 aiSession.source
+  // 从 'local-capture' 翻成 'adopted'，后续行为跟普通 web-spawn 的会话一致。
+  router.post('/adopt-local', async (req, res) => {
+    const { todoId, sessionId } = req.body || {}
+    if (!todoId || !sessionId) {
+      return res.status(400).json({ ok: false, error: 'missing_params' })
+    }
+
+    const todo = db.getTodo(todoId)
+    if (!todo) {
+      return res.status(404).json({ ok: false, error: 'todo_not_found' })
+    }
+
+    const session = (todo.aiSessions || []).find(s => s.sessionId === sessionId)
+    if (!session) {
+      return res.status(404).json({ ok: false, error: 'session_not_found' })
+    }
+
+    if (session.source !== 'local-capture') {
+      return res.status(400).json({ ok: false, error: 'not_local_capture' })
+    }
+
+    try {
+      await pty.spawn({
+        tool: session.tool,
+        cwd: todo.workDir || defaultCwd,
+        resumeNativeId: session.nativeSessionId,
+        sessionId,
+        todoId,
+      })
+      db.setAiSessionFields(todoId, sessionId, { source: 'adopted' })
+      return res.json({
+        ok: true,
+        sessionId,
+        nativeSessionId: session.nativeSessionId,
+      })
+    } catch (e) {
+      console.error('[ai-terminal/adopt-local]', e)
+      return res.status(500).json({
+        ok: false,
+        error: 'spawn_failed',
+        detail: e?.message,
+      })
+    }
+  })
+
   // 返回当前内存中的所有会话（包含已完成的"雕像期"），供仪表盘和宠物视图使用
   router.get('/sessions', (req, res) => {
     try {
