@@ -255,6 +255,8 @@ export function createOpenClawHookHandler(deps = {}) {
     sessionInputDispatcher = null,     // Stop / session-end → 触发 dispatcher flush / cleanup
     cooldownMs = DEFAULT_COOLDOWN_MS,
     getConfig = null,                  // () => app config（用于读 telegram.notificationCooldownMs）
+    config = null,                     // 直接传入的 app config（local-capture 用；优先于 getConfig）
+    nowFn = () => new Date(),          // 时钟注入（local-capture 测试用）
     logger = console,
     // injectable transcript / usage helpers (codex branch testability)
     readLatestCodexTurnFresh = defaultReadLatestCodexTurnFresh,
@@ -270,6 +272,79 @@ export function createOpenClawHookHandler(deps = {}) {
 
   if (!db) throw new Error('db_required')
   if (!openclaw) throw new Error('openclaw_required')
+
+  // ─── Local-session auto-capture (Task 6) ──────────────────────────────────
+  // hook 进来但 nativeSessionId 没绑任何 todo → 按 config.localSessions 配置自动建一张
+  // todo 卡片，让后续 handler 拿到 todo 后能正常推送/状态翻转。
+  //
+  // 只对部分事件触发 capture（其他事件 fire 时如果还没绑卡，说明用户禁用了或还没装 hook，
+  // 不应该硬建）；Phase 2 rename 只发生在 claude SessionStart 之后第一次 UserPromptSubmit
+  // 拿到 prompt 时，且原标题仍是 phase-1 模板（用户手改过的不动）。
+  const CAPTURE_EVENTS_CLAUDE = new Set(['SessionStart', 'UserPromptSubmit', 'Notification', 'Stop'])
+  const CAPTURE_EVENTS_CODEX = new Set(['UserPromptSubmit', 'Stop'])
+
+  function shouldCaptureEvent(tool, event) {
+    if (tool === 'claude') return CAPTURE_EVENTS_CLAUDE.has(event)
+    if (tool === 'codex') return CAPTURE_EVENTS_CODEX.has(event)
+    return false
+  }
+
+  function localCaptureSummary(prompt, max = 30) {
+    if (!prompt) return null
+    const c = String(prompt).trim().replace(/\s+/g, ' ')
+    if (!c) return null
+    return c.length > max ? `${c.slice(0, max)}…` : c
+  }
+
+  function localCaptureBasename(cwd) {
+    if (!cwd) return '(unknown)'
+    const parts = String(cwd).split(/[\\/]/).filter(Boolean)
+    return parts.length ? parts[parts.length - 1] : cwd
+  }
+
+  function getLocalSessionsConfig() {
+    if (config?.localSessions) return config.localSessions
+    try {
+      const cfg = getConfig?.() || {}
+      return cfg.localSessions || null
+    } catch { return null }
+  }
+
+  async function ensureTodoForLocalSession({ tool, sessionId, event, cwd, prompt, env }) {
+    const ls = getLocalSessionsConfig()
+    if (!ls) return null
+    if (!sessionId || !tool || !cwd) return null
+
+    const skipVar = ls.skipEnvVar || 'AGENTQUAD_SKIP_CAPTURE'
+    if (env && env[skipVar]) return null
+
+    let todo = db.findTodoByNativeSessionId(sessionId)
+    if (todo) {
+      // Phase 2 rename — claude SessionStart 后第一次拿到 prompt
+      if (tool === 'claude' && event === 'UserPromptSubmit' && prompt) {
+        const summary = localCaptureSummary(prompt)
+        if (summary) {
+          const basename = localCaptureBasename(cwd)
+          const newTitle = `[本地 claude] ${basename} · "${summary}"`
+          db.renameLocalCaptureTitleIfMatches(todo.id, newTitle)
+        }
+      }
+      return todo
+    }
+
+    if (!ls.autoCapture?.enabled) return null
+    if (!shouldCaptureEvent(tool, event)) return null
+
+    todo = db.createLocalCaptureTodo({
+      tool,
+      nativeSessionId: sessionId,
+      cwd,
+      initialPrompt: event === 'UserPromptSubmit' ? prompt : null,
+      defaults: ls,
+      now: nowFn()
+    })
+    return todo
+  }
 
   // dedupKey → lastSentAt
   const lastSentAt = new Map()
@@ -482,6 +557,33 @@ export function createOpenClawHookHandler(deps = {}) {
    */
   async function handle(req = {}) {
     const source = req?.source || 'claude'
+
+    // Local-session auto-capture (Task 6) —— 在分发前把可能未绑定的 native session
+    // 建成 todo，让后续 handler 走原路径就能解析到 sessionId/todoId。失败被吞，
+    // 防止 capture 逻辑 bug 把整个 hook 拉挂。
+    try {
+      const tool = source === 'codex' ? 'codex' : 'claude'
+      const hp = req?.hookPayload || {}
+      const captureSessionId = hp.session_id || hp.sessionId || null
+      const captureEvent = hp.hook_event_name || null
+      const captureCwd = hp.cwd || null
+      const capturePrompt = hp.prompt || null
+      const captureEnv = hp.env || null
+      if (captureSessionId && captureEvent) {
+        await ensureTodoForLocalSession({
+          tool,
+          sessionId: captureSessionId,
+          event: captureEvent,
+          cwd: captureCwd,
+          prompt: capturePrompt,
+          env: captureEnv,
+        })
+      }
+    } catch (e) {
+      // Auto-capture failure must not break the existing handler
+      logger?.warn?.(`[openclaw-hook] ensureTodoForLocalSession failed: ${e?.message}`)
+    }
+
     if (source === 'codex' && req?.path === 'jsonl') return handleCodexJsonl(req)
     if (source === 'codex' && req?.path === 'detector') return handleCodexDetector(req)
     if (source === 'claude' && req?.path === 'detector') return handleClaudeDetector(req)

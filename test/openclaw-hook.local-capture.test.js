@@ -1,0 +1,158 @@
+import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { openDb } from '../src/db.js'
+import { createOpenClawHookHandler } from '../src/openclaw-hook.js'
+
+function fakeBridge() {
+  return {
+    broadcastText: vi.fn().mockResolvedValue({ ok: true }),
+    postCard: vi.fn().mockResolvedValue({ ok: true }),
+    sendDocument: vi.fn().mockResolvedValue({ ok: true }),
+    hasExplicitRoute: vi.fn().mockReturnValue(false),
+    resolveRoute: vi.fn().mockReturnValue(null)
+  }
+}
+
+function makeHandler({ db, autoCapture = true } = {}) {
+  return createOpenClawHookHandler({
+    db,
+    config: {
+      localSessions: {
+        autoCapture: { enabled: autoCapture, redactCwd: 'basename' },
+        defaultTelegramRoute: { chatId: 42 },
+        defaultLarkRoute: null,
+        skipEnvVar: 'AGENTQUAD_SKIP_CAPTURE'
+      }
+    },
+    openclaw: fakeBridge(),
+    codexBridge: fakeBridge(),
+    aiTerminal: { sessions: new Map() },
+    nowFn: () => new Date('2026-05-23T14:35:00Z')
+  })
+}
+
+describe('openclaw-hook local capture', () => {
+  let db
+  beforeEach(() => { db = openDb(':memory:') })
+
+  it('无匹配 todo + autoCapture on + claude SessionStart → 建一张 todo', async () => {
+    const handler = makeHandler({ db })
+    await handler.handle({
+      source: 'claude',
+      path: 'hook-event',
+      hookPayload: {
+        hook_event_name: 'SessionStart',
+        session_id: 'native-fresh',
+        cwd: '/Users/me/proj-A',
+        tool: 'claude'
+      }
+    })
+    const todo = db.findTodoByNativeSessionId('native-fresh')
+    expect(todo).not.toBeNull()
+    expect(todo.title).toMatch(/^\[本地 claude\] proj-A · \d{2}:\d{2}$/)
+    expect(todo.aiSessions[0].telegramRoute).toEqual({ chatId: 42 })
+    expect(todo.aiSessions[0].source).toBe('local-capture')
+  })
+
+  it('autoCapture off → 不建 todo', async () => {
+    const handler = makeHandler({ db, autoCapture: false })
+    await handler.handle({
+      source: 'claude', path: 'hook-event',
+      hookPayload: { hook_event_name: 'SessionStart', session_id: 'native-x', cwd: '/x', tool: 'claude' }
+    })
+    expect(db.findTodoByNativeSessionId('native-x')).toBeNull()
+  })
+
+  it('env 含 AGENTQUAD_SKIP_CAPTURE=1 → 不建', async () => {
+    const handler = makeHandler({ db })
+    await handler.handle({
+      source: 'claude', path: 'hook-event',
+      hookPayload: {
+        hook_event_name: 'SessionStart',
+        session_id: 'native-skip',
+        cwd: '/x',
+        tool: 'claude',
+        env: { AGENTQUAD_SKIP_CAPTURE: '1' }
+      }
+    })
+    expect(db.findTodoByNativeSessionId('native-skip')).toBeNull()
+  })
+
+  it('已绑定 todo → 不重复建', async () => {
+    const existing = db.createTodo({
+      title: '已有',
+      aiSessions: [{ sessionId: 's1', nativeSessionId: 'native-bound', tool: 'claude', status: 'running' }]
+    })
+    const handler = makeHandler({ db })
+    await handler.handle({
+      source: 'claude', path: 'hook-event',
+      hookPayload: { hook_event_name: 'SessionStart', session_id: 'native-bound', cwd: '/x', tool: 'claude' }
+    })
+    const all = db.listTodos({})
+    expect(all.length).toBe(1)
+    expect(all[0].id).toBe(existing.id)
+  })
+
+  it('codex UserPromptSubmit 带 prompt → 一次性带摘要建卡', async () => {
+    const handler = makeHandler({ db })
+    await handler.handle({
+      source: 'codex', path: 'hook-event',
+      hookPayload: {
+        hook_event_name: 'UserPromptSubmit',
+        session_id: 'native-codex-1',
+        cwd: '/Users/me/proj-B',
+        tool: 'codex',
+        prompt: '帮我写一个 hello world'
+      }
+    })
+    const todo = db.findTodoByNativeSessionId('native-codex-1')
+    expect(todo).not.toBeNull()
+    expect(todo.title).toMatch(/^\[本地 codex\] proj-B · "帮我写一个 hello world"$/)
+  })
+
+  it('Phase 2 rename：claude SessionStart 后 UserPromptSubmit 把标题加上摘要', async () => {
+    const handler = makeHandler({ db })
+    // Phase 1
+    await handler.handle({
+      source: 'claude', path: 'hook-event',
+      hookPayload: { hook_event_name: 'SessionStart', session_id: 'native-rename', cwd: '/x/proj-C', tool: 'claude' }
+    })
+    const phase1 = db.findTodoByNativeSessionId('native-rename')
+    expect(phase1.title).toMatch(/^\[本地 claude\] proj-C · \d{2}:\d{2}$/)
+
+    // Phase 2 — first UserPromptSubmit
+    await handler.handle({
+      source: 'claude', path: 'hook-event',
+      hookPayload: {
+        hook_event_name: 'UserPromptSubmit',
+        session_id: 'native-rename',
+        cwd: '/x/proj-C',
+        tool: 'claude',
+        prompt: '看看 X 是啥'
+      }
+    })
+    const phase2 = db.findTodoByNativeSessionId('native-rename')
+    expect(phase2.title).toBe('[本地 claude] proj-C · "看看 X 是啥"')
+  })
+
+  it('Phase 2 不覆盖用户手改的标题', async () => {
+    const handler = makeHandler({ db })
+    await handler.handle({
+      source: 'claude', path: 'hook-event',
+      hookPayload: { hook_event_name: 'SessionStart', session_id: 'native-edited', cwd: '/x/proj-D', tool: 'claude' }
+    })
+    const t = db.findTodoByNativeSessionId('native-edited')
+    db.updateTodo(t.id, { title: '我自己改的标题' })
+
+    await handler.handle({
+      source: 'claude', path: 'hook-event',
+      hookPayload: {
+        hook_event_name: 'UserPromptSubmit',
+        session_id: 'native-edited',
+        cwd: '/x/proj-D',
+        tool: 'claude',
+        prompt: 'ignored'
+      }
+    })
+    expect(db.getTodo(t.id).title).toBe('我自己改的标题')
+  })
+})
