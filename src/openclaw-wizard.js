@@ -1746,7 +1746,11 @@ export function createOpenClawWizard({
         if ((threadId || rootMessageId) && openclaw?.findSessionByRoute) {
           const sid = openclaw.findSessionByRoute({ channel, chatId, threadId, rootMessageId })
           if (sid && pty.has?.(sid)) return sid
-          if (sid && channel === 'lark') return { ended: true, sid }
+          // 路由解析到了 session 但 PTY 不在 AgentQuad 手里（已结束 / local-capture 未接管）
+          // → 统一走 ended 标记，下面的处理器可以再区分本地 capture 自动接管 vs 真结束。
+          // 历史只对 lark 标 ended，导致 telegram 这条路径在 local-capture 时直接掉进
+          // lastPushByPeer / ambiguous fallback，行为不可预测。现在两渠道对齐。
+          if (sid) return { ended: true, sid }
           if (channel === 'lark') return { notFound: true }
         }
         // b) lastPushByPeer
@@ -1763,10 +1767,35 @@ export function createOpenClawWizard({
       })()
 
       if (targetSid && typeof targetSid === 'object' && targetSid.ended) {
+        const endedSid = targetSid.sid
+        // local-capture：用户在 IM (Lark/Telegram) 回复本地终端起的会话 → 自动接管。
+        // 跟前面 lark thread 预路由路径同一逻辑，但走 fallback 路由 (a) 才到这里
+        // —— 主要是 telegram 的覆盖路径。
+        const meta = lookupLocalCaptureMeta(endedSid)
+        if (meta?.source === 'local-capture') {
+          const cfg = getConfig?.() || {}
+          const autoAdoptEnabled = cfg?.localSessions?.autoAdoptOnReply !== false
+          if (autoAdoptEnabled && aiTerminal?.adoptLocalSession && meta.nativeSessionId && meta.todoId) {
+            const adoptResult = await autoAdoptForReply({
+              sid: endedSid,
+              meta,
+              text: trimmed,
+              imagePaths,
+              channel,
+              echoTarget: { chatId, threadId, rootMessageId, messageId },
+            })
+            if (adoptResult) return adoptResult
+          }
+          return {
+            reply: '📍 这是本地终端启动的 claude/codex 会话，AgentQuad 没法直接转发回复。\n请先在 web 端这条卡片上点「接管」按钮（接管前先在终端 Ctrl+C 退掉 claude）。',
+            action: 'session_local_capture_unowned',
+            sessionId: endedSid,
+          }
+        }
         return {
           reply: '这个任务已结束，请在群里重新发起任务。',
           action: 'session_ended',
-          sessionId: targetSid.sid,
+          sessionId: endedSid,
         }
       }
       if (targetSid && typeof targetSid === 'object' && targetSid.notFound) {
