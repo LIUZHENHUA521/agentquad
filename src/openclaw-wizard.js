@@ -441,6 +441,23 @@ export function createOpenClawWizard({
     return pty?.has?.(sid) === true
   }
 
+  // 等 PTY 安静一段时间 —— 给 claude --resume 回放历史上下文的窗口。
+  // 否则 dispatcher 看 lastOutputAt 还在持续更新，会把第一条 IM 消息塞进队列，
+  // 等用户后发的第二条触发 IDLE_GRACE_MS 兜底 → 第二条直发、第一条排队后投递，顺序错。
+  //   - quietMs：要求最近一次输出距 now ≥ quietMs（默认 3500，比 dispatcher IDLE_GRACE_MS=3000 略宽）
+  //   - timeoutMs：最多等 8s；超时也返回，让 dispatch 走原本的 queue 路径（次优但不会卡死）
+  async function waitForPtyQuiet(sid, { quietMs = 3500, timeoutMs = 8000, intervalMs = 200 } = {}) {
+    const deadline = Date.now() + timeoutMs
+    while (Date.now() < deadline) {
+      const sess = aiTerminal?.sessions?.get?.(sid)
+      const lastOut = sess?.lastOutputAt || 0
+      // lastOut 必须 > 0（claude 已经输出过东西，证明在跑），且距 now ≥ quietMs
+      if (lastOut > 0 && Date.now() - lastOut >= quietMs) return true
+      await sleep(intervalMs)
+    }
+    return false
+  }
+
   // 用户在 IM 回复 local-capture 会话时的自动接管流程：
   // 1) SIGINT 本地 terminal 进程（best-effort，找不到也继续，spawn 会冲突再报错）
   // 2) aiTerminal.adoptLocalSession(...)  →  spawnSession + source 翻 adopted
@@ -478,6 +495,11 @@ export function createOpenClawWizard({
         sessionId: sid,
       }
     }
+
+    // 3.5) 等 claude --resume 把历史上下文回放完、安静下来再投递。否则 dispatcher 看
+    //      lastOutputAt 在持续更新 → 把本条消息排队，等下次静默 3s 兜底才发出，
+    //      用户后发的消息反而先到 claude → 顺序乱。
+    await waitForPtyQuiet(sid, { quietMs: 3500, timeoutMs: 8000 })
 
     // 4) 转发用户的 IM 消息到新会话
     if (!sessionInputDispatcher) {
