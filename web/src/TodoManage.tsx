@@ -647,6 +647,16 @@ export default function TodoManage() {
     fetchTodos()
   }, [refreshTodosSignal, consumeSignal, fetchTodos])
 
+  // SSE: server 端独立改了 todos（local-capture hook 自动建/翻状态、wizard 建单等）
+  // 立刻 fetch 刷新看板，不再需要手动 F5。
+  // EventSource 自带断线重连；30s server 心跳防 proxy 掐线。
+  useEffect(() => {
+    const es = new EventSource('/api/events/board')
+    es.addEventListener('changed', () => { void fetchTodos() })
+    es.onerror = () => { /* let EventSource auto-reconnect */ }
+    return () => es.close()
+  }, [fetchTodos])
+
   // ─── 按象限分组 ───
 
   const todosByQuadrant = useMemo(() => {

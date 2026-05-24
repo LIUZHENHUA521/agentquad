@@ -59,6 +59,7 @@ import {
 } from "./openclaw-hook-installer.js";
 import { startLocalSessionTick } from "./local-session-tick.js";
 import { maybeAutoInstallHooks } from "./auto-install-hooks.js";
+import { boardEventBus } from "./board-event-bus.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -675,6 +676,44 @@ export function createServer(opts = {}) {
 			version: loadVersion(),
 			activeSessions: ait.sessions.size,
 			hookOutdated,
+		});
+	});
+
+	// SSE: 服务端独立改了 todos / aiSessions（local-capture / wizard 等）时通知前端 refetch。
+	// 客户端断线重连后接下一次 emit；不重放历史。心跳 30s 保活，过 proxy 也不会断。
+	app.get("/api/events/board", (req, res) => {
+		res.set({
+			"Content-Type": "text/event-stream; charset=utf-8",
+			"Cache-Control": "no-cache, no-transform",
+			"Connection": "keep-alive",
+			"X-Accel-Buffering": "no",
+		});
+		res.flushHeaders?.();
+
+		let closed = false;
+		const send = (event, data) => {
+			if (closed) return;
+			try {
+				res.write(`event: ${event}\n`);
+				res.write(`data: ${JSON.stringify(data)}\n\n`);
+			} catch { /* client gone */ }
+		};
+		send("hello", { ok: true, at: Date.now() });
+
+		const onChanged = (payload) => send("changed", payload);
+		boardEventBus.on("changed", onChanged);
+
+		const heartbeat = setInterval(() => {
+			if (closed) return;
+			try { res.write(`: heartbeat ${Date.now()}\n\n`); }
+			catch { /* client gone */ }
+		}, 30_000);
+		heartbeat.unref?.();
+
+		req.on("close", () => {
+			closed = true;
+			clearInterval(heartbeat);
+			boardEventBus.off("changed", onChanged);
 		});
 	});
 

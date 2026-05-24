@@ -33,6 +33,7 @@ import {
 } from './codex-transcript.js'
 import { buildPermissionCard } from './lark-card.js'
 import { DEFAULT_ROOT_DIR } from './config.js'
+import { boardEventBus } from './board-event-bus.js'
 
 const DEFAULT_COOLDOWN_MS = 30_000
 const TRANSCRIPT_TMP_DIR = join(DEFAULT_ROOT_DIR, 'tmp')
@@ -321,6 +322,7 @@ export function createOpenClawHookHandler(deps = {}) {
     if (env && env[skipVar]) return null
 
     let todo = db.findTodoByNativeSessionId(sessionId)
+    let changed = false
     if (todo) {
       // Phase 2 rename — claude SessionStart 后第一次拿到 prompt
       if (tool === 'claude' && event === 'UserPromptSubmit' && prompt) {
@@ -328,7 +330,8 @@ export function createOpenClawHookHandler(deps = {}) {
         if (summary) {
           const basename = localCaptureBasename(cwd)
           const newTitle = `[本地 claude] ${basename} · "${summary}"`
-          db.renameLocalCaptureTitleIfMatches(todo.id, newTitle)
+          const renamed = db.renameLocalCaptureTitleIfMatches(todo.id, newTitle)
+          if (renamed) changed = true
         }
       }
     } else if (ls.autoCapture?.enabled && shouldCaptureEvent(tool, event)) {
@@ -340,6 +343,7 @@ export function createOpenClawHookHandler(deps = {}) {
         defaults: ls,
         now: nowFn()
       })
+      changed = true
       // 新建 → 触发 server.js wire 进来的 onSessionSpawned，复用 web spawn 的副作用：
       // 建 Telegram topic / Lark thread + 注册 openclaw-bridge route。
       // fire-and-forget：不阻塞 hook 主流程；失败只 warn 不抛。
@@ -374,7 +378,18 @@ export function createOpenClawHookHandler(deps = {}) {
 
         if (Object.keys(patch).length) {
           db.setAiSessionFields(todo.id, session.sessionId, patch)
+          changed = true
         }
+      }
+    }
+
+    // 任意一处 server-driven 改动 → 通知前端 refetch 看板。
+    // 用 in-process bus，SSE endpoint 转发给所有订阅的浏览器。
+    if (changed && todo?.id) {
+      try {
+        boardEventBus.notifyTodosChanged({ todoId: todo.id, source: 'local-capture-hook', event })
+      } catch (e) {
+        logger?.warn?.(`[openclaw-hook] boardEventBus emit failed: ${e?.message}`)
       }
     }
 
