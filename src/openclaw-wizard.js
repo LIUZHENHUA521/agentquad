@@ -375,16 +375,158 @@ export function createOpenClawWizard({
   // 用于在 PTY 不在 AgentQuad 手里时给出针对性引导（让用户去 web 点"接管"），
   // 而不是误报"任务已结束"。
   function lookupLocalCaptureSource(quadtodoSid) {
+    const meta = lookupLocalCaptureMeta(quadtodoSid)
+    return meta?.source || null
+  }
+
+  // 返回 { source, tool, nativeSessionId, todoId } 或 null
+  function lookupLocalCaptureMeta(quadtodoSid) {
     if (!quadtodoSid || !db?.listTodos) return null
     try {
       const todos = db.listTodos({})
       for (const t of todos) {
         const arr = Array.isArray(t.aiSessions) ? t.aiSessions : []
         const hit = arr.find((s) => s.sessionId === quadtodoSid)
-        if (hit) return hit.source || null
+        if (hit) {
+          return {
+            source: hit.source || null,
+            tool: hit.tool || null,
+            nativeSessionId: hit.nativeSessionId || null,
+            todoId: t.id,
+          }
+        }
       }
     } catch { /* ignore */ }
     return null
+  }
+
+  // 找本地 claude / codex 进程并发 SIGINT。best-effort：找不到也没关系，spawnSession
+  // 内部对 session_id 冲突会抛错，wizard 会把错误反馈给用户。
+  // 用 ps 命令而非 process.kill -0 试探，是因为我们不知道 pid，只有 nativeSessionId 串。
+  async function sigintLocalToolByNativeId(nativeSessionId) {
+    if (!nativeSessionId) return { killed: 0, pids: [] }
+    try {
+      const { execSync } = await import('node:child_process')
+      // ps -ax -o pid,command | grep nativeSessionId | grep -v grep
+      // 用 nativeId 作匹配关键字够独特（uuid）；不限制 tool 名以兼容各种封装脚本
+      // （e.g. claude-w / claude --resume / cursor-agent --resume / wrapper script）
+      const out = execSync(
+        `ps -axo pid,command | grep -F -- ${JSON.stringify(nativeSessionId)} | grep -v grep | awk '{print $1}'`,
+        { encoding: 'utf8', timeout: 1500, shell: '/bin/bash' }
+      )
+      const pids = out.trim().split(/\s+/).filter(Boolean).map((s) => Number(s)).filter((n) => Number.isFinite(n) && n > 1)
+      let killed = 0
+      for (const pid of pids) {
+        try {
+          process.kill(pid, 'SIGINT')
+          killed++
+        } catch (e) {
+          logger.warn?.(`[wizard] SIGINT pid=${pid} failed: ${e?.message}`)
+        }
+      }
+      return { killed, pids }
+    } catch (e) {
+      return { killed: 0, pids: [], error: e?.message }
+    }
+  }
+
+  function sleep(ms) { return new Promise((r) => setTimeout(r, ms)) }
+
+  async function waitForPtyReady(sid, { timeoutMs = 3000, intervalMs = 100 } = {}) {
+    const deadline = Date.now() + timeoutMs
+    while (Date.now() < deadline) {
+      if (pty?.has?.(sid)) return true
+      await sleep(intervalMs)
+    }
+    return pty?.has?.(sid) === true
+  }
+
+  // 用户在 IM 回复 local-capture 会话时的自动接管流程：
+  // 1) SIGINT 本地 terminal 进程（best-effort，找不到也继续，spawn 会冲突再报错）
+  // 2) aiTerminal.adoptLocalSession(...)  →  spawnSession + source 翻 adopted
+  // 3) waitForPtyReady  →  等新 PTY 注册到 sessions Map（spawnSession 是异步的）
+  // 4) sessionInputDispatcher.send(...)  →  把用户这条 IM 文字注入新会话
+  // 任何一步失败都返回带 action 标签的 reply，让上层别再走原 session_ended 文案。
+  async function autoAdoptForReply({ sid, meta, text, imagePaths, channel, echoTarget }) {
+    // 1) SIGINT 本地
+    let killInfo = { killed: 0, pids: [] }
+    try {
+      killInfo = await sigintLocalToolByNativeId(meta.nativeSessionId)
+      if (killInfo.killed > 0) await sleep(600)
+    } catch (e) {
+      logger.warn?.(`[wizard] auto-adopt: SIGINT failed: ${e?.message}`)
+    }
+
+    // 2) adopt
+    try {
+      await aiTerminal.adoptLocalSession({ todoId: meta.todoId, sessionId: sid })
+    } catch (e) {
+      logger.warn?.(`[wizard] auto-adopt: adoptLocalSession failed: ${e?.message}`)
+      return {
+        reply: `❌ 自动接管失败：${e?.message || e}\n请在终端 Ctrl+C 退掉 ${meta.tool}，然后在 web 端点「接管」按钮。`,
+        action: 'auto_adopt_failed',
+        sessionId: sid,
+      }
+    }
+
+    // 3) 等 PTY 就绪
+    const ready = await waitForPtyReady(sid, { timeoutMs: 3500, intervalMs: 120 })
+    if (!ready) {
+      return {
+        reply: '🔄 已接管，但 PTY 还没就绪 — 请稍等几秒后重发这条消息。',
+        action: 'auto_adopt_pending',
+        sessionId: sid,
+      }
+    }
+
+    // 4) 转发用户的 IM 消息到新会话
+    if (!sessionInputDispatcher) {
+      // 没 dispatcher 的兜底：裸 pty.write（跟下方主路径保持兼容）
+      try {
+        let payload = text
+        if (imagePaths?.length > 0) {
+          const ats = imagePaths.map((p) => `@${p}`).join(' ')
+          payload = text ? `${ats} ${text}` : ats
+        }
+        pty.write(sid, payload)
+        setTimeout(() => { try { pty.write(sid, '\r') } catch { /* ignore */ } }, 80)
+        return {
+          reply: `🔄 已自动接管会话（本地 ${meta.tool} 已收到 Ctrl+C），消息已转发。`,
+          action: 'auto_adopted_via_stdin',
+          sessionId: sid,
+        }
+      } catch (e) {
+        return {
+          reply: `🔄 已接管但消息转发失败：${e?.message}`,
+          action: 'auto_adopt_dispatch_failed',
+          sessionId: sid,
+        }
+      }
+    }
+
+    try {
+      loadingTracker?.markRunning?.(sid)?.catch?.(() => {})
+      const r = await sessionInputDispatcher.send({
+        sessionId: sid,
+        text,
+        imagePaths,
+        channel,
+        echoTarget,
+      })
+      const base = mapDispatcherResultToWizardReply(r, sid, imagePaths)
+      // 给 dispatcher 的原 reply 前加一行说明，让用户知道刚发生了接管。
+      const notice = `🔄 已自动接管（本地 ${meta.tool} 已被 SIGINT）`
+      base.reply = base.reply ? `${notice}\n${base.reply}` : notice
+      base.action = base.action ? `auto_adopted+${base.action}` : 'auto_adopted'
+      return base
+    } catch (e) {
+      logger.warn?.(`[wizard] auto-adopt: dispatcher.send threw: ${e?.message}`)
+      return {
+        reply: `🔄 已接管但投递异常：${e?.message}`,
+        action: 'auto_adopt_dispatch_failed',
+        sessionId: sid,
+      }
+    }
   }
 
   function getActiveWizard(routeKey) {
@@ -1336,10 +1478,25 @@ export function createOpenClawWizard({
       if (!pty?.write || !pty.has?.(sid)) {
         // 区分两种 "PTY 不存在" 的根因：
         // (a) source=local-capture → claude 在用户自己终端，AgentQuad 没 stdin 写入通道
-        //     → 必须先在 web 端点"接管"按钮把会话过户给 AgentQuad
+        //     默认走自动接管（SIGINT 本地进程 → spawnSession → 转发消息），
+        //     失败或被 config 关闭时回退到提示用户去 web 点接管按钮。
         // (b) 正常 PTY 已结束 → 老文案（任务结束）
-        const source = lookupLocalCaptureSource(sid)
-        if (source === 'local-capture') {
+        const meta = lookupLocalCaptureMeta(sid)
+        if (meta?.source === 'local-capture') {
+          const cfg = getConfig?.() || {}
+          const autoAdoptEnabled = cfg?.localSessions?.autoAdoptOnReply !== false
+          if (autoAdoptEnabled && aiTerminal?.adoptLocalSession && meta.nativeSessionId && meta.todoId) {
+            const adoptResult = await autoAdoptForReply({
+              sid,
+              meta,
+              text: trimmed,
+              imagePaths,
+              channel: 'lark',
+              echoTarget: { chatId, threadId, rootMessageId, messageId },
+            })
+            if (adoptResult) return adoptResult
+            // 落到下面手动引导
+          }
           return {
             reply: '📍 这是本地终端启动的 claude/codex 会话，AgentQuad 没法直接转发回复。\n请先在 web 端这条卡片上点「接管」按钮（接管前先在终端 Ctrl+C 退掉 claude）。',
             action: 'session_local_capture_unowned',

@@ -818,57 +818,59 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
   // Task 11: 接管由本地 CLI 启动、被自动捕获到 DB 的 native 会话。
   // 流程：spawn 一个新 PTY 跑 `--resume <nativeSessionId>`，然后把 aiSession.source
   // 从 'local-capture' 翻成 'adopted'，后续行为跟普通 web-spawn 的会话一致。
-  router.post('/adopt-local', async (req, res) => {
-    const { todoId, sessionId } = req.body || {}
+  // 抽成独立方法供 wizard 自动接管复用（不只是 HTTP route）。
+  // 错误以 throw 抛出，外层 (HTTP route / wizard) 各自决定怎么映射回 status code / 回复。
+  async function adoptLocalSession({ todoId, sessionId } = {}) {
     if (!todoId || !sessionId) {
-      return res.status(400).json({ ok: false, error: 'missing_params' })
+      const e = new Error('missing_params'); e.code = 'missing_params'; e.status = 400; throw e
     }
-
     const todo = db.getTodo(todoId)
     if (!todo) {
-      return res.status(404).json({ ok: false, error: 'todo_not_found' })
+      const e = new Error('todo_not_found'); e.code = 'todo_not_found'; e.status = 404; throw e
     }
-
     const session = (todo.aiSessions || []).find(s => s.sessionId === sessionId)
     if (!session) {
-      return res.status(404).json({ ok: false, error: 'session_not_found' })
+      const e = new Error('session_not_found'); e.code = 'session_not_found'; e.status = 404; throw e
     }
-
     if (session.source !== 'local-capture') {
-      return res.status(400).json({ ok: false, error: 'not_local_capture' })
+      const e = new Error('not_local_capture'); e.code = 'not_local_capture'; e.status = 400; throw e
     }
+    // 走 spawnSession() —— 跟 POST /exec 同一条路径，确保：
+    //   - sessions.set(sessionId, …) → WS 广播能把 PTY 输出推到接管的 xterm
+    //   - todoSessionMap / nativeSessionMap 同步 → stop-by-todo / 重复 resume 检测正常
+    //   - db.updateTodo({ status: 'ai_running' }) → 看板状态翻新
+    //   - GET /sessions 能看到 → dashboard 不漏
+    //   - onSessionSpawned(…) → Telegram/Lark topic 自动建
+    //   - 30s spawn 兜底 timer
+    // 复用现有 sessionId，让 db.setAiSessionFields(…, { source: 'adopted' })
+    // 后置覆盖到同一行；prompt 必须传 string，传空串即可（resume 路径不会用到）。
+    spawnSession({
+      todoId,
+      tool: session.tool,
+      cwd: todo.workDir || defaultCwd,
+      resumeNativeId: session.nativeSessionId,
+      sessionId,
+      prompt: '',
+    })
+    db.setAiSessionFields(todoId, sessionId, { source: 'adopted' })
+    return {
+      ok: true,
+      sessionId,
+      nativeSessionId: session.nativeSessionId,
+      tool: session.tool,
+    }
+  }
 
+  router.post('/adopt-local', async (req, res) => {
     try {
-      // 走 spawnSession() —— 跟 POST /exec 同一条路径，确保：
-      //   - sessions.set(sessionId, …) → WS 广播能把 PTY 输出推到接管的 xterm
-      //   - todoSessionMap / nativeSessionMap 同步 → stop-by-todo / 重复 resume 检测正常
-      //   - db.updateTodo({ status: 'ai_running' }) → 看板状态翻新
-      //   - GET /sessions 能看到 → dashboard 不漏
-      //   - onSessionSpawned(…) → Telegram/Lark topic 自动建
-      //   - 30s spawn 兜底 timer
-      // 复用现有 sessionId，让 db.setAiSessionFields(…, { source: 'adopted' })
-      // 后置覆盖到同一行；prompt 必须传 string，传空串即可（resume 路径不会用到）。
-      spawnSession({
-        todoId,
-        tool: session.tool,
-        cwd: todo.workDir || defaultCwd,
-        resumeNativeId: session.nativeSessionId,
-        sessionId,
-        prompt: '',
-      })
-      db.setAiSessionFields(todoId, sessionId, { source: 'adopted' })
-      return res.json({
-        ok: true,
-        sessionId,
-        nativeSessionId: session.nativeSessionId,
-      })
+      const r = await adoptLocalSession(req.body || {})
+      return res.json(r)
     } catch (e) {
+      if (e.status === 400 || e.status === 404) {
+        return res.status(e.status).json({ ok: false, error: e.code })
+      }
       console.error('[ai-terminal/adopt-local]', e)
-      return res.status(500).json({
-        ok: false,
-        error: 'spawn_failed',
-        detail: e?.message,
-      })
+      return res.status(500).json({ ok: false, error: 'spawn_failed', detail: e?.message })
     }
   })
 
@@ -1604,6 +1606,7 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
     broadcastToSession,
     notifyTurnDone,
     spawnSession,
+    adoptLocalSession,
     markSessionAwaitingReply,
     markPendingConfirm,
     isSessionAwaitingReply,

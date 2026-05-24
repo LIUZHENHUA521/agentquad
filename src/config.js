@@ -140,7 +140,10 @@ export const DEFAULT_LOCAL_SESSIONS_CONFIG = Object.freeze({
 	defaultLarkRoute: null,
 	skipEnvVar: 'AGENTQUAD_SKIP_CAPTURE',
 	codexSilentTimeoutMs: 30 * 60 * 1000,   // 新增：可覆盖 codex 静默超时（毫秒）
-	autoInstallHooks: true   // server bootstrap 时自动装/升级 claude+codex hooks；失败兜底走 hookOutdated banner
+	autoInstallHooks: true,  // server bootstrap 时自动装/升级 claude+codex hooks；失败兜底走 hookOutdated banner
+	// 用户在 IM (Lark/Telegram) 回复 local-capture 会话时，自动 SIGINT 本地 terminal 的 claude/codex
+	// 进程并通过 spawnSession 接管。设 false 则回退到"提示用户去 web 点接管按钮"的旧行为。
+	autoAdoptOnReply: true
 });
 
 function detectBinary(name) {
