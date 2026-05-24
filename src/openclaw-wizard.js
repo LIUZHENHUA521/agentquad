@@ -371,6 +371,22 @@ export function createOpenClawWizard({
   // routeKey → wizard state object
   const wizards = new Map()
 
+  // 用 nativeSessionId 反查 + aiSessions[0].source 判断会话是否是本地终端 capture 出来的。
+  // 用于在 PTY 不在 AgentQuad 手里时给出针对性引导（让用户去 web 点"接管"），
+  // 而不是误报"任务已结束"。
+  function lookupLocalCaptureSource(quadtodoSid) {
+    if (!quadtodoSid || !db?.listTodos) return null
+    try {
+      const todos = db.listTodos({})
+      for (const t of todos) {
+        const arr = Array.isArray(t.aiSessions) ? t.aiSessions : []
+        const hit = arr.find((s) => s.sessionId === quadtodoSid)
+        if (hit) return hit.source || null
+      }
+    } catch { /* ignore */ }
+    return null
+  }
+
   function getActiveWizard(routeKey) {
     const w = wizards.get(routeKey)
     if (!w) return null
@@ -1318,6 +1334,18 @@ export function createOpenClawWizard({
     if (larkBoundThreadSid) {
       const sid = larkBoundThreadSid
       if (!pty?.write || !pty.has?.(sid)) {
+        // 区分两种 "PTY 不存在" 的根因：
+        // (a) source=local-capture → claude 在用户自己终端，AgentQuad 没 stdin 写入通道
+        //     → 必须先在 web 端点"接管"按钮把会话过户给 AgentQuad
+        // (b) 正常 PTY 已结束 → 老文案（任务结束）
+        const source = lookupLocalCaptureSource(sid)
+        if (source === 'local-capture') {
+          return {
+            reply: '📍 这是本地终端启动的 claude/codex 会话，AgentQuad 没法直接转发回复。\n请先在 web 端这条卡片上点「接管」按钮（接管前先在终端 Ctrl+C 退掉 claude）。',
+            action: 'session_local_capture_unowned',
+            sessionId: sid,
+          }
+        }
         return {
           reply: '这个任务已结束，请在群里重新发起任务。',
           action: 'session_ended',
