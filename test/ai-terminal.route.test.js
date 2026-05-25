@@ -136,6 +136,35 @@ describe('routes/ai-terminal', () => {
     expect(updated.aiSessions).toHaveLength(1)
   })
 
+  it('POST /exec snapshots the explicit agentTemplateId instead of the todo default', async () => {
+    const agentA = ctx.db.createTemplate({ name: 'Agent A', content: 'A prompt' })
+    const agentB = ctx.db.createTemplate({ name: 'Agent B', content: 'B prompt' })
+    const todo = ctx.db.createTodo({ title: 'T', quadrant: 1, appliedTemplateIds: [agentB.id] })
+
+    const r = await request(ctx.app)
+      .post('/api/ai-terminal/exec')
+      .send({ todoId: todo.id, prompt: 'A prompt\n\nTask', tool: 'claude', agentTemplateId: agentA.id })
+
+    expect(r.status).toBe(200)
+    const updated = ctx.db.getTodo(todo.id)
+    expect(updated.aiSessions[0].agentTemplateId).toBe(agentA.id)
+    expect(updated.aiSessions[0].agentName).toBe('Agent A')
+  })
+
+  it('POST /exec keeps falling back to todo appliedTemplateIds when agentTemplateId is omitted', async () => {
+    const agentB = ctx.db.createTemplate({ name: 'Agent B', content: 'B prompt' })
+    const todo = ctx.db.createTodo({ title: 'T', quadrant: 1, appliedTemplateIds: [agentB.id] })
+
+    const r = await request(ctx.app)
+      .post('/api/ai-terminal/exec')
+      .send({ todoId: todo.id, prompt: 'B prompt\n\nTask', tool: 'claude' })
+
+    expect(r.status).toBe(200)
+    const updated = ctx.db.getTodo(todo.id)
+    expect(updated.aiSessions[0].agentTemplateId).toBe(agentB.id)
+    expect(updated.aiSessions[0].agentName).toBe('Agent B')
+  })
+
   it('POST /exec persists preset nativeSessionId for new claude session before HTTP response returns', async () => {
     const todo = ctx.db.createTodo({ title: 'T', quadrant: 1 })
     const r = await request(ctx.app)
