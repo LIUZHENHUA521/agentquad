@@ -832,6 +832,97 @@ describe('openclaw-wizard state machine', () => {
     expect(todo.aiSessions[0]).not.toHaveProperty('telegramRoute')
   })
 
+  it('Telegram: session_end topic close does not mark todo done', async () => {
+    const todo = db.createTodo({ title: 'topic-bound task', workDir: '/tmp/foo', status: 'ai_done' })
+    const sid = 'sess-session-end'
+    const threadId = 4242
+    db.updateTodo(todo.id, {
+      status: 'ai_done',
+      aiSessions: [{
+        sessionId: sid,
+        tool: 'claude',
+        nativeSessionId: 'native-1',
+        status: 'idle',
+        telegramRoute: {
+          targetUserId: '-100',
+          threadId,
+          topicName: '#t424 topic-bound task',
+          channel: 'telegram',
+        },
+      }],
+    })
+
+    const stopped = []
+    const fakePty = { stop: vi.fn((sessionId) => stopped.push(sessionId)) }
+    const fakeBridge = {
+      ...bridge,
+      findSessionByRoute: vi.fn(() => sid),
+      clearSessionRoute: vi.fn(),
+    }
+    const fakeAi = { sessions: new Map([[sid, { sessionId: sid, todoId: todo.id }]]) }
+    const fakeTelegramBot = { editForumTopic: vi.fn(async () => ({})) }
+    const w2 = createOpenClawWizard({
+      db, aiTerminal: fakeAi, openclaw: fakeBridge, pending,
+      pty: fakePty, telegramBot: fakeTelegramBot,
+      getConfig: () => ({ defaultCwd: '/tmp', port: 5677 }),
+    })
+
+    const r = await w2.handleTopicEvent({ type: 'closed', chatId: '-100', threadId, source: 'session_end' })
+
+    expect(r.action).toBe('closed')
+    expect(db.getTodo(todo.id).status).toBe('ai_done')
+    expect(fakePty.stop).not.toHaveBeenCalled()
+    expect(fakeBridge.clearSessionRoute).toHaveBeenCalledWith(sid, 'session-end')
+    expect(fakeTelegramBot.editForumTopic).not.toHaveBeenCalled()
+  })
+
+  it('Telegram: real topic close marks todo done', async () => {
+    const todo = db.createTodo({ title: 'real topic close', workDir: '/tmp/foo', status: 'ai_done' })
+    const sid = 'sess-topic-close'
+    const threadId = 5252
+    db.updateTodo(todo.id, {
+      status: 'ai_done',
+      aiSessions: [{
+        sessionId: sid,
+        tool: 'claude',
+        nativeSessionId: 'native-2',
+        status: 'idle',
+        telegramRoute: {
+          targetUserId: '-100',
+          threadId,
+          topicName: '#t525 real topic close',
+          channel: 'telegram',
+        },
+      }],
+    })
+
+    const fakePty = { stop: vi.fn() }
+    const fakeBridge = {
+      ...bridge,
+      findSessionByRoute: vi.fn(() => sid),
+      clearSessionRoute: vi.fn(),
+    }
+    const fakeAi = { sessions: new Map([[sid, { sessionId: sid, todoId: todo.id }]]) }
+    const fakeTelegramBot = { editForumTopic: vi.fn(async () => ({})) }
+    const w2 = createOpenClawWizard({
+      db, aiTerminal: fakeAi, openclaw: fakeBridge, pending,
+      pty: fakePty, telegramBot: fakeTelegramBot,
+      getConfig: () => ({ defaultCwd: '/tmp', port: 5677 }),
+    })
+
+    const r = await w2.handleTopicEvent({ type: 'closed', chatId: '-100', threadId, source: 'telegram_event' })
+
+    expect(r.action).toBe('closed')
+    expect(db.getTodo(todo.id).status).toBe('done')
+    expect(fakePty.stop).toHaveBeenCalledWith(sid)
+    expect(fakeBridge.clearSessionRoute).toHaveBeenCalledWith(sid, 'topic-closed')
+    expect(fakeTelegramBot.editForumTopic).toHaveBeenCalledWith({
+      chatId: '-100',
+      threadId,
+      name: '✅ #t525 real topic close',
+    })
+  })
+
   it('Telegram: stdin proxy uses findSessionByRoute when threadId set', async () => {
     let writes = []
     const fakePty = {
@@ -1391,7 +1482,7 @@ describe('openclaw-wizard state machine', () => {
       telegramBot: fakeTelegramBot,
       getConfig: () => ({ defaultCwd: '/tmp', port: 5677 }),
     })
-    const r = await w2.handleTopicEvent({ type: 'closed', chatId: '-100', threadId: 42 })
+    const r = await w2.handleTopicEvent({ type: 'closed', chatId: '-100', threadId: 42, source: 'telegram_event' })
     expect(r.ok).toBe(true)
     expect(r.action).toBe('closed')
     expect(r.todoId).toBe(todo.id)
@@ -1486,7 +1577,7 @@ describe('openclaw-wizard state machine', () => {
       telegramBot: { editForumTopic: vi.fn(async () => ({})) },
       getConfig: () => ({}),
     })
-    const r = await w2.handleTopicEvent({ type: 'closed', chatId: '-100', threadId: 70 })
+    const r = await w2.handleTopicEvent({ type: 'closed', chatId: '-100', threadId: 70, source: 'telegram_event' })
     expect(r.ok).toBe(true)
     // 关键：session 上挂了标记
     expect(liveSess.userClosedReason).toBe('topic_closed')
@@ -1522,7 +1613,7 @@ describe('openclaw-wizard state machine', () => {
       telegramBot: fakeTelegramBot,
       getConfig: () => ({ defaultCwd: '/tmp', port: 5677 }),
     })
-    const r = await w2.handleTopicEvent({ type: 'closed', chatId: '-100', threadId: 555 })
+    const r = await w2.handleTopicEvent({ type: 'closed', chatId: '-100', threadId: 555, source: 'telegram_event' })
     expect(r.ok).toBe(true)
     expect(r.action).toBe('closed')
     expect(r.todoId).toBe(todo.id)
@@ -1534,7 +1625,7 @@ describe('openclaw-wizard state machine', () => {
       db, aiTerminal: ai, openclaw: bridge, pending,
       getConfig: () => ({ defaultCwd: '/tmp', port: 5677 }),
     })
-    const r = await w2.handleTopicEvent({ type: 'closed', chatId: '-100', threadId: 99999 })
+    const r = await w2.handleTopicEvent({ type: 'closed', chatId: '-100', threadId: 99999, source: 'telegram_event' })
     expect(r.ok).toBe(false)
     expect(r.reason).toBe('no_todo')
   })

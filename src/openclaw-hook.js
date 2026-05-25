@@ -323,6 +323,7 @@ export function createOpenClawHookHandler(deps = {}) {
 
     let todo = db.findTodoByNativeSessionId(sessionId)
     let changed = false
+    let spawnedSession = null
     if (todo) {
       // Phase 2 rename — claude SessionStart 后第一次拿到 prompt
       if (tool === 'claude' && event === 'UserPromptSubmit' && prompt) {
@@ -346,12 +347,15 @@ export function createOpenClawHookHandler(deps = {}) {
       changed = true
       // 新建 → 触发 server.js wire 进来的 onSessionSpawned，复用 web spawn 的副作用：
       // 建 Telegram topic / Lark thread + 注册 openclaw-bridge route。
-      // fire-and-forget：不阻塞 hook 主流程；失败只 warn 不抛。
-      const newSession = todo?.aiSessions?.[0]
-      if (newSession && onSessionSpawned) {
-        Promise.resolve()
-          .then(() => onSessionSpawned({ sessionId: newSession.sessionId, todoId: todo.id }))
-          .catch((e) => logger?.warn?.(`[openclaw-hook] onSessionSpawned (local-capture) failed: ${e?.message}`))
+      spawnedSession = todo?.aiSessions?.[0] || null
+    }
+
+    if (spawnedSession && onSessionSpawned) {
+      try {
+        await onSessionSpawned({ sessionId: spawnedSession.sessionId, todoId: todo.id })
+        todo = db.findTodoByNativeSessionId(sessionId) || todo
+      } catch (e) {
+        logger?.warn?.(`[openclaw-hook] onSessionSpawned (local-capture) failed: ${e?.message}`)
       }
     }
 
@@ -597,6 +601,16 @@ export function createOpenClawHookHandler(deps = {}) {
     }
   }
 
+  function normalizeHookEventForDispatch(event) {
+    switch (event) {
+      case 'UserPromptSubmit': return 'user-prompt-submit'
+      case 'SessionEnd': return 'session-end'
+      case 'Notification': return 'notification'
+      case 'Stop': return 'stop'
+      default: return null
+    }
+  }
+
   /**
    * 处理一条 hook 事件 —— 统一入口，按 source/path 分发。
    *  - source=codex,path=jsonl    → handleCodexJsonl（Phase C）
@@ -643,8 +657,11 @@ export function createOpenClawHookHandler(deps = {}) {
       const localSession = localCaptureTodo.aiSessions?.[0]
       if (localSession?.sessionId &&
           (localSession.source === 'local-capture' || localSession.source === 'adopted')) {
+        const dispatchEvent = req.event || normalizeHookEventForDispatch(req?.hookPayload?.hook_event_name) || null
+        if (!dispatchEvent) return { ok: true, action: 'captured' }
         req = {
           ...req,
+          event: dispatchEvent,
           sessionId: localSession.sessionId,
           todoId: localCaptureTodo.id,
           todoTitle: localCaptureTodo.title,

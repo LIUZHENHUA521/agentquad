@@ -1239,10 +1239,10 @@ export function createOpenClawWizard({
 
   /**
    * 处理话题生命周期事件：关闭 / 重开。
-   * 关闭：mark todo done，杀 PTY，清路由，话题改名 ✅。
+   * 关闭：真实 Telegram topic 关闭才 mark todo done；session_end 只清路由。
    * 重开：respawn PTY (--resume nativeSessionId)，恢复路由，撤掉 ✅。
    */
-  async function handleTopicEvent({ type, chatId, threadId } = {}) {
+  async function handleTopicEvent({ type, chatId, threadId, source = 'session_end' } = {}) {
     if (!chatId || !threadId) return { ok: false, reason: 'missing_args' }
     if (type !== 'closed' && type !== 'reopened') return { ok: false, reason: 'unknown_type' }
 
@@ -1255,6 +1255,19 @@ export function createOpenClawWizard({
     const topicName = aiSession.telegramRoute?.topicName || todo.title
 
     if (type === 'closed') {
+      const isTelegramTopicClose = source === 'telegram_event'
+      if (!isTelegramTopicClose) {
+        let clearedSid = null
+        if (openclaw?.findSessionByRoute) {
+          const sid = openclaw.findSessionByRoute({ chatId: String(chatId), threadId })
+          if (sid) {
+            clearedSid = sid
+            openclaw.clearSessionRoute?.(sid, 'session-end')
+          }
+        }
+        logger.info?.(`[wizard] topic close from ${source} → todo ${todo.id} unchanged; cleared sid=${clearedSid || '(none alive)'}`)
+        return { ok: true, action: 'closed', todoId: todo.id, killedSid: null }
+      }
       // 1) 杀 PTY（如果还活着，找它的 sessionId）
       // 关键：先在 session 上打"用户关话题"标记，PTY 的 done 事件晚到时
       // 不会用 stopped→'todo' 的默认逻辑覆写我们刚写的 status='done'。

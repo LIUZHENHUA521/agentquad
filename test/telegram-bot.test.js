@@ -358,6 +358,37 @@ describe('telegram-bot inbound dispatch', () => {
     expect(sentMessages[0].message_thread_id).toBe(42)
   })
 
+  it('routes forum_topic_closed as telegram_event topic close', async () => {
+    const topicEvents = []
+    const fetchFn = makeFetchSeq([{ body: { ok: true, result: [{
+      update_id: 1,
+      message: {
+        chat: { id: -1001234567890 },
+        message_thread_id: 42,
+        forum_topic_closed: {},
+      },
+    }] } }])
+    const bot = createTelegramBot({
+      getConfig: () => ({ telegram: { botToken: 'X', allowedChatIds: ['-1001234567890'] } }),
+      wizard: {
+        handleInbound: vi.fn(async () => ({})),
+        handleTopicEvent: vi.fn(async (args) => { topicEvents.push(args); return { ok: true } }),
+      },
+      fetchFn, offsetFile,
+      logger: { warn() {}, info() {} },
+    })
+
+    await bot.pollOnce()
+
+    expect(topicEvents).toEqual([{
+      type: 'closed',
+      chatId: '-1001234567890',
+      threadId: 42,
+      source: 'telegram_event',
+    }])
+    expect(bot).toBeTruthy()
+  })
+
   it('forwards (sessionId, chatId, messageId) to reactionTracker.noteUserMessage when wizard returns sessionId', async () => {
     const noteCalls = []
     const reactionTracker = {

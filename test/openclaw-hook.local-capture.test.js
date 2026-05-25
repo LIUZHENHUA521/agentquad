@@ -12,6 +12,28 @@ function fakeBridge() {
   }
 }
 
+function bridgeWithLarkRoute() {
+  const routes = new Map()
+  return {
+    broadcastText: vi.fn(async ({ sessionId }) => {
+      const route = routes.get(sessionId)
+      return route?.rootMessageId ? { ok: true } : { ok: false, reason: 'misconfigured' }
+    }),
+    postCard: vi.fn().mockResolvedValue({ ok: true }),
+    sendDocument: vi.fn().mockResolvedValue({ ok: true }),
+    hasExplicitRoute: vi.fn((sessionId) => routes.has(sessionId)),
+    resolveRoute: vi.fn((sessionId, channel = null) => {
+      const route = routes.get(sessionId) || null
+      if (!route) return null
+      if (channel && route.channel !== channel) return null
+      return route
+    }),
+    registerSessionRoute: vi.fn((sessionId, route) => {
+      routes.set(sessionId, { ...route, channel: route.channel || 'lark' })
+    })
+  }
+}
+
 function makeHandler({ db, autoCapture = true } = {}) {
   return createOpenClawHookHandler({
     db,
@@ -36,7 +58,7 @@ describe('openclaw-hook local capture', () => {
 
   it('无匹配 todo + autoCapture on + claude SessionStart → 建一张 todo', async () => {
     const handler = makeHandler({ db })
-    await handler.handle({
+    const result = await handler.handle({
       source: 'claude',
       path: 'hook-event',
       hookPayload: {
@@ -47,6 +69,8 @@ describe('openclaw-hook local capture', () => {
       }
     })
     const todo = db.findTodoByNativeSessionId('native-fresh')
+    expect(result.ok).toBe(true)
+    expect(result.action).toBe('captured')
     expect(todo).not.toBeNull()
     expect(todo.title).toMatch(/^\[本地 claude\] proj-A · \d{2}:\d{2}$/)
     expect(todo.aiSessions[0].telegramRoute).toEqual({ chatId: 42 })
@@ -154,6 +178,53 @@ describe('openclaw-hook local capture', () => {
       }
     })
     expect(db.getTodo(t.id).title).toBe('我自己改的标题')
+  })
+
+  it('本地 claude Stop 等待异步 Lark 路由绑定后再推送首轮消息', async () => {
+    const bridge = bridgeWithLarkRoute()
+    const handler = createOpenClawHookHandler({
+      db,
+      config: {
+        localSessions: {
+          autoCapture: { enabled: true, redactCwd: 'basename' },
+          defaultTelegramRoute: null,
+          defaultLarkRoute: { targetUserId: 'oc_chat_x', rootMessageId: 'om_pending', channel: 'lark' },
+          skipEnvVar: 'AGENTQUAD_SKIP_CAPTURE'
+        }
+      },
+      openclaw: bridge,
+      codexBridge: bridge,
+      aiTerminal: { sessions: new Map() },
+      onSessionSpawned: async ({ sessionId, todoId }) => {
+        const todo = db.getTodo(todoId)
+        const session = todo.aiSessions.find(item => item.sessionId === sessionId)
+        db.setAiSessionFields(todoId, sessionId, {
+          larkRoute: {
+            ...(session.larkRoute || {}),
+            targetUserId: 'oc_chat_x',
+            rootMessageId: 'om_root',
+            channel: 'lark'
+          }
+        })
+      },
+      nowFn: () => new Date('2026-05-23T14:35:00Z')
+    })
+
+    const result = await handler.handle({
+      source: 'claude',
+      path: 'hook-event',
+      hookPayload: {
+        hook_event_name: 'Stop',
+        session_id: 'native-lark-first-stop',
+        cwd: '/Users/me/proj-L',
+        tool: 'claude'
+      }
+    })
+
+    expect(result.ok).toBe(true)
+    expect(result.action).toBe('sent')
+    expect(bridge.registerSessionRoute).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ channel: 'lark', rootMessageId: 'om_root' }))
+    expect(bridge.broadcastText).toHaveBeenCalledWith(expect.objectContaining({ sessionId: expect.any(String) }))
   })
 })
 

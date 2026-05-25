@@ -381,6 +381,34 @@ describe('openclaw-bridge.postText', () => {
     expect(calls).toHaveLength(0)             // 不应 spawn openclaw CLI
   })
 
+  it('broadcastText fans out to registered lark route', async () => {
+    const sent = []
+    const bridge = createOpenClawBridge({
+      getConfig: () => ({ openclaw: { enabled: false, channel: 'lark' } }),
+      spawnFn: spy({ stdout: '{}' }),
+      logger: { warn() {}, info() {} },
+      larkBot: {
+        replyInThread: async (args) => {
+          sent.push(args)
+          return { ok: true, payload: { messageId: 'om_reply' } }
+        },
+      },
+    })
+    bridge.registerSessionRoute('s-lark-broadcast', {
+      channel: 'lark',
+      targetUserId: 'oc_1',
+      rootMessageId: 'om_root',
+    })
+
+    const r = await bridge.broadcastText({ sessionId: 's-lark-broadcast', message: 'AI output' })
+
+    expect(r.ok).toBe(true)
+    expect(r.fanout).toBe(true)
+    expect(r.byChannel.lark.ok).toBe(true)
+    expect(sent).toEqual([{ rootMessageId: 'om_root', text: 'AI output' }])
+    expect(calls).toHaveLength(0)
+  })
+
   it('postText refuses lark route without rootMessageId', async () => {
     const sent = []
     const bridge = createOpenClawBridge({

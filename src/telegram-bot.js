@@ -601,7 +601,7 @@ export function createTelegramBot({
     // ─── 话题生命周期事件（service messages，无 text） ────────────
     if (msg.forum_topic_closed && wizard.handleTopicEvent) {
       try {
-        await wizard.handleTopicEvent({ type: 'closed', chatId, threadId })
+        await wizard.handleTopicEvent({ type: 'closed', chatId, threadId, source: 'telegram_event' })
       } catch (e) {
         logger.warn?.(`[telegram-bot] handleTopicEvent(closed) threw: ${e.message}`)
       }
