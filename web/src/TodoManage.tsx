@@ -922,9 +922,12 @@ export default function TodoManage() {
 
   // ─── AI 执行 ───
 
-  const handleAiExec = useCallback(async (todo: Todo, tool: AiTool, session?: Todo['aiSessions'][number]) => {
+  const handleAiExec = useCallback(async (todo: Todo, tool: AiTool, session?: Todo['aiSessions'][number], agentTemplateId?: string | null) => {
     try {
-      const prompt = session?.prompt || buildTodoPrompt(todo, templates, t)
+      const promptTodo = agentTemplateId !== undefined
+        ? { ...todo, appliedTemplateIds: agentTemplateId ? [agentTemplateId] : [] }
+        : todo
+      const prompt = session?.prompt || buildTodoPrompt(promptTodo, templates, t)
       // 读取托管模式：浏览器内手动覆盖 (localStorage) > 设置里的全局默认 (config) > undefined。
       // 这样新启动/恢复会话时能直接通过原生 CLI 标志生效，不依赖运行时的正则兜底。
       let permissionMode: string | null = null
@@ -937,6 +940,7 @@ export default function TodoManage() {
         cwd: session?.cwd || todo.workDir || undefined,
         resumeNativeId: session?.nativeSessionId || undefined,
         permissionMode: permissionMode || undefined,
+        agentTemplateId,
       })
       handleOpenTerminalInDock(todo, sessionId)
       fetchTodos()

@@ -51,7 +51,7 @@ export interface SortableTodoCardProps {
   onCreateSubtodo?: (todo: Todo) => void
   onClick: (t: Todo) => void
   onToggleDone: (t: Todo) => void
-  onAiExec: (todo: Todo, tool: AiTool, session?: Todo['aiSessions'][number]) => void
+  onAiExec: (todo: Todo, tool: AiTool, session?: Todo['aiSessions'][number], agentTemplateId?: string | null) => void
   onDeleteAiSession: (todo: Todo, session: Todo['aiSessions'][number], currentSessionId?: string | null) => void
   onDelete: (t: Todo) => void
   onOpenTrae: (todo: Todo, editor?: EditorKind) => void
@@ -125,7 +125,7 @@ export function SortableTodoCard({ todo, children = [], childHitIds, isSubtodo =
       message.error(e?.message || t('errors:stageTagUpdateFailed'))
       return
     }
-    onAiExec(todo, defaultTool)
+    onAiExec(todo, defaultTool, undefined, agentId)
   }
 
   const handleStageTagChange = async (next: StageTag | null) => {

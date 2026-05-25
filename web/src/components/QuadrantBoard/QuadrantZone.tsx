@@ -15,7 +15,7 @@ export interface QuadrantZoneProps {
   onCreateSubtodo: (todo: Todo) => void
   onCardClick: (t: Todo) => void
   onToggleDone: (t: Todo) => void
-  onAiExec: (todo: Todo, tool: AiTool, session?: Todo['aiSessions'][number]) => void
+  onAiExec: (todo: Todo, tool: AiTool, session?: Todo['aiSessions'][number], agentTemplateId?: string | null) => void
   onDeleteAiSession: (todo: Todo, session: Todo['aiSessions'][number], currentSessionId?: string | null) => void
   onDelete: (t: Todo) => void
   onOpenTrae: (todo: Todo, editor?: 'trae-cn' | 'trae' | 'cursor') => void

@@ -525,6 +525,7 @@ export async function startAiExec(input: {
   cwd?: string
   resumeNativeId?: string
   permissionMode?: string | null
+  agentTemplateId?: string | null
 }): Promise<{ sessionId: string }> {
   const body = await jsonFetch<{ ok: true; sessionId: string }>('/api/ai-terminal/exec', {
     method: 'POST',

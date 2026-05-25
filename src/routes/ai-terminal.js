@@ -543,7 +543,7 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
   })
 
   // ─── 程序化 session 启动入口（供 orchestrator 等模块直接调用，跳过 HTTP） ───
-  function spawnSession({ todoId, prompt, tool, cwd, resumeNativeId, permissionMode, label, extraEnv, sessionId: externalSessionId, skipTelegram = false, ignoreExistingNativeSessionId = false, parentTodoId = null, suppressStaleTurnDetect = false }) {
+  function spawnSession({ todoId, prompt, tool, cwd, resumeNativeId, permissionMode, label, extraEnv, sessionId: externalSessionId, skipTelegram = false, ignoreExistingNativeSessionId = false, parentTodoId = null, suppressStaleTurnDetect = false, agentTemplateId: explicitAgentTemplateId = undefined }) {
     if (!todoId || typeof prompt !== 'string' || !tool) {
       const err = new Error('missing todoId, prompt, or tool'); err.code = 'bad_request'
       throw err
@@ -682,14 +682,16 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
         // resume 路径上面已经 set 过；新会话首次得到 nativeId 时补一次。
         nativeSessionMap.set(`${tool}:${presetNativeId}`, sessionId)
       }
-      // Agent 身份快照：派活那一刻 todo.appliedTemplateIds[0] 就是这次的 agent。
-      // 写到 session 上，UI 不用反查 templates、用户改 todo agent 也不会改写历史会话归属。
+      // Agent 身份快照：显式传入的 agentTemplateId 是本次派活选择的权威；
+      // 旧调用方没有传时，再退回 todo.appliedTemplateIds[0]。
       let agentTemplateId = null
       let agentName = null
-      const firstTemplateId = (todo.appliedTemplateIds || [])[0] || null
-      if (firstTemplateId) {
+      const snapshotTemplateId = explicitAgentTemplateId !== undefined
+        ? explicitAgentTemplateId
+        : ((todo.appliedTemplateIds || [])[0] || null)
+      if (snapshotTemplateId) {
         try {
-          const tpl = db.getTemplate(firstTemplateId)
+          const tpl = db.getTemplate(snapshotTemplateId)
           if (tpl) {
             agentTemplateId = tpl.id
             agentName = tpl.name
@@ -785,6 +787,7 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
         cwd: body.cwd,
         resumeNativeId: body.resumeNativeId,
         permissionMode: body.permissionMode,
+        agentTemplateId: body.agentTemplateId,
       })
       res.json({ ok: true, ...result })
     } catch (e) {
