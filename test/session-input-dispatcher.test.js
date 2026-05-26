@@ -399,6 +399,110 @@ describe('per-sid serialization', () => {
   })
 })
 
+describe('adoption gate (beginAdopting / endAdopting / flushQueue)', () => {
+  // 接管窗口：claude --resume 回放期间，所有消息必须严格 FIFO 入队，
+  // 不能被 idle / idle-grace 直发插队。回放结束后由 flushQueue 一次性投递。
+
+  it('idle session + beginAdopting → 普通文本仍入队，不直发', async () => {
+    // 关键：即使 awaitingReply=true（按常规会直发），接管窗口内也强制入队
+    const { pty, aiTerminal, writes } = makeDeps({ awaitingReply: true })
+    const d = createSessionInputDispatcher({ pty, aiTerminal })
+    d.beginAdopting('sid1')
+    const r = await d.send({ sessionId: 'sid1', text: 'hello' })
+    expect(r).toMatchObject({ action: 'queued', queueSize: 1 })
+    expect(writes).toEqual([])
+  })
+
+  it('idle-grace 也被接管窗口压制：PTY 静默 60s + adopting → 仍入队', async () => {
+    const pty = { write: vi.fn(), has: () => true }
+    const sess = { lastOutputAt: Date.now() - 60000, awaitingReply: false }
+    const aiTerminal = {
+      isSessionAwaitingReply: () => false,
+      sessions: new Map([['sid1', sess]]),
+    }
+    const d = createSessionInputDispatcher({
+      pty, aiTerminal,
+      callbacks: { onQueueFirstEnqueue: async () => undefined },
+    })
+    d.beginAdopting('sid1')
+    const r = await d.send({ sessionId: 'sid1', text: 'first' })
+    expect(r).toMatchObject({ action: 'queued' })
+    expect(pty.write).not.toHaveBeenCalled()
+  })
+
+  it('窗口内 soft_interrupt 降级为入队：不发 Esc', async () => {
+    const { pty, aiTerminal, writes } = makeDeps({ awaitingReply: true })
+    const d = createSessionInputDispatcher({ pty, aiTerminal })
+    d.beginAdopting('sid1')
+    const r = await d.send({ sessionId: 'sid1', text: '!算了' })
+    expect(r).toMatchObject({ action: 'queued' })
+    // 不能向回放中的 claude 写 Esc(\x1b)
+    expect(writes.find((w) => w.data === '\x1b')).toBeUndefined()
+    // 入队的是去掉 ! 的 stripped 文本
+    expect(d.__test__.queues.get('sid1').items[0].text).toBe('算了')
+  })
+
+  it('窗口内连发多条 → 严格 FIFO，flushQueue 按发送顺序合并', async () => {
+    vi.useFakeTimers()
+    const { pty, aiTerminal, writes } = makeDeps({ awaitingReply: true })
+    const d = createSessionInputDispatcher({ pty, aiTerminal })
+    d.beginAdopting('sid1')
+    await d.send({ sessionId: 'sid1', text: 'msg1' })
+    await d.send({ sessionId: 'sid1', text: 'msg2' })
+    await d.send({ sessionId: 'sid1', text: 'msg3' })
+    expect(writes).toEqual([]) // 窗口内一条都没直发
+    d.endAdopting('sid1')
+    const f = await d.flushQueue('sid1')
+    await vi.advanceTimersByTimeAsync(100)
+    expect(f).toMatchObject({ flushed: 3 })
+    expect(writes).toEqual([
+      { sid: 'sid1', data: 'msg1\nmsg2\nmsg3' },
+      { sid: 'sid1', data: '\r' },
+    ])
+    vi.useRealTimers()
+  })
+
+  it('endAdopting 后恢复正常：idle 直发', async () => {
+    vi.useFakeTimers()
+    const { pty, aiTerminal, writes } = makeDeps({ awaitingReply: true })
+    const d = createSessionInputDispatcher({ pty, aiTerminal })
+    d.beginAdopting('sid1')
+    await d.send({ sessionId: 'sid1', text: 'queued-while-adopting' })
+    expect(writes).toEqual([])
+    d.endAdopting('sid1')
+    // flush 掉窗口里那条，模拟接管收尾
+    await d.flushQueue('sid1')
+    await vi.advanceTimersByTimeAsync(100)
+    // 之后再来一条 → 正常直发
+    const r = await d.send({ sessionId: 'sid1', text: 'after' })
+    await vi.advanceTimersByTimeAsync(100)
+    expect(r).toMatchObject({ action: 'sent' })
+    expect(writes).toContainEqual({ sid: 'sid1', data: 'after' })
+    vi.useRealTimers()
+  })
+
+  it('窗口内 hard_cancel 仍放行：!! → Ctrl+C，清队列', async () => {
+    // 接管期 claude 正在回放（busy）。hard_cancel 不受闸门压制，应真的发 Ctrl+C。
+    const { pty, aiTerminal, writes } = makeDeps({ awaitingReply: false })
+    const d = createSessionInputDispatcher({ pty, aiTerminal })
+    d.beginAdopting('sid1')
+    await d.send({ sessionId: 'sid1', text: 'q1' })
+    const r = await d.send({ sessionId: 'sid1', text: '!!stop' })
+    expect(r).toMatchObject({ action: 'hard_cancelled' })
+    expect(writes).toContainEqual({ sid: 'sid1', data: '\x03' })
+    expect(d.describe().byId.sid1).toBeUndefined()
+  })
+
+  it('onSessionEnd 清除接管标记', async () => {
+    const { pty, aiTerminal } = makeDeps({ awaitingReply: true })
+    const d = createSessionInputDispatcher({ pty, aiTerminal })
+    d.beginAdopting('sid1')
+    expect(d.isAdopting('sid1')).toBe(true)
+    await d.onSessionEnd('sid1')
+    expect(d.isAdopting('sid1')).toBe(false)
+  })
+})
+
 describe('origin dedup table (recordOrigin / consumeOrigin)', () => {
   function makeMinimalDispatcher() {
     const pty = { write: vi.fn(), has: vi.fn(() => true) }

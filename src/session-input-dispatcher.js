@@ -66,6 +66,12 @@ export function createSessionInputDispatcher({ pty, aiTerminal, callbacks = {}, 
   // sessionId set: 软中断 250ms 窗口内
   const softInterrupting = new Set()
 
+  // sessionId set: 自动接管窗口内（claude --resume 正在回放历史上下文）。
+  // 期间 send() 对 queue_or_send / soft_interrupt 一律入队、禁用 idle-grace 直发，
+  // 保证多条消息严格 FIFO —— 由调用方（wizard.autoAdoptForReply）在回放结束后统一 flush。
+  // 见 docs：把"顺序正确"从"等静默 3.5s"解耦出来，让首条消息能更快投递。
+  const adopting = new Set()
+
   // sessionId → Array<{ hash, channel, ts }>。30s TTL，FIFO 上限 ORIGIN_LIMIT。
   // 用于让 UserPromptSubmit hook 区分"这条 prompt 来自 telegram / lark / PC"。
   const lastOrigins = new Map()
@@ -132,13 +138,23 @@ export function createSessionInputDispatcher({ pty, aiTerminal, callbacks = {}, 
     if (!pty.has(sessionId)) {
       return { action: 'session_ended', sessionId }
     }
-    const { mode, stripped } = parseTrigger(text)
+    const parsed = parseTrigger(text)
+    const stripped = parsed.stripped
+    // 接管窗口内：claude --resume 正在回放历史上下文，向半渲染的 TUI 注入会被吞掉或乱序。
+    //   - 把 soft_interrupt 降级为 queue_or_send（绝不向回放中的 claude 发 Esc）
+    //   - 强制走入队（idle=false），并跳过下面的 idle-grace 直发
+    //   - hard_cancel 仍放行（用户显式要停就停）
+    const isAdopting = adopting.has(sessionId)
+    const mode = (isAdopting && parsed.mode === 'soft_interrupt') ? 'queue_or_send' : parsed.mode
+
     let idle = aiTerminal.isSessionAwaitingReply(sessionId)
+    if (isAdopting && mode !== 'hard_cancel') idle = false
 
     // 兜底：awaitingReply=false 但 PTY 已经静默 ≥ IDLE_GRACE_MS → 视为 idle 直发。
     // 不动 hard_cancel —— 那一档不依赖 idle 状态（无条件发 \x03 中断），
     // 这里加 grace 反而会让 idle 走 noop_idle 分支吞掉用户的 /stop。
-    if (!idle && mode !== 'hard_cancel') {
+    // 接管窗口内同样不启用（否则会把第 2 条判 idle 直发、插到排队中的第 1 条前面）。
+    if (!idle && mode !== 'hard_cancel' && !isAdopting) {
       try {
         const sess = aiTerminal?.sessions?.get?.(sessionId)
         const lastOut = sess?.lastOutputAt || 0
@@ -265,7 +281,14 @@ export function createSessionInputDispatcher({ pty, aiTerminal, callbacks = {}, 
     return flushQueue(sessionId)
   }
 
+  // 接管窗口标记。beginAdopting 进入后 send() 强制入队；调用方在 claude --resume
+  // 回放结束（PTY 安静）后调 flushQueue 一次性 FIFO 投递，再 endAdopting。
+  function beginAdopting(sessionId) { if (sessionId) adopting.add(sessionId) }
+  function endAdopting(sessionId) { if (sessionId) adopting.delete(sessionId) }
+  function isAdopting(sessionId) { return adopting.has(sessionId) }
+
   async function onSessionEnd(sessionId) {
+    adopting.delete(sessionId)
     lastOrigins.delete(sessionId)
     const q = queues.get(sessionId)
     if (!q) return
@@ -296,5 +319,9 @@ export function createSessionInputDispatcher({ pty, aiTerminal, callbacks = {}, 
     return { sessions: queues.size, byId }
   }
 
-  return { send, onSessionIdle, onSessionEnd, describe, recordOrigin, consumeOrigin, __test__: { queues, parseTrigger } }
+  return {
+    send, onSessionIdle, onSessionEnd, describe, recordOrigin, consumeOrigin,
+    flushQueue, beginAdopting, endAdopting, isAdopting,
+    __test__: { queues, parseTrigger, adopting },
+  }
 }

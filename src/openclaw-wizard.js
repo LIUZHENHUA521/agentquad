@@ -49,6 +49,14 @@ import { resolveTool } from './dispatch.js'
 
 const WIZARD_TIMEOUT_MS = 10 * 60 * 1000
 
+// 自动接管后等 claude --resume 回放完成的"就绪"判定。
+//   - ADOPT_READY_QUIET_MS：PTY 最近一次输出距 now ≥ 该值 → 认为回放结束、claude idle。
+//     从 3500 收紧到 1500：顺序已由 dispatcher 接管闸门（beginAdopting）保证，不再需要
+//     "静默 > IDLE_GRACE_MS(3000)" 这种保守等待，首条消息可更快投递。
+//   - ADOPT_READY_TIMEOUT_MS：硬上限，回放卡住也不会无限等，超时也 flush（次优但不卡死）。
+const ADOPT_READY_QUIET_MS = 1500
+const ADOPT_READY_TIMEOUT_MS = 8000
+
 const STEP_WORKDIR = 'workdir'
 const STEP_TEMPLATE = 'template'   // 用户面叫 "Agent"；代码内部沿用 template key
 const STEP_DONE = 'done'
@@ -441,12 +449,12 @@ export function createOpenClawWizard({
     return pty?.has?.(sid) === true
   }
 
-  // 等 PTY 安静一段时间 —— 给 claude --resume 回放历史上下文的窗口。
-  // 否则 dispatcher 看 lastOutputAt 还在持续更新，会把第一条 IM 消息塞进队列，
-  // 等用户后发的第二条触发 IDLE_GRACE_MS 兜底 → 第二条直发、第一条排队后投递，顺序错。
-  //   - quietMs：要求最近一次输出距 now ≥ quietMs（默认 3500，比 dispatcher IDLE_GRACE_MS=3000 略宽）
-  //   - timeoutMs：最多等 8s；超时也返回，让 dispatch 走原本的 queue 路径（次优但不会卡死）
-  async function waitForPtyQuiet(sid, { quietMs = 3500, timeoutMs = 8000, intervalMs = 200 } = {}) {
+  // 等 PTY 安静一段时间 —— 探测 claude --resume 回放历史上下文是否结束（idle）。
+  // 顺序正确性已由 dispatcher 接管闸门（beginAdopting/flushQueue）保证，这里只负责
+  // "回放是否跑完"的就绪判定，所以 quietMs 可以收紧（见 ADOPT_READY_QUIET_MS）。
+  //   - quietMs：要求最近一次输出距 now ≥ quietMs
+  //   - timeoutMs：最多等这么久；超时也返回，调用方仍会 flush（次优但不会卡死）
+  async function waitForPtyQuiet(sid, { quietMs = ADOPT_READY_QUIET_MS, timeoutMs = ADOPT_READY_TIMEOUT_MS, intervalMs = 200 } = {}) {
     const deadline = Date.now() + timeoutMs
     while (Date.now() < deadline) {
       const sess = aiTerminal?.sessions?.get?.(sid)
@@ -496,14 +504,16 @@ export function createOpenClawWizard({
       }
     }
 
-    // 3.5) 等 claude --resume 把历史上下文回放完、安静下来再投递。否则 dispatcher 看
-    //      lastOutputAt 在持续更新 → 把本条消息排队，等下次静默 3s 兜底才发出，
-    //      用户后发的消息反而先到 claude → 顺序乱。
-    await waitForPtyQuiet(sid, { quietMs: 3500, timeoutMs: 8000 })
+    const wrapNotice = (base) => {
+      // 给 reply 前加一行说明，让用户知道刚发生了接管。
+      const notice = `🔄 已自动接管（本地 ${meta.tool} 已被 SIGINT）`
+      base.reply = base.reply ? `${notice}\n${base.reply}` : notice
+      return base
+    }
 
-    // 4) 转发用户的 IM 消息到新会话
+    // 4) 没 dispatcher 的兜底：等回放安静后裸 pty.write（跟主路径保持兼容）
     if (!sessionInputDispatcher) {
-      // 没 dispatcher 的兜底：裸 pty.write（跟下方主路径保持兼容）
+      await waitForPtyQuiet(sid, { quietMs: ADOPT_READY_QUIET_MS, timeoutMs: ADOPT_READY_TIMEOUT_MS })
       try {
         let payload = text
         if (imagePaths?.length > 0) {
@@ -526,28 +536,37 @@ export function createOpenClawWizard({
       }
     }
 
+    // 4') dispatcher 主路径：用接管闸门保证 FIFO，回放结束后一次性 flush。
+    //   - beginAdopting：窗口内 send() 一律入队（含用户在等待期间追发的第 2、3 条）
+    //   - send(本条)   ：入队（不直发，不被 idle-grace 提前）
+    //   - waitForPtyQuiet：等 claude --resume 回放结束（阈值收紧到 ADOPT_READY_QUIET_MS）
+    //   - flushQueue   ：把队列里所有消息按发送顺序合并投递
+    //   顺序不再依赖"等静默 > IDLE_GRACE_MS"，首条消息明显更快到 claude。
+    sessionInputDispatcher.beginAdopting(sid)
     try {
+      const enq = await sessionInputDispatcher.send({ sessionId: sid, text, imagePaths, channel, echoTarget })
+      // 入队前就被判定结束 / 队列已满 → 直接走 mapper 文案
+      if (enq?.action === 'session_ended' || enq?.action === 'queue_full') {
+        const base = wrapNotice(mapDispatcherResultToWizardReply(enq, sid, imagePaths))
+        base.action = base.action ? `auto_adopted+${base.action}` : 'auto_adopted'
+        return base
+      }
+      // 等回放结束 → 点亮 loading → flush 整个队列（FIFO）
+      await waitForPtyQuiet(sid, { quietMs: ADOPT_READY_QUIET_MS, timeoutMs: ADOPT_READY_TIMEOUT_MS })
       loadingTracker?.markRunning?.(sid)?.catch?.(() => {})
-      const r = await sessionInputDispatcher.send({
-        sessionId: sid,
-        text,
-        imagePaths,
-        channel,
-        echoTarget,
-      })
-      const base = mapDispatcherResultToWizardReply(r, sid, imagePaths)
-      // 给 dispatcher 的原 reply 前加一行说明，让用户知道刚发生了接管。
-      const notice = `🔄 已自动接管（本地 ${meta.tool} 已被 SIGINT）`
-      base.reply = base.reply ? `${notice}\n${base.reply}` : notice
-      base.action = base.action ? `auto_adopted+${base.action}` : 'auto_adopted'
+      const flushed = await sessionInputDispatcher.flushQueue(sid)
+      const base = wrapNotice(mapDispatcherResultToWizardReply({ action: 'sent' }, sid, imagePaths))
+      base.action = `auto_adopted+flushed(${flushed?.flushed || 0})`
       return base
     } catch (e) {
-      logger.warn?.(`[wizard] auto-adopt: dispatcher.send threw: ${e?.message}`)
+      logger.warn?.(`[wizard] auto-adopt: dispatcher dispatch threw: ${e?.message}`)
       return {
         reply: `🔄 已接管但投递异常：${e?.message}`,
         action: 'auto_adopt_dispatch_failed',
         sessionId: sid,
       }
+    } finally {
+      sessionInputDispatcher.endAdopting(sid)
     }
   }
 
