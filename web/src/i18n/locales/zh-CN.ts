@@ -832,9 +832,8 @@ const zh = {
       topicNameTemplateExtra: '占位符：{shortCode} {title}',
       topicNameDoneTemplateLabel: '完成模板',
       topicNameDoneTemplateExtra: '占位符：{originalName}',
-      cooldownLabel: '同 session idle 提醒最小间隔 (ms)',
-      cooldownExtra: '0 = 关闭去重，每次都推。默认 600000（10 分钟）。',
-      suppressIdleLabel: '丢弃 idle Notification 事件',
+      cooldownLabel: 'PTY detector 推送最小间隔 (ms)',
+      cooldownExtra: '同一 session 内权限提示重复 fire 时的去重窗口。0 = 不去重，默认 600000（10 分钟）。',
       permissionModeLabel: 'Telegram 默认权限模式',
       permissionModeExtra: '新建/恢复 Telegram 任务时使用。非 bypass 模式下，等待授权时会发 Telegram 按钮提醒。',
       permission: {

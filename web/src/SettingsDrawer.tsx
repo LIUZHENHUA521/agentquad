@@ -204,7 +204,6 @@ export default function SettingsDrawer({ open, onClose, onTemplatesChanged }: Pr
           telegramAutoCreateTopic: result.config.telegram?.autoCreateTopic !== false,
           telegramNotificationCooldownMs:
             (result.config.telegram?.notificationCooldownMs as number | undefined) ?? 600000,
-          telegramSuppressNotificationEvents: result.config.telegram?.suppressNotificationEvents !== false,
           telegramDefaultPermissionMode: result.config.telegram?.defaultPermissionMode || 'bypass',
           telegramLongPollTimeoutSec: result.config.telegram?.longPollTimeoutSec ?? 30,
           telegramPollRetryDelayMs: result.config.telegram?.pollRetryDelayMs ?? 5000,
@@ -302,7 +301,6 @@ export default function SettingsDrawer({ open, onClose, onTemplatesChanged }: Pr
           topicNameDoneTemplate: values.telegramTopicNameDoneTemplate || '✅ {originalName}',
           autoCreateTopic: values.telegramAutoCreateTopic !== false,
           notificationCooldownMs: Number(values.telegramNotificationCooldownMs) || 0,
-          suppressNotificationEvents: values.telegramSuppressNotificationEvents !== false,
           defaultPermissionMode: values.telegramDefaultPermissionMode || 'bypass',
           longPollTimeoutSec: Number(values.telegramLongPollTimeoutSec) || 30,
           pollRetryDelayMs: Number(values.telegramPollRetryDelayMs) || 5000,
@@ -1038,9 +1036,6 @@ export default function SettingsDrawer({ open, onClose, onTemplatesChanged }: Pr
                 extra={t('settings:telegram.cooldownExtra')}
               >
                 <InputNumber min={0} step={60_000} style={{ width: '100%' }} />
-              </Form.Item>
-              <Form.Item name="telegramSuppressNotificationEvents" label={t('settings:telegram.suppressIdleLabel')} valuePropName="checked">
-                <Switch />
               </Form.Item>
               <Form.Item
                 name="telegramDefaultPermissionMode"

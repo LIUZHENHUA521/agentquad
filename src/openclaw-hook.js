@@ -425,22 +425,6 @@ export function createOpenClawHookHandler(deps = {}) {
     } catch { return 600_000 }
   }
 
-  // 默认丢弃 Claude Code 的 idle Notification —— AgentQuad bypass 模式下纯噪声。
-  // 用户可在 config 里 telegram.suppressNotificationEvents = false 恢复旧 cooldown 行为。
-  function notificationSuppressed() {
-    try {
-      const cfg = getConfig?.() || {}
-      const raw = cfg.telegram?.suppressNotificationEvents
-      if (raw === false) return false   // 显式 false → 不抑制
-      return true                        // 默认 true / undefined → 抑制
-    } catch { return true }
-  }
-
-  function getSessionPermissionMode(sessionId) {
-    const sess = sessionId && aiTerminal?.sessions?.get(sessionId)
-    return sess?.permissionMode || sess?.autoMode || 'default'
-  }
-
   function resolveExplicitInteractiveRoute(sessionId) {
     if (!sessionId) return null
     if (!openclaw.hasExplicitRoute?.(sessionId)) return null
@@ -458,13 +442,6 @@ export function createOpenClawHookHandler(deps = {}) {
     } catch { return false }
   }
 
-  function isPermissionReminderEligible(sessionId) {
-    if (!sessionId) return false
-    if (!resolveExplicitInteractiveRoute(sessionId)) return false
-    if (suppressPermissionNotifications()) return false
-    return getSessionPermissionMode(sessionId) !== 'bypass'
-  }
-
   // detector 路径专用：bypass guard 让位。理由是 detector 三层守卫（anchor +
   // ≥2 数字选项 + Esc/Tab footer）证明 Claude TUI 实际**正在**渲染权限框 ——
   // 不管 AgentQuad 记的是不是 bypass。
@@ -472,8 +449,6 @@ export function createOpenClawHookHandler(deps = {}) {
   // 切到 default。AgentQuad 没法感知 TUI 内部模式改动（hook / jsonl 都不 echo
   // 这条信息），session.permissionMode 永远停在 'bypass'。如果继续按 bypass guard
   // 拒推，前端能看见 "AI 等待授权" 卡片但 IM 永远收不到 —— 跟原始 bug 同症状。
-  // handleClaude (Notification hook) 仍走老 isPermissionReminderEligible，因为
-  // 那条路径在真 bypass 下 fire 多半是 idle 通知噪声，吞掉是对的。
   function isDetectorPushEligible(sessionId) {
     if (!sessionId) return false
     if (!resolveExplicitInteractiveRoute(sessionId)) return false
@@ -855,18 +830,16 @@ export function createOpenClawHookHandler(deps = {}) {
   }
 
   // ─── Claude PTY-detector 分支 ────────────────────────────────────────────────
-  // Notification hook 不 fire 的兜底（实测 permissions.defaultMode='auto' 时 model
-  // classifier 触发的权限框走不到 hook）。两件事：
+  // 真权限框出现时唯一的 IM 推送入口（Notification hook 已不推 IM）。两件事：
   //   1) 翻 session.status → pending_confirm（web 端 deriveAiState 据此显示"待确认"）
-  //   2) 推 IM 权限卡 / 按钮（跟真 Notification 走同一份 cooldown，避免双推）
-  // 与 handleCodexDetector 同构，但走 broadcastText（保持跟 Claude 真 Notification 一致），
-  // header 标题区别成 "Claude Code 等待你的响应"。
+  //   2) 推 IM 权限卡 / 按钮（与 handleCodexDetector 同构，但走 broadcastText）
+  // header 标题 "⚠️ Claude Code 等待授权"，按钮 允许（Enter）/ 拒绝/退出（Esc）。
   async function handleClaudeDetector({ event, sessionId, promptText } = {}) {
     if (!sessionId) return { ok: false, reason: 'no_sessionId' }
     const sess = aiTerminal?.sessions?.get(sessionId)
     if (!sess) return { ok: false, reason: 'session_gone' }
 
-    // 0) bridge in-memory route 缺失但 DB 有 → 先恢复。否则 isPermissionReminderEligible
+    // 0) bridge in-memory route 缺失但 DB 有 → 先恢复。否则 isDetectorPushEligible
     //    会立即 short-circuit 返回 false，IM 永远收不到权限卡片。
     //    handleClaude 在自己开头做了同样的事；detector 路径之前漏了这一步，导致
     //    resume / mode-switch（spawnSession skipTelegram=true）后第一条权限弹窗被吞。
@@ -885,8 +858,8 @@ export function createOpenClawHookHandler(deps = {}) {
       })
     } catch { /* ignore */ }
 
-    // 2) IM 推送资格 & cooldown 跟真 Notification 共享 → 不会双推。
-    //    detector 路径用 isDetectorPushEligible（不查 bypass mode），原因见函数注释。
+    // 2) IM 推送资格 + cooldown。Notification hook 已不推 IM，cooldown bucket 实际只有 detector
+    //    自己写入；保留 cooldown 防止短时间内 detector 重复 fire（例如 TUI 重绘）造成多推。
     if (!isDetectorPushEligible(sessionId)) {
       return { ok: true, action: 'skipped', reason: 'im_push_not_eligible' }
     }
@@ -982,7 +955,20 @@ export function createOpenClawHookHandler(deps = {}) {
       }
     }
 
-    const permissionReminderEligible = evt === 'notification' && isPermissionReminderEligible(sessionId)
+    // 1b) Notification 事件：不再推 IM。
+    //     Claude Code 的 Notification hook 在两类场景 fire：
+    //       (a) 真权限框出现（mid-turn）—— PTY detector 三层守卫已独立覆盖（见 handleClaudeDetector），
+    //           且会主动推带按钮的权限卡片；这条路径不重复。
+    //       (b) Stop 后 60s "还在么" idle 心跳 —— 无新内容，重复推上一轮回复 + 错误标
+    //           "⚠️ 等待授权"，被用户反馈纯负面。
+    //     markPendingConfirm 仍调：状态机自守，running → pending_confirm 才翻、idle 时 no-op，
+    //     给真权限场景留个 web UI 兜底入口。
+    if (evt === 'notification') {
+      if (sessionId) {
+        try { aiTerminal?.markPendingConfirm?.(sessionId, { source: 'claude-notification' }) } catch { /* ignore */ }
+      }
+      return { ok: true, action: 'skipped', reason: 'notification_im_disabled' }
+    }
 
     // 1c) "无 IM 推送目标"快路径：session 既没绑 explicit route，config 也没默认 target。
     //     主路径会跑 readLatestAssistantTurnFresh 等 jsonl flush 重试（实测 ~1.3s），
@@ -991,19 +977,10 @@ export function createOpenClawHookHandler(deps = {}) {
     //     （close topic、clearReactions 等），但保留 web/dispatcher 状态机所有副作用，
     //     保证 web UI 行为与有 IM 时一致。
     //     stop_reason 仍读（用 non-fresh），保留 sub-agent 假翻 idle 的防御门。
-    if ((evt === 'stop' || evt === 'session-end' || evt === 'notification')
+    if ((evt === 'stop' || evt === 'session-end')
         && openclaw?.hasExplicitRoute
         && !openclaw.hasExplicitRoute(sessionId)
         && !openclaw?.resolveRoute?.(sessionId)) {
-      if (evt === 'notification') {
-        if (sessionId) {
-          try { aiTerminal?.markPendingConfirm?.(sessionId, { source: 'claude-notification' }) } catch { /* ignore */ }
-        }
-        if (notificationSuppressed() && !permissionReminderEligible) {
-          return { ok: true, action: 'skipped', reason: 'notification_suppressed' }
-        }
-        return { ok: true, action: 'skipped', reason: 'no_route_bound' }
-      }
 
       // stop / session-end：non-fresh 读 stop_reason，校验 turnEndedNormally
       let stopReason = null
@@ -1211,39 +1188,8 @@ export function createOpenClawHookHandler(deps = {}) {
       historicalRaw,
     })
 
-    // Claude Code Notification hook fire 本身就是"需要用户介入"的可信信号——
-    // 不再用正则/关键词反推 message 内容是不是"权限相关"。任何 Notification 都
-    // 调用 markPendingConfirm；状态机自己根据 session.status 决定要不要翻转：
-    //   - running → 翻 pending_confirm（mid-turn Notification = 真权限请求）
-    //   - idle    → no-op（Stop 之后的 idle 提醒，不是权限）
-    //   - pending_confirm → 幂等
-    //   - bypass 模式工具预授权，运行期不会 fire 权限 Notification；如果 fire，状态机
-    //     也会因为不在 running 而拒绝翻转。
-    if (evt === 'notification' && sessionId) {
-      try { aiTerminal?.markPendingConfirm?.(sessionId, { source: 'claude-notification' }) } catch { /* ignore */ }
-    }
+    // notification 已在函数顶部早返回；走到这里 evt 必为 stop / session-end / user-prompt-submit 之外的事件。
 
-    // 1b-pre) bypass 模式下 session 不会真的卡在等用户，Notification 是 idle 心跳噪音，
-    // 默认抑制。非 bypass session 的 Notification 直接放过（不再做文本侧筛选）。
-    if (evt === 'notification' && notificationSuppressed() && !permissionReminderEligible) {
-      return { ok: true, action: 'skipped', reason: 'notification_suppressed' }
-    }
-
-    // 1b) Notification cooldown（同一 session 单位时间内只推一次，默认 10 分钟）
-    if (evt === 'notification') {
-      const cd = notificationCooldownMs()
-      if (cd > 0 && isOnCooldown(sessionId, evt, cd)) {
-        return { ok: true, action: 'skipped', reason: 'notification_cooldown', cooldownMs: cd }
-      }
-    }
-
-    let replyMarkup = null
-    if (evt === 'notification' && permissionReminderEligible) {
-      // 非 bypass session 收到 Notification：附 Enter/Esc 快速响应按钮。
-      // 即便不是授权请求（例如 idle 提醒），点 Enter 给 Claude 一个空 line 也是无害的。
-      message = buildPermissionNotificationMessage(message)
-      replyMarkup = buildPermissionReplyMarkup(sessionId)
-    }
     // footer 永远附在最末尾（即使消息被截短到附件也要保留，让用户能看到费用）
     if (usageFooter) message = `${message}\n\n${usageFooter}`
 
@@ -1252,7 +1198,6 @@ export function createOpenClawHookHandler(deps = {}) {
       sessionId,
       message,
       attachment: attachmentPath,    // bridge 转给 telegramBot.sendDocument
-      replyMarkup,
     })
 
     // 5) SessionEnd 后处理：close topic + 改名 ✅ + 清状态

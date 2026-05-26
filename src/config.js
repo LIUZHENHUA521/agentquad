@@ -109,8 +109,7 @@ const DEFAULT_TELEGRAM_CONFIG = {
 	allowedChatIds: [],     // 空 = 拒所有，强制白名单
 	allowedFromUserIds: [],
 	defaultPermissionMode: "bypass",
-	notificationCooldownMs: 600_000,    // 同 session 内 ⚠️ idle 提醒最小间隔（默认 10 分钟，0 = 关闭去重）
-	suppressNotificationEvents: true,   // 默认丢弃 Claude Code 的 idle Notification（无信息量；设 false 可恢复旧 cooldown 行为）
+	notificationCooldownMs: 600_000,    // PTY detector 重复 fire 的最小推送间隔（默认 10 分钟，0 = 关闭去重）。Claude Code 的 Notification hook 已不再推 IM，此字段只控制 detector 路径。
 	autoCreateTopic: true,              // 非 wizard 起的 PTY session 自动镜像到 Telegram topic
 	pollRetryDelayMs: 5000,
 	minRenameIntervalMs: 30_000,

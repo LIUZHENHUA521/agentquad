@@ -702,7 +702,7 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
       // (tool, nativeSessionId) 过滤掉（同一个 Claude/Codex 后端只是换了 AgentQuad
       // sessionId）。它身上挂的 larkRoute / telegramRoute 是 IM 推送的唯一来源，
       // 如果不显式继承，新 sessionId 进 DB 时 route 字段就空了 → 后续 detector /
-      // Stop hook 调 isPermissionReminderEligible 返回 false → IM 静默丢推送
+      // Stop hook 解析 route 拿不到目标 → IM 静默丢推送
       // （前端仍能看见 "AI 等待授权"，因为它走 markPendingConfirm，不依赖 route）。
       const preservedRoutes = {}
       if (resumeNativeId) {

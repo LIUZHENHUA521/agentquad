@@ -148,7 +148,6 @@ export interface AppConfig {
     allowedChatIds?: string[]
     allowedFromUserIds?: string[]
     notificationCooldownMs?: number
-    suppressNotificationEvents?: boolean
     defaultPermissionMode?: 'default' | 'acceptEdits' | 'bypass'
     autoCreateTopic?: boolean
     pollRetryDelayMs?: number

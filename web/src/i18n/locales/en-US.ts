@@ -835,9 +835,8 @@ const en = {
       topicNameTemplateExtra: 'Placeholders: {shortCode} {title}',
       topicNameDoneTemplateLabel: 'Done template',
       topicNameDoneTemplateExtra: 'Placeholders: {originalName}',
-      cooldownLabel: 'Min interval for same-session idle reminders (ms)',
-      cooldownExtra: '0 = no dedup, always push. Default 600000 (10 min).',
-      suppressIdleLabel: 'Drop idle Notification events',
+      cooldownLabel: 'PTY detector push min interval (ms)',
+      cooldownExtra: 'Dedup window for repeated permission prompts within the same session. 0 = no dedup. Default 600000 (10 min).',
       permissionModeLabel: 'Telegram default permission mode',
       permissionModeExtra: 'Used when creating/resuming Telegram tasks. In non-bypass modes, a Telegram button reminder is sent while waiting for authorization.',
       permission: {
