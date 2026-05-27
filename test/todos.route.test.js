@@ -8,7 +8,7 @@ function makeApp(opts = {}) {
   const db = openDb(':memory:')
   const app = express()
   app.use(express.json())
-  app.use('/api/todos', createTodosRouter({ db, getLiveSession: opts.getLiveSession }))
+  app.use('/api/todos', createTodosRouter({ db, getLiveSession: opts.getLiveSession, notifyChanged: opts.notifyChanged }))
   return { app, db }
 }
 
@@ -292,5 +292,45 @@ describe('routes/todos', () => {
     expect(res.status).toBe(200)
     const tagged = res.body.list.find(t => t.id === c.todo.id)
     expect(tagged.stageTag).toBe('test')
+  })
+
+  describe('GET /api/todos/:id', () => {
+    it('returns the full todo with comments and children', async () => {
+      const { body: c } = await request(app).post('/api/todos').send({ title: 'Parent' })
+      await request(app).post('/api/todos').send({ title: 'Child', parentId: c.todo.id })
+      await request(app).post(`/api/todos/${c.todo.id}/comments`).send({ content: 'a note' })
+
+      const res = await request(app).get(`/api/todos/${c.todo.id}`)
+      expect(res.status).toBe(200)
+      expect(res.body.ok).toBe(true)
+      expect(res.body.todo.id).toBe(c.todo.id)
+      expect(res.body.comments).toHaveLength(1)
+      expect(res.body.comments[0].content).toBe('a note')
+      expect(res.body.children).toHaveLength(1)
+      expect(res.body.children[0].title).toBe('Child')
+    })
+
+    it('returns 404 for an unknown id', async () => {
+      const res = await request(app).get('/api/todos/nope')
+      expect(res.status).toBe(404)
+      expect(res.body.error).toBe('not_found')
+    })
+  })
+
+  describe('notifyChanged board hook', () => {
+    it('fires on create / update / comment / delete', async () => {
+      const events = []
+      const { app } = makeApp({ notifyChanged: (d) => events.push(d) })
+      const { body: c } = await request(app).post('/api/todos').send({ title: 'A' })
+      await request(app).put(`/api/todos/${c.todo.id}`).send({ title: 'B' })
+      await request(app).post(`/api/todos/${c.todo.id}/comments`).send({ content: 'x' })
+      await request(app).delete(`/api/todos/${c.todo.id}`)
+      expect(events.map(e => e.op)).toEqual(['create', 'update', 'comment', 'delete'])
+    })
+
+    it('does not throw when notifyChanged is absent', async () => {
+      const res = await request(app).post('/api/todos').send({ title: 'A' })
+      expect(res.status).toBe(200)
+    })
   })
 })

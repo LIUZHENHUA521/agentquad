@@ -192,6 +192,7 @@ agentquad config set tools.codex.command codex-w        # 公司内自定义 wra
 | `agentquad start [--port 5677] [--host 0.0.0.0] [--expose] [--no-open] [--cwd <path>] [--no-wizard]` | 启动服务 |
 | `agentquad stop` | 停止服务（SIGTERM 3 秒后 SIGKILL） |
 | `agentquad status` | 查看运行状态 + 活跃会话数 |
+| `agentquad todo add/list/show/done/update/comment/rm` | 在终端里管理待办（打正在运行的服务，见下文） |
 | `agentquad doctor` | 环境自检 |
 | `agentquad install-tools [--claude] [--codex] [--cursor] [--all]` | 一键装缺失的 AI CLI |
 | `agentquad config get/set/list` | 读/写配置 |
@@ -199,6 +200,38 @@ agentquad config set tools.codex.command codex-w        # 公司内自定义 wra
 | `agentquad agents install/status/uninstall [--target claude\|codex\|cursor]` | 把 AgentQuad MCP + skill 装进 Claude / Codex / Cursor（子 agent 能力） |
 | `agentquad hook install/uninstall/status/bootstrap [--claude] [--codex] [--cursor]` | 管理各 CLI 的 hook 脚本 |
 | `agentquad openclaw install-hook/uninstall-hook/bootstrap/hook-status` | 管理 OpenClaw 桥接钩子 |
+
+---
+
+## 在终端里管理待办
+
+`agentquad todo`（以及 `quadtodo todo` 别名）让你直接从 shell 操作看板。它走 HTTP 打**正在运行**的服务，所以每次写入都会实时反映到 Web 看板，行为和在 UI 里操作完全一致（比如标记 `done` 会顺带关掉该待办内嵌的 AI 终端会话）。服务没在跑时会提示你先 `agentquad start`。
+
+```bash
+agentquad todo add "修复登录超时" -d "见 issue 123" --due 2026-06-01 -w ~/code/app
+agentquad todo list                       # 未完成待办（--status all / done 看全部 / 已完成）
+agentquad todo list -k 登录 --json        # 按关键词过滤，输出 JSON
+agentquad todo show <id>                   # 完整详情：描述 / 子任务 / 评论 / AI 会话
+agentquad todo update <id> --stage review --due clear
+agentquad todo comment <id> "已联系运维，等回滚窗口"
+agentquad todo done <id>
+agentquad todo rm <id> -y                  # 删除（级联删子任务；脚本里需 -y）
+
+# 建一条待办 + 立即派 agent 进去开干：
+agentquad todo start <id> --tool claude --prompt "复现并修掉，跑通测试"
+agentquad todo add "修复登录超时" -w ~/code/app --start --tool codex
+```
+
+`todo start` / `todo add --start` 会在待办上起一个内嵌 AI 会话。用 `--tool claude|codex|cursor` 选 agent（交互终端下不给会弹菜单让你选）；`--prompt` 默认取待办的标题+描述，`--cwd` 默认取其 `workDir`，`--perm` 设权限模式（`default` / `plan` / `bypass`）。
+
+每个读写子命令都支持 `--json`，方便塞进脚本：
+
+```bash
+ID=$(agentquad todo add "跑回归测试" --json | jq -r .id)
+agentquad todo comment "$ID" "已排期今晚"
+```
+
+随包附带的 **`quadtodo-cli` Claude Code skill** 会教 Claude 调这些命令；它和子 agent 委派 skill 一起由 `agentquad agents install` 安装（`agentquad start` 时也会自动 bootstrap）。需要检索 / 合并 / 读 transcript 等更复杂的玩法，请在已连 MCP 的会话里用 [MCP 工具](docs/MCP.md)——两者操作同一个本地数据库。
 
 ---
 

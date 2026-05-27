@@ -43,8 +43,9 @@ Frontend dev server (HMR, talks to a running backend): `cd web && npm run dev`. 
 
 - `PtyManager` (`src/pty.js`) — owns all `node-pty` child terminals; one per AI session.
 - `openDb` (`src/db.js`) — `better-sqlite3` handle at `~/.agentquad/data.db`. Schema is created/migrated in-process on open.
-- Routers under `src/routes/*.js` are mounted at `/api/<name>` (`todos`, `ai-terminal`, `transcripts`, `templates`, `recurringRules`, `stats`, `reports`, `wiki`, `search`, `agent-supervisor`, `git`, `telegram-config`, `telegram-sync`, `openclaw-hook`, `openclaw-inbound`, `uploads`).
+- Routers under `src/routes/*.js` are mounted at `/api/<name>` (`todos`, `ai-terminal`, `transcripts`, `templates`, `recurringRules`, `stats`, `reports`, `wiki`, `search`, `agent-supervisor`, `git`, `telegram-config`, `telegram-sync`, `openclaw-hook`, `openclaw-inbound`, `uploads`). The `todos` router takes an optional `notifyChanged` dep (wired to `boardEventBus`) so external writes (CLI / MCP / integrations) push a live `/api/events/board` refresh to open browser tabs; `GET /api/todos/:id` returns a single todo with comments + children.
 - `src/mcp/` exposes a Streamable HTTP MCP server at `POST /mcp` (17 tools — see `docs/MCP.md`).
+- `src/todo-client.js` is a thin HTTP client (resolves the running server from the pid file) powering the `agentquad todo` CLI command group in `src/cli.js` — keep todo CRUD logic in the route, not duplicated here. The bundled `quadtodo-cli` Claude Code skill (`src/templates/agent-skills/quadtodo-cli.skill.md`) drives this CLI and is installed by `claude-agent-installer.js` alongside `agentquad-child`.
 - `agent-supervisor.js` is the "auto-decider" loop that shells out to local `claude -p` / `codex exec` / `cursor-agent -p` to answer permission prompts and `ask_user` MCP calls — it never hits the Anthropic API directly (see `docs/AGENT-SUPERVISOR.md`).
 - `openclaw-bridge.js` + `openclaw-hook.js` + `routes/openclaw-*.js` route WeChat messages to/from tasks via the OpenClaw service.
 - `telegram-bot.js`, `lark-bot.js` are optional inbound IM integrations enabled when their tokens are configured.
