@@ -12,6 +12,7 @@ import {
   getConfigValue,
   setConfigValue,
   resolveToolsConfig,
+  SUPPORTED_TOOLS,
 } from './config.js'
 import { shouldRunWizard, runFirstRunWizard } from './first-run-wizard.js'
 import {
@@ -24,6 +25,7 @@ import {
   apiCompleteTodo,
   apiAddComment,
   apiDeleteTodo,
+  apiSpawnSession,
 } from './todo-client.js'
 import updateNotifier from 'update-notifier'
 
@@ -1382,20 +1384,82 @@ function printTodoLine(t) {
   console.log(bits.join('  ') + (extra.length ? `  (${extra.join(', ')})` : ''))
 }
 
-const todoCmd = program.command('todo').description('从终端管理 AgentQuad todo（需 server 在跑）：add / list / show / done / update / comment / rm')
+// 让用户选 agent：给了 --tool 就校验后用；没给且是交互终端就弹菜单；非交互则要求显式指定。
+// （skill 会引导 AI 先问用户要哪个 agent，再带 --tool 调用。）
+async function pickTool() {
+  console.log('选择 agent：')
+  SUPPORTED_TOOLS.forEach((t, i) => console.log(`  ${i + 1}) ${t}`))
+  const ans = (await prompt(`输入序号 [1-${SUPPORTED_TOOLS.length}, 默认 1]: `)).trim()
+  const idx = ans === '' ? 0 : Number(ans) - 1
+  return SUPPORTED_TOOLS[idx] || null
+}
+
+async function resolveToolChoice(optTool) {
+  if (optTool) {
+    if (!SUPPORTED_TOOLS.includes(optTool)) {
+      console.error(`✗ 未知 agent: ${optTool}（可选 ${SUPPORTED_TOOLS.join(' | ')}）`)
+      process.exit(1)
+    }
+    return optTool
+  }
+  if (process.stdin.isTTY) {
+    const t = await pickTool()
+    if (!t) { console.error('✗ 没选 agent'); process.exit(1) }
+    return t
+  }
+  console.error(`✗ 请用 --tool 指定 agent（${SUPPORTED_TOOLS.join(' | ')}）——非交互环境无法弹选择`)
+  process.exit(1)
+}
+
+// 在某条 todo 上开干：选 agent → 取 todo 拼默认 prompt/cwd → POST /exec。
+async function startSessionForTodo(ctx, id, opts) {
+  const tool = await resolveToolChoice(opts.tool)
+  let todo
+  try { ({ todo } = await apiGetTodo(ctx, id)) }
+  catch (e) {
+    if (e.status === 404) { console.error(`✗ todo not found: ${id}`); process.exit(1) }
+    throw e
+  }
+  const sessionPrompt = opts.prompt || [todo.title, todo.description].filter(Boolean).join('\n\n')
+  const cwd = opts.cwd || todo.workDir || undefined
+  try {
+    const r = await apiSpawnSession(ctx, { todoId: id, prompt: sessionPrompt, tool, cwd, permissionMode: opts.perm })
+    if (opts.json) { console.log(JSON.stringify({ tool, ...r }, null, 2)); return }
+    console.log(`✓ ${tool} 会话已启动  sessionId=${r.sessionId}${r.reused ? ' (复用已有会话)' : ''}`)
+    console.log('  在网页看板打开这条待办即可看到终端实时跑。')
+  } catch (e) {
+    if (e.apiCode === 'tool_missing') {
+      console.error(`✗ ${tool} 没装。修复：${e.apiFix || `agentquad install-tools --${tool}`}`)
+      process.exit(1)
+    }
+    if (e.apiCode === 'cwd_not_found') {
+      console.error(`✗ 工作目录不存在：${cwd}（用 --cwd 指定一个存在的路径）`)
+      process.exit(1)
+    }
+    console.error(`✗ start failed: ${e.message}`)
+    process.exit(1)
+  }
+}
+
+const todoCmd = program.command('todo').description('从终端管理 AgentQuad todo（需 server 在跑）：add / list / show / start / done / update / comment / rm')
 
 todoCmd.command('add <title>')
-  .description('新建一条 todo')
+  .description('新建一条 todo；加 --start 可建完直接派 agent 开干')
   .option('-d, --desc <text>', '描述')
   .option('--due <when>', '截止：ms epoch / ISO / YYYY-MM-DD')
   .option('-w, --workdir <path>', '关联代码仓路径')
   .option('--brainstorm', '标记为 brainstorm')
   .option('--parent <id>', '挂到某父 todo 下作为子任务')
+  .option('--start', '建完立即在该 todo 上开干（会问/需要 --tool）')
+  .option('--tool <agent>', `开干用哪个 agent（${SUPPORTED_TOOLS.join(' | ')}）`)
+  .option('--prompt <text>', '开干时给 agent 的指令（默认用标题+描述）')
+  .option('--perm <mode>', 'permissionMode：default | plan | bypass')
   .option('--json', '输出 JSON')
   .action(async (title, opts) => {
     const ctx = resolveTodoCtx()
+    let todo
     try {
-      const todo = await apiCreateTodo(ctx, {
+      todo = await apiCreateTodo(ctx, {
         title,
         description: opts.desc,
         dueDate: parseDueDate(opts.due),
@@ -1403,13 +1467,28 @@ todoCmd.command('add <title>')
         brainstorm: opts.brainstorm,
         parentId: opts.parent,
       })
-      if (opts.json) { console.log(JSON.stringify(todo, null, 2)); return }
-      console.log(`✓ created`)
-      printTodoLine(todo)
+      if (!opts.json) { console.log(`✓ created`); printTodoLine(todo) }
     } catch (e) {
       console.error(`✗ create failed: ${e.message}`)
       process.exit(1)
     }
+    if (opts.start) {
+      await startSessionForTodo(ctx, todo.id, opts)
+    } else if (opts.json) {
+      console.log(JSON.stringify(todo, null, 2))
+    }
+  })
+
+todoCmd.command('start <id>')
+  .description('在已有 todo 上派一个 AI agent 开干（会问你用哪个 agent）')
+  .option('--tool <agent>', `用哪个 agent（${SUPPORTED_TOOLS.join(' | ')}）；不给则交互选择`)
+  .option('--prompt <text>', '给 agent 的指令（默认用该 todo 的标题+描述）')
+  .option('-w, --cwd <path>', '会话工作目录（默认用 todo 的 workDir，否则服务端默认）')
+  .option('--perm <mode>', 'permissionMode：default | plan | bypass')
+  .option('--json', '输出 JSON')
+  .action(async (id, opts) => {
+    const ctx = resolveTodoCtx()
+    await startSessionForTodo(ctx, id, opts)
   })
 
 todoCmd.command('list')

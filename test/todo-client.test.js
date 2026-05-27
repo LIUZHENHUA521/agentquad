@@ -12,6 +12,7 @@ import {
   apiCompleteTodo,
   apiAddComment,
   apiDeleteTodo,
+  apiSpawnSession,
 } from '../src/todo-client.js'
 
 describe('todo-client resolveServerUrl', () => {
@@ -129,8 +130,29 @@ describe('todo-client api helpers', () => {
     expect(ok).toBe(true)
   })
 
+  it('apiSpawnSession POSTs to /api/ai-terminal/exec and returns sessionId', async () => {
+    const { fetchImpl, calls } = makeFetchStub([{ json: { ok: true, sessionId: 'ai-1', reused: false } }])
+    const r = await apiSpawnSession({ baseUrl, fetchImpl }, { todoId: 't1', prompt: 'do it', tool: 'claude', cwd: '/tmp', permissionMode: 'bypass' })
+    expect(r).toEqual({ sessionId: 'ai-1', reused: false })
+    expect(calls[0].method).toBe('POST')
+    expect(calls[0].url).toBe('http://127.0.0.1:5677/api/ai-terminal/exec')
+    expect(calls[0].body).toEqual({ todoId: 't1', prompt: 'do it', tool: 'claude', cwd: '/tmp', permissionMode: 'bypass' })
+  })
+
+  it('apiSpawnSession omits cwd/permissionMode when not provided', async () => {
+    const { fetchImpl, calls } = makeFetchStub([{ json: { ok: true, sessionId: 'ai-2' } }])
+    await apiSpawnSession({ baseUrl, fetchImpl }, { todoId: 't1', prompt: 'p', tool: 'codex' })
+    expect(calls[0].body).toEqual({ todoId: 't1', prompt: 'p', tool: 'codex' })
+  })
+
   it('throws an Error carrying status + apiError on a non-ok response', async () => {
     const { fetchImpl } = makeFetchStub([{ ok: false, status: 404, json: { ok: false, error: 'not_found' } }])
     await expect(apiGetTodo({ baseUrl, fetchImpl }, 'nope')).rejects.toMatchObject({ status: 404, message: 'not_found' })
+  })
+
+  it('surfaces apiCode + apiFix from a tool_missing (424) response', async () => {
+    const { fetchImpl } = makeFetchStub([{ ok: false, status: 424, json: { ok: false, code: 'tool_missing', error: 'tool_missing: cursor', fix: 'agentquad install-tools --cursor' } }])
+    await expect(apiSpawnSession({ baseUrl, fetchImpl }, { todoId: 't', prompt: 'p', tool: 'cursor' }))
+      .rejects.toMatchObject({ status: 424, apiCode: 'tool_missing', apiFix: 'agentquad install-tools --cursor' })
   })
 })

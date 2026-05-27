@@ -75,6 +75,8 @@ export async function request({ baseUrl, method = 'GET', path, body, fetchImpl =
     const err = new Error(data?.error || `http_${res.status}`)
     err.status = res.status
     err.apiError = data?.error || null
+    err.apiCode = data?.code || null
+    err.apiFix = data?.fix || null
     throw err
   }
   return data
@@ -124,6 +126,19 @@ export async function apiAddComment(ctx, id, content) {
 export async function apiDeleteTodo(ctx, id) {
   await request({ ...ctx, method: 'DELETE', path: `/api/todos/${encodeURIComponent(id)}` })
   return true
+}
+
+/**
+ * 在某条 todo 上派一个 AI 终端会话（"一键开干"）。走 POST /api/ai-terminal/exec，
+ * 复用 web/MCP 同一条 spawnSession 路径。prompt 必填（服务端要求 string）。
+ * 返回 { sessionId, reused }。
+ */
+export async function apiSpawnSession(ctx, { todoId, prompt, tool, cwd, permissionMode } = {}) {
+  const body = { todoId, prompt, tool }
+  if (cwd !== undefined && cwd !== null) body.cwd = cwd
+  if (permissionMode) body.permissionMode = permissionMode
+  const data = await request({ ...ctx, method: 'POST', path: '/api/ai-terminal/exec', body })
+  return { sessionId: data.sessionId, reused: !!data.reused }
 }
 
 /**

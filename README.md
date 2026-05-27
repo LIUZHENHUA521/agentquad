@@ -215,7 +215,13 @@ agentquad todo update <id> --stage review --due clear
 agentquad todo comment <id> "pinged ops, waiting for rollback window"
 agentquad todo done <id>
 agentquad todo rm <id> -y                  # delete (cascades to subtasks; -y required in scripts)
+
+# create a todo AND immediately spawn an embedded agent to work on it:
+agentquad todo start <id> --tool claude --prompt "reproduce and fix, run the tests"
+agentquad todo add "Fix login timeout" -w ~/code/app --start --tool codex
 ```
+
+`todo start` / `todo add --start` launches an embedded AI session on the todo. Pick the agent with `--tool claude|codex|cursor` (on a TTY it prompts you to choose); `--prompt` defaults to the todo's title + description, `--cwd` to its `workDir`, and `--perm` sets the permission mode (`default` / `plan` / `bypass`).
 
 Every read/write subcommand supports `--json` so you can pipe it into scripts:
 

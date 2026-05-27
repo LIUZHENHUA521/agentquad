@@ -216,7 +216,13 @@ agentquad todo update <id> --stage review --due clear
 agentquad todo comment <id> "已联系运维，等回滚窗口"
 agentquad todo done <id>
 agentquad todo rm <id> -y                  # 删除（级联删子任务；脚本里需 -y）
+
+# 建一条待办 + 立即派 agent 进去开干：
+agentquad todo start <id> --tool claude --prompt "复现并修掉，跑通测试"
+agentquad todo add "修复登录超时" -w ~/code/app --start --tool codex
 ```
+
+`todo start` / `todo add --start` 会在待办上起一个内嵌 AI 会话。用 `--tool claude|codex|cursor` 选 agent（交互终端下不给会弹菜单让你选）；`--prompt` 默认取待办的标题+描述，`--cwd` 默认取其 `workDir`，`--perm` 设权限模式（`default` / `plan` / `bypass`）。
 
 每个读写子命令都支持 `--json`，方便塞进脚本：
 
