@@ -1258,6 +1258,7 @@ export function createServer(opts = {}) {
 		getTools: () => runtimeConfig.tools,
 		getLiveSession: (sessionId) => ait.sessions.get(sessionId) || null,
 		getPty: () => pty,
+		notifyChanged: (detail) => boardEventBus.notifyTodosChanged({ source: "api", ...detail }),
 	}));
 	app.use("/api/templates", createTemplatesRouter({ db }));
 	app.use("/api/template-packs", createTemplatePacksRouter({ db }));

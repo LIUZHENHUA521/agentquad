@@ -191,6 +191,7 @@ agentquad config set tools.codex.command codex-w        # custom wrapper
 | `agentquad start [--port 5677] [--host 0.0.0.0] [--expose] [--no-open] [--cwd <path>] [--no-wizard]` | Start the server |
 | `agentquad stop` | Stop the server (SIGTERM, then SIGKILL after 3s) |
 | `agentquad status` | Running state + active session count |
+| `agentquad todo add/list/show/done/update/comment/rm` | Manage todos from the terminal (talks to the running server — see below) |
 | `agentquad doctor` | Environment check |
 | `agentquad install-tools [--claude] [--codex] [--cursor] [--all]` | Install missing AI CLIs |
 | `agentquad config get/set/list` | Read/write config |
@@ -198,6 +199,32 @@ agentquad config set tools.codex.command codex-w        # custom wrapper
 | `agentquad agents install/status/uninstall [--target claude\|codex\|cursor]` | Install AgentQuad MCP + skill into Claude / Codex / Cursor (sub-agent capability) |
 | `agentquad hook install/uninstall/status/bootstrap [--claude] [--codex] [--cursor]` | Manage the per-tool hook scripts |
 | `agentquad openclaw install-hook/uninstall-hook/bootstrap/hook-status` | Manage OpenClaw bridge hooks |
+
+---
+
+## Manage todos from the terminal
+
+`agentquad todo` (and the `quadtodo todo` alias) drives the board straight from your shell. It talks to the **running** server over HTTP, so every write shows up live on the web board and behaves exactly like editing in the UI (e.g. marking a todo `done` also closes its embedded AI terminal sessions). If the server isn't running it tells you to `agentquad start` first.
+
+```bash
+agentquad todo add "Fix login timeout" -d "see issue 123" --due 2026-06-01 -w ~/code/app
+agentquad todo list                       # open todos (use --status all / done)
+agentquad todo list -k login --json       # filter by keyword, machine-readable output
+agentquad todo show <id>                   # full detail: description, subtasks, comments, sessions
+agentquad todo update <id> --stage review --due clear
+agentquad todo comment <id> "pinged ops, waiting for rollback window"
+agentquad todo done <id>
+agentquad todo rm <id> -y                  # delete (cascades to subtasks; -y required in scripts)
+```
+
+Every read/write subcommand supports `--json` so you can pipe it into scripts:
+
+```bash
+ID=$(agentquad todo add "Run regression suite" --json | jq -r .id)
+agentquad todo comment "$ID" "scheduled for tonight"
+```
+
+A bundled **`quadtodo-cli` Claude Code skill** teaches Claude to drive these commands; it's installed alongside the sub-agent skill by `agentquad agents install` (and auto-bootstrapped on `agentquad start`). For richer, search-driven workflows from an MCP-connected session, use the [MCP tools](docs/MCP.md) instead — both operate on the same local database.
 
 ---
 

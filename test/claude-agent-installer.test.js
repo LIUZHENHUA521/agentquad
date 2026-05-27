@@ -34,6 +34,20 @@ describe('claude-agent-installer', () => {
     expect(existsSync(join(skillsDir, 'agentquad-child', 'SKILL.md'))).toBe(true)
   })
 
+  it('also installs the bundled quadtodo-cli skill', () => {
+    const r = installAgent({ claudeJsonPath, skillsDir, skillTemplatePath, port: 5677, version: '0.4.0' })
+    expect(existsSync(join(skillsDir, 'quadtodo-cli', 'SKILL.md'))).toBe(true)
+    expect(r.changes).toContain('skill_installed:quadtodo-cli')
+  })
+
+  it('inspect skillPresent is false until ALL bundled skills are present', () => {
+    installAgent({ claudeJsonPath, skillsDir, skillTemplatePath, port: 5677, version: '0.4.0' })
+    expect(inspectAgent({ claudeJsonPath, skillsDir }).skillPresent).toBe(true)
+    // 删掉新 skill 模拟旧版本升级场景 → 应判定为缺
+    rmSync(join(skillsDir, 'quadtodo-cli'), { recursive: true, force: true })
+    expect(inspectAgent({ claudeJsonPath, skillsDir }).skillPresent).toBe(false)
+  })
+
   it('preserves user-defined mcpServers entries', () => {
     writeFileSync(claudeJsonPath, JSON.stringify({ mcpServers: { other: { url: 'http://x' } } }))
     installAgent({ claudeJsonPath, skillsDir, skillTemplatePath, port: 5677, version: '0.4.0' })

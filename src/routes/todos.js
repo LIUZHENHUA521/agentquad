@@ -7,8 +7,15 @@ import { SUPPORTED_TOOLS } from '../config.js'
 
 const ALLOWED_STAGE_TAGS = ['dev', 'review', 'test', 'release', 'blocked']
 
-export function createTodosRouter({ db, logDir, getPricing, getTools, getLiveSession, getPty }) {
+export function createTodosRouter({ db, logDir, getPricing, getTools, getLiveSession, getPty, notifyChanged }) {
   const router = Router()
+
+  // 任意"外部"改 todos（CLI / MCP / 集成）后，通知 board SSE 让已打开的浏览器 tab 刷新。
+  // 默认 no-op，server.js 注入 boardEventBus.notifyTodosChanged。
+  const notify = (detail = {}) => {
+    if (typeof notifyChanged !== 'function') return
+    try { notifyChanged(detail) } catch (e) { console.warn('[todos] notifyChanged failed:', e?.message) }
+  }
 
   router.get('/', (req, res) => {
     try {
@@ -17,6 +24,23 @@ export function createTodosRouter({ db, logDir, getPricing, getTools, getLiveSes
       const { status, keyword } = req.query
       const list = db.listTodos({ status, keyword })
       res.json({ ok: true, list })
+    } catch (e) {
+      res.status(500).json({ ok: false, error: e.message })
+    }
+  })
+
+  // 单条完整详情（本体 + 评论 + 子任务标题）。供 CLI `todo show` / 脚本读取，
+  // 之前只有 MCP get_todo 直读 db，HTTP 层缺了这个入口。
+  router.get('/:id', (req, res) => {
+    try {
+      const todo = db.getTodo(req.params.id)
+      if (!todo) {
+        res.status(404).json({ ok: false, error: 'not_found' })
+        return
+      }
+      const comments = db.listComments(req.params.id)
+      const children = db.listSubtodosByParent(req.params.id).map(c => ({ id: c.id, title: c.title, status: c.status }))
+      res.json({ ok: true, todo, comments, children })
     } catch (e) {
       res.status(500).json({ ok: false, error: e.message })
     }
@@ -48,6 +72,7 @@ export function createTodosRouter({ db, logDir, getPricing, getTools, getLiveSes
         appliedTemplateIds: Array.isArray(appliedTemplateIds) ? appliedTemplateIds : [],
         parentId: parent?.id ?? null,
       })
+      notify({ todoId: todo.id, op: 'create' })
       res.json({ ok: true, todo })
     } catch (e) {
       if (['parent_not_found', 'nested_subtodo_not_allowed', 'parent_quadrant_mismatch'].includes(e.message)) {
@@ -99,6 +124,7 @@ export function createTodosRouter({ db, logDir, getPricing, getTools, getLiveSes
       // quadrant 入参已退役：剥掉避免传到 db 层（db 仍接受但 UI 不再使用）
       const { quadrant: _ignoredQuadrant, ...sanitizedPatch } = patch
       const todo = db.updateTodo(req.params.id, sanitizedPatch)
+      notify({ todoId: req.params.id, op: 'update' })
 
       // Auto-close PTY when status transitions to 'done':
       // - kill all live AI sessions of this todo and its subtodos
@@ -148,6 +174,7 @@ export function createTodosRouter({ db, logDir, getPricing, getTools, getLiveSes
         return
       }
       db.deleteTodo(req.params.id)
+      notify({ todoId: req.params.id, op: 'delete' })
       res.json({ ok: true })
     } catch (e) {
       res.status(500).json({ ok: false, error: e.message })
@@ -181,6 +208,7 @@ export function createTodosRouter({ db, logDir, getPricing, getTools, getLiveSes
         return
       }
       const comment = db.addComment(req.params.id, content.trim())
+      notify({ todoId: req.params.id, op: 'comment' })
       res.json({ ok: true, comment })
     } catch (e) {
       res.status(500).json({ ok: false, error: e.message })

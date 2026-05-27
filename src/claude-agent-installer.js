@@ -1,7 +1,8 @@
 /**
  * Claude Code agent installer：
  *   - 写 ~/.claude.json 的 mcpServers.agentquad（带 _agentquadManaged 旁路 marker）
- *   - 装 ~/.claude/skills/agentquad-child/SKILL.md
+ *   - 装 ~/.claude/skills/agentquad-child/SKILL.md（子任务委派）
+ *   - 装 ~/.claude/skills/quadtodo-cli/SKILL.md（用 `quadtodo todo` CLI 管理待办）
  *
  * 跟 src/openclaw-hook-installer.js 风格保持一致 —— 都是改 ~/.claude.json。
  */
@@ -11,7 +12,18 @@ import { homedir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { buildMarker, isAgentquadManaged, writeJsonAtomic } from './agent-installer-shared.js'
 
+// 主 skill（子任务委派）模板路径可被测试注入；其余随包内置 skill 走默认路径。
 const SKILL_NAME = 'agentquad-child'
+
+// 除主 skill 外随包附带的 skill。新增本地 skill 只要往这里加一项即可。
+function bundledExtraSkills() {
+  return [
+    {
+      name: 'quadtodo-cli',
+      templatePath: fileURLToPath(new URL('./templates/agent-skills/quadtodo-cli.skill.md', import.meta.url)),
+    },
+  ]
+}
 
 function defaultClaudeJsonPath() {
   return join(homedir(), '.claude.json')
@@ -23,6 +35,17 @@ function defaultSkillsDir() {
 
 function defaultSkillTemplatePath() {
   return fileURLToPath(new URL('./templates/agent-skills/agentquad-child.skill.md', import.meta.url))
+}
+
+// 装一个 skill：内容有变（或不存在）才覆盖写，返回是否发生了写入。
+function installOneSkill(skillsDir, name, templatePath) {
+  const skillFile = join(skillsDir, name, 'SKILL.md')
+  if (existsSync(skillFile) && readFileSync(skillFile, 'utf8') === readFileSync(templatePath, 'utf8')) {
+    return { skillFile, changed: false }
+  }
+  mkdirSync(join(skillsDir, name), { recursive: true })
+  copyFileSync(templatePath, skillFile)
+  return { skillFile, changed: true }
 }
 
 function readClaudeJson(path) {
@@ -66,16 +89,18 @@ export function installAgent({
 
   writeJsonAtomic(claudeJsonPath, cur)
 
-  // skill
-  const skillDir = join(skillsDir, SKILL_NAME)
-  const skillFile = join(skillDir, 'SKILL.md')
-  if (!existsSync(skillFile) || readFileSync(skillFile, 'utf8') !== readFileSync(skillTemplatePath, 'utf8')) {
-    mkdirSync(skillDir, { recursive: true })
-    copyFileSync(skillTemplatePath, skillFile)
-    changes.push('skill_installed')
+  // skills：主 skill（模板可注入）+ 内置附带 skill
+  const skillPaths = []
+  const primary = installOneSkill(skillsDir, SKILL_NAME, skillTemplatePath)
+  skillPaths.push(primary.skillFile)
+  if (primary.changed) changes.push('skill_installed')
+  for (const s of bundledExtraSkills()) {
+    const r = installOneSkill(skillsDir, s.name, s.templatePath)
+    skillPaths.push(r.skillFile)
+    if (r.changed) changes.push(`skill_installed:${s.name}`)
   }
 
-  return { ok: true, changes, configPath: claudeJsonPath, skillPath: skillFile }
+  return { ok: true, changes, configPath: claudeJsonPath, skillPath: primary.skillFile, skillPaths }
 }
 
 export function uninstallAgent({
@@ -95,10 +120,12 @@ export function uninstallAgent({
     }
     if (removed.length > 0) writeJsonAtomic(claudeJsonPath, cur)
   }
-  const skillDir = join(skillsDir, SKILL_NAME)
-  if (existsSync(skillDir)) {
-    rmSync(skillDir, { recursive: true, force: true })
-    removed.push('skill')
+  for (const name of [SKILL_NAME, ...bundledExtraSkills().map(s => s.name)]) {
+    const skillDir = join(skillsDir, name)
+    if (existsSync(skillDir)) {
+      rmSync(skillDir, { recursive: true, force: true })
+      removed.push(name === SKILL_NAME ? 'skill' : `skill:${name}`)
+    }
   }
   return { ok: true, removed }
 }
@@ -129,7 +156,9 @@ export function inspectAgent({
       }
     } catch { /* malformed, treat as not registered */ }
   }
-  if (existsSync(join(skillsDir, SKILL_NAME, 'SKILL.md'))) out.skillPresent = true
+  // skillPresent = 全部应装的 skill 都在；缺任一个就触发 bootstrap 补装（升级路径）
+  const allSkills = [SKILL_NAME, ...bundledExtraSkills().map(s => s.name)]
+  out.skillPresent = allSkills.every(name => existsSync(join(skillsDir, name, 'SKILL.md')))
   if (out.mcpRegistered && expectedPort && out.actualPort !== expectedPort) out.drift = true
   return out
 }

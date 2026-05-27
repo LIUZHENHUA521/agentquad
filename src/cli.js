@@ -14,6 +14,17 @@ import {
   resolveToolsConfig,
 } from './config.js'
 import { shouldRunWizard, runFirstRunWizard } from './first-run-wizard.js'
+import {
+  resolveServerUrl,
+  parseDueDate,
+  apiCreateTodo,
+  apiListTodos,
+  apiGetTodo,
+  apiUpdateTodo,
+  apiCompleteTodo,
+  apiAddComment,
+  apiDeleteTodo,
+} from './todo-client.js'
 import updateNotifier from 'update-notifier'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -1330,6 +1341,214 @@ openclawCmd.command('inbound-state')
       console.log(JSON.stringify(data, null, 2))
     } catch (e) {
       console.error(`✗ ${e.message}`)
+      process.exit(1)
+    }
+  })
+
+// ─── todo 子命令组：从终端 / 脚本 / Claude skill 直接增删改查 todo ─────────────
+// 走 HTTP 打正在运行的 server，复用全部校验和副作用（done 自动关 PTY、board 实时刷新）。
+function resolveTodoCtx() {
+  try {
+    const cfg = loadConfig()
+    const baseUrl = resolveServerUrl({ configPort: cfg.port })
+    return { baseUrl, fetchImpl: fetch }
+  } catch (e) {
+    if (e.code === 'server_not_running') {
+      console.error('✗ AgentQuad server 没在跑。先 `agentquad start`（或 `npm start`）再试。')
+    } else {
+      console.error(`✗ ${e.message}`)
+    }
+    process.exit(1)
+  }
+}
+
+function statusLabel(status) {
+  if (status === 'done') return '✓ done'
+  if (status === 'missed') return '⌛ missed'
+  return '○ todo'
+}
+
+function fmtDue(ts) {
+  if (!ts) return ''
+  try { return new Date(ts).toISOString().slice(0, 16).replace('T', ' ') } catch { return '' }
+}
+
+function printTodoLine(t) {
+  const bits = [t.id, statusLabel(t.status).padEnd(8), t.title]
+  const extra = []
+  if (t.stageTag) extra.push(`#${t.stageTag}`)
+  if (t.dueDate) extra.push(`due ${fmtDue(t.dueDate)}`)
+  if (Array.isArray(t.aiSessions) && t.aiSessions.length) extra.push(`${t.aiSessions.length} session(s)`)
+  console.log(bits.join('  ') + (extra.length ? `  (${extra.join(', ')})` : ''))
+}
+
+const todoCmd = program.command('todo').description('从终端管理 AgentQuad todo（需 server 在跑）：add / list / show / done / update / comment / rm')
+
+todoCmd.command('add <title>')
+  .description('新建一条 todo')
+  .option('-d, --desc <text>', '描述')
+  .option('--due <when>', '截止：ms epoch / ISO / YYYY-MM-DD')
+  .option('-w, --workdir <path>', '关联代码仓路径')
+  .option('--brainstorm', '标记为 brainstorm')
+  .option('--parent <id>', '挂到某父 todo 下作为子任务')
+  .option('--json', '输出 JSON')
+  .action(async (title, opts) => {
+    const ctx = resolveTodoCtx()
+    try {
+      const todo = await apiCreateTodo(ctx, {
+        title,
+        description: opts.desc,
+        dueDate: parseDueDate(opts.due),
+        workDir: opts.workdir,
+        brainstorm: opts.brainstorm,
+        parentId: opts.parent,
+      })
+      if (opts.json) { console.log(JSON.stringify(todo, null, 2)); return }
+      console.log(`✓ created`)
+      printTodoLine(todo)
+    } catch (e) {
+      console.error(`✗ create failed: ${e.message}`)
+      process.exit(1)
+    }
+  })
+
+todoCmd.command('list')
+  .alias('ls')
+  .description('列出 todos')
+  .option('-s, --status <s>', 'todo | done | all（默认 todo）', 'todo')
+  .option('-k, --keyword <kw>', '按标题关键词过滤')
+  .option('--json', '输出 JSON')
+  .action(async (opts) => {
+    const ctx = resolveTodoCtx()
+    try {
+      const status = opts.status === 'all' ? '' : opts.status
+      const list = await apiListTodos(ctx, { status, keyword: opts.keyword })
+      if (opts.json) { console.log(JSON.stringify(list, null, 2)); return }
+      if (!list.length) { console.log('(no todos)'); return }
+      for (const t of list) printTodoLine(t)
+      console.log(`\n${list.length} todo(s)`)
+    } catch (e) {
+      console.error(`✗ list failed: ${e.message}`)
+      process.exit(1)
+    }
+  })
+
+todoCmd.command('show <id>')
+  .description('查看单条 todo 的完整详情')
+  .option('--json', '输出 JSON')
+  .action(async (id, opts) => {
+    const ctx = resolveTodoCtx()
+    try {
+      const { todo, comments, children } = await apiGetTodo(ctx, id)
+      if (opts.json) { console.log(JSON.stringify({ todo, comments, children }, null, 2)); return }
+      console.log(`${todo.id}  ${statusLabel(todo.status)}`)
+      console.log(`title:    ${todo.title}`)
+      if (todo.stageTag) console.log(`stage:    #${todo.stageTag}`)
+      if (todo.dueDate) console.log(`due:      ${fmtDue(todo.dueDate)}`)
+      if (todo.workDir) console.log(`workDir:  ${todo.workDir}`)
+      if (todo.description) console.log(`\n${todo.description}`)
+      if (children.length) {
+        console.log(`\nsubtasks (${children.length}):`)
+        for (const c of children) console.log(`  ${c.id}  ${statusLabel(c.status).padEnd(8)} ${c.title}`)
+      }
+      if (comments.length) {
+        console.log(`\ncomments (${comments.length}):`)
+        for (const c of comments) console.log(`  - ${c.content}`)
+      }
+      const sessions = Array.isArray(todo.aiSessions) ? todo.aiSessions : []
+      if (sessions.length) {
+        console.log(`\nai sessions (${sessions.length}):`)
+        for (const s of sessions) console.log(`  ${s.sessionId}  ${s.tool}  ${s.status}${s.label ? `  «${s.label}»` : ''}`)
+      }
+    } catch (e) {
+      if (e.status === 404) { console.error(`✗ todo not found: ${id}`); process.exit(1) }
+      console.error(`✗ show failed: ${e.message}`)
+      process.exit(1)
+    }
+  })
+
+todoCmd.command('done <id>')
+  .description('标记为已完成（会自动关掉该 todo 的 AI 终端会话）')
+  .option('--json', '输出 JSON')
+  .action(async (id, opts) => {
+    const ctx = resolveTodoCtx()
+    try {
+      const todo = await apiCompleteTodo(ctx, id)
+      if (opts.json) { console.log(JSON.stringify(todo, null, 2)); return }
+      console.log(`✓ done`)
+      printTodoLine(todo)
+    } catch (e) {
+      if (e.status === 404) { console.error(`✗ todo not found: ${id}`); process.exit(1) }
+      console.error(`✗ done failed: ${e.message}`)
+      process.exit(1)
+    }
+  })
+
+todoCmd.command('update <id>')
+  .description('改 title / 描述 / 截止 / workDir / stageTag')
+  .option('-t, --title <text>', '新标题')
+  .option('-d, --desc <text>', '新描述')
+  .option('--due <when>', '截止：ms epoch / ISO / YYYY-MM-DD；传 clear 清除')
+  .option('-w, --workdir <path>', 'workDir')
+  .option('--stage <tag>', 'dev | review | test | release | blocked')
+  .option('--json', '输出 JSON')
+  .action(async (id, opts) => {
+    const ctx = resolveTodoCtx()
+    const patch = {}
+    if (opts.title !== undefined) patch.title = opts.title
+    if (opts.desc !== undefined) patch.description = opts.desc
+    if (opts.workdir !== undefined) patch.workDir = opts.workdir
+    if (opts.stage !== undefined) patch.stageTag = opts.stage
+    if (opts.due !== undefined) patch.dueDate = opts.due === 'clear' ? null : parseDueDate(opts.due)
+    if (Object.keys(patch).length === 0) {
+      console.error('✗ nothing to update — pass at least one of --title/--desc/--due/--workdir/--stage')
+      process.exit(1)
+    }
+    try {
+      const todo = await apiUpdateTodo(ctx, id, patch)
+      if (opts.json) { console.log(JSON.stringify(todo, null, 2)); return }
+      console.log(`✓ updated`)
+      printTodoLine(todo)
+    } catch (e) {
+      if (e.status === 404) { console.error(`✗ todo not found: ${id}`); process.exit(1) }
+      console.error(`✗ update failed: ${e.message}`)
+      process.exit(1)
+    }
+  })
+
+todoCmd.command('comment <id> <text>')
+  .description('给 todo 加一条评论')
+  .action(async (id, text) => {
+    const ctx = resolveTodoCtx()
+    try {
+      await apiAddComment(ctx, id, text)
+      console.log('✓ comment added')
+    } catch (e) {
+      if (e.status === 404) { console.error(`✗ todo not found: ${id}`); process.exit(1) }
+      console.error(`✗ comment failed: ${e.message}`)
+      process.exit(1)
+    }
+  })
+
+todoCmd.command('rm <id>')
+  .description('删除一条 todo（连同子任务级联删除，不可逆）')
+  .option('-y, --yes', '跳过确认')
+  .action(async (id, opts) => {
+    const ctx = resolveTodoCtx()
+    if (!opts.yes) {
+      if (!process.stdin.isTTY) {
+        console.error('✗ refusing to delete without --yes in a non-interactive shell')
+        process.exit(1)
+      }
+      const ok = await prompt(`Delete todo ${id} (and any subtasks)? [y/N] `)
+      if (!/^y(es)?$/i.test(ok.trim())) { console.log('Aborted.'); process.exit(0) }
+    }
+    try {
+      await apiDeleteTodo(ctx, id)
+      console.log('✓ deleted')
+    } catch (e) {
+      if (e.status === 404) { console.error(`✗ todo not found: ${id}`); process.exit(1) }
+      console.error(`✗ delete failed: ${e.message}`)
       process.exit(1)
     }
   })
