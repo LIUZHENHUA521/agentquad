@@ -12,6 +12,11 @@ import { findLatestPendingToolUse } from '../claude-transcript.js'
 
 const MAX_OUTPUT_BUFFER = 5 * 1024 * 1024
 const CLEANUP_MS = 30 * 60_000
+// 周期跑一遍 markOrphanedSessionsAsFailed —— 启动期那一次只能扫"重启前留下的"，
+// 跑起来之后 PTY 进程意外死亡（node-pty 没收到 onExit、外部 kill -9、claude 自杀
+// 后没正常退出码等场景）会让 DB 留下"alive-looking 但没有对应 PTY"的僵尸。
+// 5 分钟一次：足够频繁让 UI 不长时间显示假象，又不至于压数据库。
+const ORPHAN_SWEEP_MS = 5 * 60_000
 const MIN_RESIZE_COLS = 30
 // PTY 实际使用的 cols 下限。低于这个值的 viewer（例如默认 480px Dock、手机竖屏）
 // 不会真的把 PTY 拉窄，而是让 PTY 留在 80 cols 输出，xterm 端做软折行。
@@ -1388,8 +1393,15 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
   }, 5 * 60_000)
   cleanupTimer.unref?.()
 
+  // 周期跑一遍 orphan sweep：清运行期意外死掉但没触发 onExit 的僵尸 aiSession 记录
+  // （DB 里挂着 status=running/idle/pending_confirm、PTY 早已不存在的那种）。
+  // 见 markOrphanedSessionsAsFailed 上方注释。
+  const orphanSweepTimer = setInterval(markOrphanedSessionsAsFailed, ORPHAN_SWEEP_MS)
+  orphanSweepTimer.unref?.()
+
   function close() {
     clearInterval(cleanupTimer)
+    clearInterval(orphanSweepTimer)
     for (const id of sessions.keys()) pty.stop(id)
     sessions.clear()
     todoSessionMap.clear()
@@ -1563,11 +1575,22 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
     }
   }
 
-  // 服务硬重启 / crash 时 PTY 进程没机会触发 onExit，DB 里 aiSession.status='running'
-  // (或 idle / pending_confirm) 会留作"僵尸"，前端读到后渲染成「运行中」却没有对应 PTY。
-  // 启动期一次性把所有"看起来还活着但无对应 live PTY"的 aiSession 改成 'failed'。
+  // 服务硬重启 / crash / PTY 进程意外死亡（没触发 node-pty onExit、外部 kill -9 等）
+  // 时，DB 里 aiSession.status='running' / 'idle' / 'pending_confirm' 会留作"僵尸"，
+  // 前端读到后渲染成「运行中」却没有对应 PTY。
+  //
+  // 启动期跑一次：清掉服务重启前留下来的；之后每 ORPHAN_SWEEP_MS 周期跑一次：清掉
+  // server 运行期间意外死掉但 onExit 没触发的（user 的真实痛点）。
+  //
   // 必须在 recoverPendingTodosOnStartup 之后调用：成功 recover 的 session 此时已在
   // nativeSessionMap 里，扫描会跳过它们；只有真正的孤儿会被改写。
+  //
+  // 运行时安全：用 in-memory `sessions` Map 当 ground truth ——
+  //   - 刚 spawn 出来还没拿到 nativeSessionId 的 fresh session 已经在 Map 里，
+  //     不会被周期 sweep 误判为孤儿；
+  //   - 用户用 stop / 自然 exit 走 pty.on('done') 已经写过 completedAt 的 session，
+  //     in-memory.status 已是 done/failed/stopped，sweep 不会去碰；
+  //   - 真正孤儿（pty 死了但 sessions Map 也清了 / 或者本来就没人接管）才会被翻成 failed。
   function markOrphanedSessionsAsFailed() {
     const ALIVE_LOOKING = new Set(['running', 'idle', 'pending_confirm'])
     let swept = 0
@@ -1577,10 +1600,15 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
         let changed = false
         const nextSessions = aiSessions.map((s) => {
           if (!s || !ALIVE_LOOKING.has(s.status)) return s
+          // 1) in-memory ground truth：还在 sessions Map 且状态还 alive-looking → 留着
+          const live = sessions.get(s.sessionId)
+          if (live && ALIVE_LOOKING.has(live.status)) return s
+          // 2) resume / replace 路径会把同 nativeSessionId 接到新 sessionId 上；
+          //    nativeSessionMap 里能找到说明 PTY 还有人接管。
           const key = s.tool && s.nativeSessionId ? `${s.tool}:${s.nativeSessionId}` : null
           if (key && nativeSessionMap.has(key)) return s
           changed = true
-          return { ...s, status: 'failed', completedAt: Date.now() }
+          return { ...s, status: 'failed', completedAt: s.completedAt || Date.now() }
         })
         if (!changed) continue
         db.updateTodo(todo.id, { aiSessions: nextSessions })
@@ -1613,6 +1641,7 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
     markSessionAwaitingReply,
     markPendingConfirm,
     isSessionAwaitingReply,
+    markOrphanedSessionsAsFailed, // exported for periodic sweep test + ops scripts
     close,
   }
 
