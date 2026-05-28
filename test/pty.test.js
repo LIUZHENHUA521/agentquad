@@ -839,4 +839,131 @@ describe('PtyManager', () => {
     })
   })
 
+  // ─── 兜底：node-pty 的 onExit 漏触发时，靠 process.kill(pid, 0) 探测 ────────
+  // 这是用户实际命中的"PTY 死了但 DB 一直挂 idle"症状的根因修复。
+  describe('synthetic exit via _checkSessionLiveness', () => {
+    // 构造一个 fake proc，能让我们手动控制 pid（"alive"=process.pid，"dead"=遥远的高 pid）
+    function makePtyFactoryWithFixedPid(pid) {
+      function factory(bin, args, opts) {
+        const proc = new EventEmitter()
+        proc.pid = pid
+        proc.onData = (cb) => proc.on('data', cb)
+        proc.onExit = (cb) => proc.on('exit', cb)
+        proc.write = vi.fn()
+        proc.resize = vi.fn()
+        proc.kill = vi.fn()
+        return proc
+      }
+      return factory
+    }
+
+    it('synthesizes done when pid is dead and grace has elapsed', () => {
+      // 用一个几乎不可能存在的 pid 模拟"PTY 实际已死"
+      const DEAD_PID = 2_147_483_640
+      const pm = new PtyManager({
+        tools: tools(),
+        ptyFactory: makePtyFactoryWithFixedPid(DEAD_PID),
+        aliveCheckIntervalMs: 0,    // 关掉自动 timer，测试手动驱动
+        aliveCheckGraceMs: 0,       // grace=0：第一次探测就合成（不用真睡眠）
+      })
+      const doneEvents = []
+      pm.on('done', (e) => doneEvents.push(e))
+
+      pm.start({ sessionId: 's-zombie', tool: 'claude', prompt: null, cwd: '/tmp' })
+      expect(pm.sessions.has('s-zombie')).toBe(true)
+
+      // node-pty 没触发 onExit（fake proc 也没 emit exit）；但我们调兜底检查
+      pm._checkSessionLiveness()
+
+      expect(doneEvents).toHaveLength(1)
+      expect(doneEvents[0].sessionId).toBe('s-zombie')
+      expect(doneEvents[0].exitCode).toBe(1)        // synthetic 默认是 1
+      expect(doneEvents[0].stopped).toBe(false)     // 不是用户 stop 的
+      expect(pm.sessions.has('s-zombie')).toBe(false) // 已从 Map 摘掉
+    })
+
+    it('does NOT touch a session whose pid is still alive', () => {
+      // process.pid 是当前 node 自己，肯定还活着
+      const pm = new PtyManager({
+        tools: tools(),
+        ptyFactory: makePtyFactoryWithFixedPid(process.pid),
+        aliveCheckIntervalMs: 0,
+        aliveCheckGraceMs: 0,
+      })
+      const doneEvents = []
+      pm.on('done', (e) => doneEvents.push(e))
+
+      pm.start({ sessionId: 's-alive', tool: 'claude', prompt: null, cwd: '/tmp' })
+      pm._checkSessionLiveness()
+      pm._checkSessionLiveness()
+      pm._checkSessionLiveness()
+
+      expect(doneEvents).toHaveLength(0)
+      expect(pm.sessions.has('s-alive')).toBe(true)
+    })
+
+    it('does NOT double-fire when real onExit arrives after synthesizing', () => {
+      const DEAD_PID = 2_147_483_640
+      const factory = makePtyFactoryWithFixedPid(DEAD_PID)
+      const pm = new PtyManager({
+        tools: tools(),
+        ptyFactory: factory,
+        aliveCheckIntervalMs: 0,
+        aliveCheckGraceMs: 0,
+      })
+      const doneEvents = []
+      pm.on('done', (e) => doneEvents.push(e))
+
+      pm.start({ sessionId: 's-once', tool: 'claude', prompt: null, cwd: '/tmp' })
+      const proc = factory.created?.[0] || (() => {
+        // 这个 factory 没存 created；用 sessions Map 拿 proc
+        return pm.sessions.get('s-once')?.proc
+      })()
+      pm._checkSessionLiveness()       // synthetic 收尾
+      expect(doneEvents).toHaveLength(1)
+
+      // 真 onExit 终于到了 —— _finalizeSession 应幂等不再 emit
+      proc?.emit('exit', { exitCode: 0 })
+      expect(doneEvents).toHaveLength(1)
+    })
+
+    it('grace > 0: first tick marks dead, only the SECOND tick (past grace) synthesizes', () => {
+      const DEAD_PID = 2_147_483_640
+      const pm = new PtyManager({
+        tools: tools(),
+        ptyFactory: makePtyFactoryWithFixedPid(DEAD_PID),
+        aliveCheckIntervalMs: 0,
+        aliveCheckGraceMs: 1,   // 1ms 足以让两次 tick 之间满足
+      })
+      const doneEvents = []
+      pm.on('done', (e) => doneEvents.push(e))
+
+      pm.start({ sessionId: 's-grace', tool: 'claude', prompt: null, cwd: '/tmp' })
+
+      // 第一次：仅标记 _pidDeadSince，不 synthesize
+      pm._checkSessionLiveness()
+      expect(doneEvents).toHaveLength(0)
+      expect(pm.sessions.get('s-grace')?._pidDeadSince).toBeTypeOf('number')
+
+      // 等 grace 过去，再 tick → 这次才合成
+      return new Promise((r) => setTimeout(r, 5)).then(() => {
+        pm._checkSessionLiveness()
+        expect(doneEvents).toHaveLength(1)
+      })
+    })
+
+    it('close() clears the auto alive-check timer', () => {
+      // intervalMs > 0 时构造函数会装 timer；close() 应卸掉
+      const pm = new PtyManager({
+        tools: tools(),
+        ptyFactory: makeFakePty(),
+        aliveCheckIntervalMs: 100,
+        aliveCheckGraceMs: 0,
+      })
+      expect(pm._aliveCheckTimer).not.toBeNull()
+      pm.close()
+      expect(pm._aliveCheckTimer).toBeNull()
+    })
+  })
+
 })
