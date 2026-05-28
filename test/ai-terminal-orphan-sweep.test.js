@@ -247,6 +247,99 @@ describe('routes/ai-terminal markOrphanedSessionsAsFailed', () => {
     // 孤儿被改成 failed
     expect(byId['s-old-zombie']).toBe('failed')
   })
+
+  // ─── 运行时再跑（周期 sweep 模拟）─────────────────────────────────
+  // 真实 bug：server 启动后跑了几小时，某条 session 的 PTY 进程意外死了
+  // （node-pty 没收到 onExit / 外部 kill -9），DB 里它的 status 一直挂 idle
+  // /running，前端永远显示「运行中」。启动期那一次 sweep 早就跑过了 —— 必须能
+  // 在运行时被周期再调用。
+
+  it('runtime call: marks a newly-orphaned session that arrived AFTER boot', () => {
+    // 启动期 DB 是干净的（无 alive-looking 记录）→ boot 时 sweep 啥也不做。
+    const db = openDb(':memory:')
+    cleanups.push(() => db.close())
+    const todo = db.createTodo({
+      title: 'fresh-orphan',
+      quadrant: 1,
+      status: 'ai_done',
+      aiSessions: [], // 启动期没东西扫
+    })
+    const { ait, logDir } = makeTerminal(db)
+    cleanups.push(() => { ait.close(); rmSync(logDir, { recursive: true, force: true }) })
+
+    // 启动后，模拟"server 运行中 PTY 死了但 onExit 没触发"——直接在 DB 里塞
+    // 一条 alive-looking 的 aiSession（ait.sessions Map 里没有对应条目）。
+    db.updateTodo(todo.id, {
+      aiSessions: [{
+        sessionId: 'sess-runtime-zombie',
+        tool: 'claude',
+        nativeSessionId: 'native-runtime-zombie',
+        status: 'idle',
+        startedAt: 1,
+        completedAt: null,
+        prompt: 'x',
+      }],
+    })
+
+    // 周期 sweep 触发
+    ait.markOrphanedSessionsAsFailed()
+
+    const updated = db.getTodo(todo.id)
+    const target = (updated.aiSessions || []).find((s) => s?.sessionId === 'sess-runtime-zombie')
+    expect(target).toBeDefined()
+    expect(target.status).toBe('failed')
+    expect(target.completedAt).toBeTypeOf('number')
+    // nativeSessionId 保留，让用户后续仍可 Resume
+    expect(target.nativeSessionId).toBe('native-runtime-zombie')
+  })
+
+  it('runtime call: protects fresh in-flight session that lives in `sessions` Map but has no nativeSessionId yet', () => {
+    // 这是把 sweep 改成可周期跑的最大风险点：spawnSession 把 session 写进
+    // sessions Map 时 nativeSessionId 还是 null（要等 native-session 事件后才有），
+    // 这条不能因为"nativeSessionMap 里没有"就被误判成孤儿。
+    const db = openDb(':memory:')
+    cleanups.push(() => db.close())
+    const todo = db.createTodo({
+      title: 'fresh-in-flight',
+      quadrant: 1,
+      status: 'ai_running',
+      aiSessions: [],
+    })
+    const { ait, logDir } = makeTerminal(db)
+    cleanups.push(() => { ait.close(); rmSync(logDir, { recursive: true, force: true }) })
+
+    // 模拟"刚 spawn 出来还没 native id"的会话同时存在于 in-memory + DB
+    ait.sessions.set('sess-just-spawned', {
+      sessionId: 'sess-just-spawned',
+      todoId: todo.id,
+      tool: 'claude',
+      status: 'running',
+      nativeSessionId: null,
+      browsers: new Set(),
+      startedAt: Date.now(),
+      completedAt: null,
+    })
+    db.updateTodo(todo.id, {
+      aiSessions: [{
+        sessionId: 'sess-just-spawned',
+        tool: 'claude',
+        nativeSessionId: null, // ← 关键：还没拿到
+        status: 'running',
+        startedAt: Date.now(),
+        completedAt: null,
+        prompt: 'x',
+      }],
+    })
+
+    ait.markOrphanedSessionsAsFailed()
+
+    const updated = db.getTodo(todo.id)
+    const target = (updated.aiSessions || []).find((s) => s?.sessionId === 'sess-just-spawned')
+    expect(target).toBeDefined()
+    // 没被误伤，依然 running
+    expect(target.status).toBe('running')
+    expect(target.completedAt).toBeNull()
+  })
 })
 
 describe('routes/ai-terminal recoverPendingTodosOnStartup spawn-failure catch', () => {
