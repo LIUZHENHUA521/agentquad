@@ -1406,6 +1406,8 @@ export function createAiTerminal({ db, pty, logDir, defaultCwd, getDefaultCwd, o
     sessions.clear()
     todoSessionMap.clear()
     nativeSessionMap.clear()
+    // 关掉 PtyManager 自己持有的 _aliveCheckTimer，避免 ait 关停后还跑兜底检查。
+    pty.close?.()
   }
 
   // recoverPendingTodosOnStartup 的 spawn 失败 catch 路径用：把 mergeTodoAiSessions

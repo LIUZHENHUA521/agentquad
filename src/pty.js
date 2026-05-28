@@ -326,7 +326,21 @@ function defaultClaudeSessionLocator(nativeSessionId) {
 }
 
 export class PtyManager extends EventEmitter {
-  constructor({ tools, ptyFactory, promptDelayMs = 2000, codexWatcherFactory, claudeSessionLocator, codexSessionLocator, sidecar = null, eventEmitterFactory = null, codexPromptDetectorFactory = null, claudePromptDetectorFactory = null } = {}) {
+  constructor({
+    tools, ptyFactory, promptDelayMs = 2000,
+    codexWatcherFactory, claudeSessionLocator, codexSessionLocator,
+    sidecar = null, eventEmitterFactory = null,
+    codexPromptDetectorFactory = null, claudePromptDetectorFactory = null,
+    // ── 兜底 onExit ──
+    // node-pty 的 proc.onExit 在某些场景下不触发（外部 SIGKILL、claude/codex 自己拉
+    // self-exit 没经过 PTY 关 fd、子进程被 reparent 等）。这条兜底周期跑一遍 alive
+    // check，pid 实际已死且 onExit 没来 → 合成 'done' 事件让上层正常收尾。
+    //
+    // grace 防误伤：pid 刚死那一刻 onExit 经常正在路上，留 5s 给它先到。
+    // intervalMs=0 → 关闭兜底（测试自己手动驱动 _checkSessionLiveness）。
+    aliveCheckIntervalMs = 30_000,
+    aliveCheckGraceMs = 5_000,
+  } = {}) {
     super()
     if (!tools) throw new Error('PtyManager: tools required')
     this.tools = tools
@@ -340,6 +354,101 @@ export class PtyManager extends EventEmitter {
     this.codexPromptDetectorFactory = codexPromptDetectorFactory || createCodexPromptDetector
     this.claudePromptDetectorFactory = claudePromptDetectorFactory || createClaudePromptDetector
     this.sessions = new Map()
+    this._aliveCheckGraceMs = aliveCheckGraceMs
+    this._aliveCheckTimer = aliveCheckIntervalMs > 0
+      ? setInterval(() => this._checkSessionLiveness(), aliveCheckIntervalMs)
+      : null
+    this._aliveCheckTimer?.unref?.()
+  }
+
+  /** 停掉所有内部 timer。AgentQuad server 关停或测试拆卸时调用。 */
+  close() {
+    if (this._aliveCheckTimer) {
+      clearInterval(this._aliveCheckTimer)
+      this._aliveCheckTimer = null
+    }
+  }
+
+  /**
+   * 把一个 session 的退出收尾路径抽成方法：
+   * - proc.onExit 走这里（正常路径）
+   * - _checkSessionLiveness 探测到 pid 死了但 onExit 没来时也走这里（synthetic 路径）
+   *
+   * 多次调用幂等：session 已不在 this.sessions Map 里就直接 return —— 这是 synthetic
+   * 跑完之后真 onExit 终于到达时的兜底（不会重复 emit 'done'）。
+   */
+  _finalizeSession(sessionId, exitCode, { source = 'pty_onExit' } = {}) {
+    const session = this.sessions.get(sessionId)
+    if (!session) return false
+
+    if (source !== 'pty_onExit') {
+      console.warn(`[pty] synthesizing exit for sessionId=${sessionId} tool=${session.tool} pid=${session.proc?.pid} nativeId=${session.nativeId} source=${source} (node-pty onExit didn't fire)`)
+    }
+
+    if (session.detectTimer) clearInterval(session.detectTimer)
+    if (session.promptTimer) clearTimeout(session.promptTimer)
+    if (session.cursorWatchTimer) { clearInterval(session.cursorWatchTimer); session.cursorWatchTimer = null }
+    if (session.claudeWatchTimer) { clearInterval(session.claudeWatchTimer); session.claudeWatchTimer = null }
+    if (session.codexUsageWatchTimer) { clearInterval(session.codexUsageWatchTimer); session.codexUsageWatchTimer = null }
+    if (session.fsWatcher) { try { session.fsWatcher.close() } catch { /* ignore */ } session.fsWatcher = null }
+    if (session.detector) { try { session.detector.stop?.() } catch { /* ignore */ } session.detector = null }
+    if (session.eventEmitter) {
+      // codex 在 jsonl 里没有"会话整体结束"的事件，只有 task_complete（一轮）和
+      // 进程实际退出。这里合成 SessionEnd 抛给上层，对应 IM 里的 ✅ + 全量 transcript 附件。
+      if (session.tool === 'codex' && session.nativeId) {
+        try {
+          session.eventEmitter.emitSynthetic?.({
+            event: 'SessionEnd',
+            nativeId: session.nativeId,
+            rawEventPayload: { exitCode: exitCode ?? 1 },
+          })
+        } catch { /* ignore */ }
+      }
+      try { session.eventEmitter.stop?.() } catch { /* ignore */ }
+      session.eventEmitter = null
+    }
+    if (this.sidecar && session.tool === 'codex' && session.nativeId) {
+      try { this.sidecar.clear(session.nativeId) } catch { /* ignore */ }
+    }
+    if (session.mcpConfigPath) {
+      try { if (existsSync(session.mcpConfigPath)) unlinkSync(session.mcpConfigPath) } catch { /* ignore */ }
+    }
+    const fullLog = (session.fullLog || []).join('')
+    this.sessions.delete(sessionId)
+    this.emit('done', {
+      sessionId,
+      exitCode: exitCode ?? 1,
+      fullLog,
+      nativeId: session.nativeId,
+      stopped: session.stopped,
+    })
+    return true
+  }
+
+  /**
+   * 周期跑：检查每个 session.proc.pid 是不是真的还在。
+   * - 还活 → 清掉之前可能标记过的 _pidDeadSince（瞬时假阴性恢复）
+   * - 刚死 → 标记 _pidDeadSince，等下一轮（给 onExit 留时间）
+   * - 死了超过 grace 还没收到 onExit → 合成 done 事件，走 _finalizeSession 收尾
+   */
+  _checkSessionLiveness() {
+    for (const [sessionId, session] of this.sessions) {
+      const pid = session.proc?.pid
+      if (!pid) continue
+      let alive = false
+      try { process.kill(pid, 0); alive = true } catch { /* ESRCH / EPERM → 视为 dead */ }
+      if (alive) {
+        if (session._pidDeadSince) session._pidDeadSince = null
+        continue
+      }
+      if (!session._pidDeadSince) {
+        session._pidDeadSince = Date.now()
+        // grace=0 时走 fall-through 立刻合成；grace>0 时等下一轮
+        if (this._aliveCheckGraceMs > 0) continue
+      }
+      if (Date.now() - session._pidDeadSince < this._aliveCheckGraceMs) continue
+      this._finalizeSession(sessionId, 1, { source: 'synthetic_pid_check' })
+    }
   }
 
   /**
@@ -1049,44 +1158,7 @@ export class PtyManager extends EventEmitter {
     }
 
     proc.onExit(({ exitCode }) => {
-      if (session.detectTimer) clearInterval(session.detectTimer)
-      if (session.promptTimer) clearTimeout(session.promptTimer)
-      if (session.cursorWatchTimer) { clearInterval(session.cursorWatchTimer); session.cursorWatchTimer = null }
-      if (session.claudeWatchTimer) { clearInterval(session.claudeWatchTimer); session.claudeWatchTimer = null }
-      if (session.codexUsageWatchTimer) { clearInterval(session.codexUsageWatchTimer); session.codexUsageWatchTimer = null }
-      if (session.fsWatcher) { try { session.fsWatcher.close() } catch { /* ignore */ } session.fsWatcher = null }
-      if (session.detector) { try { session.detector.stop?.() } catch { /* ignore */ } session.detector = null }
-      if (session.eventEmitter) {
-        // codex 在 jsonl 里没有"会话整体结束"的事件，只有 task_complete（一轮）和
-        // 进程实际退出。这里合成 SessionEnd 抛给上层，对应 IM 里的 ✅ + 全量 transcript 附件。
-        if (session.tool === 'codex' && session.nativeId) {
-          try {
-            session.eventEmitter.emitSynthetic?.({
-              event: 'SessionEnd',
-              nativeId: session.nativeId,
-              rawEventPayload: { exitCode: exitCode ?? 1 },
-            })
-          } catch { /* ignore */ }
-        }
-        try { session.eventEmitter.stop?.() } catch { /* ignore */ }
-        session.eventEmitter = null
-      }
-      if (this.sidecar && session.tool === 'codex' && session.nativeId) {
-        try { this.sidecar.clear(session.nativeId) } catch { /* ignore */ }
-      }
-      // Cleanup runtime MCP config file (Task 10)
-      if (session.mcpConfigPath) {
-        try { if (existsSync(session.mcpConfigPath)) unlinkSync(session.mcpConfigPath) } catch { /* ignore */ }
-      }
-      const fullLog = session.fullLog.join('')
-      this.sessions.delete(sessionId)
-      this.emit('done', {
-        sessionId,
-        exitCode: exitCode ?? 1,
-        fullLog,
-        nativeId: session.nativeId,
-        stopped: session.stopped,
-      })
+      this._finalizeSession(sessionId, exitCode)
     })
 
     // 释放对 args/env 等较大对象的引用（已经被 ptyFactory 闭包持有了）。
@@ -1154,15 +1226,7 @@ export class PtyManager extends EventEmitter {
     })
 
     proc.onExit(({ exitCode }) => {
-      const fullLog = session.fullLog.join('')
-      this.sessions.delete(sessionId)
-      this.emit('done', {
-        sessionId,
-        exitCode: exitCode ?? 0,
-        fullLog,
-        nativeId: null,
-        stopped: session.stopped,
-      })
+      this._finalizeSession(sessionId, exitCode ?? 0)
     })
   }
 
