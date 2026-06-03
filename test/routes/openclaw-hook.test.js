@@ -30,6 +30,29 @@ describe('openclaw-hook router', () => {
     expect(handle).toHaveBeenCalledWith(expect.objectContaining({ path: 'detector', sessionId: 'qs1' }))
   })
 
+  it('forwards source=codex,path=hook-event for local session capture', async () => {
+    const handle = vi.fn(async () => ({ ok: true, action: 'captured' }))
+    const res = await request(makeApp({ handle })).post('/api/openclaw/hook').send({
+      source: 'codex',
+      path: 'hook-event',
+      event: 'user-prompt-submit',
+      hookPayload: {
+        hook_event_name: 'UserPromptSubmit',
+        session_id: 'native-codex-1',
+        cwd: '/Users/me/proj-B',
+        tool: 'codex',
+        prompt: 'hi',
+      },
+    })
+    expect(res.status).toBe(200)
+    expect(handle).toHaveBeenCalledWith(expect.objectContaining({
+      source: 'codex',
+      path: 'hook-event',
+      event: 'user-prompt-submit',
+      hookPayload: expect.objectContaining({ tool: 'codex' }),
+    }))
+  })
+
   it('rejects unsupported body shape', async () => {
     const handle = vi.fn()
     const res = await request(makeApp({ handle })).post('/api/openclaw/hook').send({ source: 'codex', path: 'unknown' })

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// quadtodo-hook-version: 4
+// quadtodo-hook-version: 5
 /**
  * AgentQuad Claude Code hook —— 把 PTY 内 Claude Code 的状态事件转推到微信。
  *
@@ -67,6 +67,8 @@ async function send() {
   }
 
   const body = JSON.stringify({
+    source: 'codex',
+    path: 'hook-event',
     event,
     sessionId: SESSION_ID,
     targetUserId: process.env.QUADTODO_TARGET_USER || null,

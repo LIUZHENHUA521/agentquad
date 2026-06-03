@@ -133,6 +133,25 @@ describe('openclaw-hook local capture', () => {
     expect(todo.title).toMatch(/^\[本地 codex\] proj-B · "帮我写一个 hello world"$/)
   })
 
+  it('旧 Codex hook 未带 source 时也按 hookPayload.tool=codex 捕获', async () => {
+    const handler = makeHandler({ db })
+    const result = await handler.handle({
+      path: 'hook-event',
+      hookPayload: {
+        hook_event_name: 'UserPromptSubmit',
+        session_id: 'native-codex-legacy',
+        cwd: '/Users/me/proj-B',
+        tool: 'codex',
+        prompt: '兼容旧 hook'
+      }
+    })
+    const todo = db.findTodoByNativeSessionId('native-codex-legacy')
+    expect(result.ok).toBe(true)
+    expect(todo).not.toBeNull()
+    expect(todo.title).toMatch(/^\[本地 codex\] proj-B · "兼容旧 hook"$/)
+    expect(todo.aiSessions[0].tool).toBe('codex')
+  })
+
   it('Phase 2 rename：claude SessionStart 后 UserPromptSubmit 把标题加上摘要', async () => {
     const handler = makeHandler({ db })
     // Phase 1

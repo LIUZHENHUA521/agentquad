@@ -602,8 +602,9 @@ export function createOpenClawHookHandler(deps = {}) {
     // 防止 capture 逻辑 bug 把整个 hook 拉挂。
     let localCaptureTodo = null
     try {
-      const tool = source === 'codex' ? 'codex' : 'claude'
       const hp = req?.hookPayload || {}
+      const payloadTool = hp.tool === 'codex' ? 'codex' : hp.tool === 'claude' ? 'claude' : null
+      const tool = payloadTool || (source === 'codex' ? 'codex' : 'claude')
       const captureSessionId = hp.session_id || hp.sessionId || null
       const captureEvent = hp.hook_event_name || null
       const captureCwd = hp.cwd || null

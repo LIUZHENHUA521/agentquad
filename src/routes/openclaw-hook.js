@@ -32,7 +32,7 @@ export function createOpenClawHookRouter({ hookHandler } = {}) {
         matchedPattern,
       } = req.body || {}
 
-      if (source === 'codex' && path !== 'jsonl' && path !== 'detector') {
+      if (source === 'codex' && path !== 'jsonl' && path !== 'detector' && path !== 'hook-event') {
         return res.status(400).json({ ok: false, error: 'unsupported_body_shape' })
       }
 
